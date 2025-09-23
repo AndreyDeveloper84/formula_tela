@@ -1,0 +1,26 @@
+{% extends "website/base.html" %}
+{% block title %}Услуги — {{ settings.salon_name }}{% endblock %}
+{% block content %}
+  <h1>Услуги</h1>
+
+  {% for cat in categories %}
+    <h2 style="margin-top:18px">{{ cat.name }}</h2>
+    <div class="grid grid-3">
+      {% for s in cat.services.all %}
+        {% if s.is_active %}
+        <div class="card">
+          <div style="font-weight:600">{{ s.name }}</div>
+          {% if s.short %}<div class="muted">{{ s.short }}</div>{% endif %}
+          <div class="muted">{{ s.duration_min }} мин</div>
+          <div style="margin-top:8px"><b>{{ s.price_from }} ₽</b></div>
+          <p><a class="btn" href="#book">Записаться</a></p>
+        </div>
+        {% endif %}
+      {% empty %}
+        <p class="muted">В этой категории пока нет услуг</p>
+      {% endfor %}
+    </div>
+  {% empty %}
+    <p class="muted">Категории ещё не заведены</p>
+  {% endfor %}
+{% endblock %}

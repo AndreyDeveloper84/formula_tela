@@ -1,0 +1,65 @@
+{% extends "website/base.html" %}
+{% block title %}Акции — {{ settings.salon_name }}{% endblock %}
+{% block content %}
+  <section>
+    <h1>Акции</h1>
+    <div class="grid grid-2">
+      {% for p in promotions %}
+        <div class="card">
+          <div style="display:flex; gap:12px; align-items:flex-start">
+            {% if p.image %}
+              <img src="{{ p.image.url }}" alt="{{ p.title }}" style="max-width:120px; height:auto; border-radius:6px">
+            {% endif %}
+            <div>
+              <div style="font-weight:600">{{ p.title }}</div>
+              {% if p.subtitle %}<div class="muted">{{ p.subtitle }}</div>{% endif %}
+              {% if p.starts_at or p.ends_at %}
+                <div class="muted" style="margin-top:4px">
+                  {% if p.starts_at %}с {{ p.starts_at|date:"d.m.Y" }}{% endif %}
+                  {% if p.ends_at %} по {{ p.ends_at|date:"d.m.Y" }}{% endif %}
+                </div>
+              {% endif %}
+              {% if p.discount_percent %}
+                <div style="margin-top:6px"><b>Скидка: {{ p.discount_percent }}%</b></div>
+              {% endif %}
+              {% if p.features %}
+                <ul class="muted" style="margin:8px 0 0 18px">
+                  {% for f in p.features %}
+                    <li>{{ f }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if p.options.all %}
+            <div style="margin-top:10px">
+              <form action="{% url 'website:book_service' %}" method="get">
+                <label class="muted">Вариант услуги по акции:</label>
+                <select name="service_option_id" style="display:block; width:100%; margin:6px 0 10px">
+                  {% for o in p.options.all %}
+                    <option value="{{ o.id }}">
+                      {{ o.service.name }} — {{ o.duration_min }} мин{% if o.units and o.units > 1 %} × {{ o.units }} {{ o.get_unit_type_display }}{% endif %} — {{ o.price|floatformat:0 }} ₽
+                    </option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn">Записаться</button>
+              </form>
+            </div>
+          {% endif %}
+
+          {% if p.description %}
+            <p style="margin-top:10px">{{ p.description }}</p>
+          {% endif %}
+          {% if p.price_note %}
+            <div class="muted">{{ p.price_note }}</div>
+          {% endif %}
+        </div>
+      {% empty %}
+        <p class="muted">Пока нет активных акций</p>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}
+
+

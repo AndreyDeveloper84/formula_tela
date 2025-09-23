@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{% block title %}Эстетика тела{% endblock %}</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#222}
+    header,footer{padding:14px 20px;background:#0f172a;color:#fff}
+    header a,nav a{color:#fff;text-decoration:none;margin-right:14px}
+    .container{max-width:1040px;margin:0 auto;padding:20px}
+    .grid{display:grid;gap:16px}
+    .grid-3{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff}
+    .btn{display:inline-block;background:#2563eb;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none}
+    .muted{color:#6b7280;font-size:14px}
+  </style>
+</head>
+<body>
+<header>
+  <nav class="container">
+    <a href="{% url 'website:home' %}"><b>{{ settings.salon_name|default:'Салон' }}</b></a>
+    <a href="{% url 'website:services' %}">Услуги</a>
+    <a href="{% url 'website:masters' %}">Мастера</a>
+    <a href="{% url 'website:promotions' %}">Акции</a>
+    <a href="{% url 'website:bundles' %}">Комплексы</a>
+    <a href="{% url 'website:contacts' %}">Контакты</a>
+    <a class="btn" style="float:right" id="book-btn" data-booking href="#">Записаться</a>
+  </nav>
+</header>
+
+<main class="container">
+  {% block content %}{% endblock %}
+</main>
+
+<footer>
+  <div class="container">
+    {{ settings.address }} · {{ settings.phone }}
+  </div>
+</footer>
+
+{# Заглушка под виджет YCLIENTS. Позже подставим реальный скрипт и companyId #}
+{% if settings.yclients_company_id %}
+<script>
+  (function () {
+    var COMPANY_ID = "{{ settings.yclients_company_id|escapejs }}";
+
+    // 1) Подключаем JS виджета YCLIENTS
+    var s = document.createElement("script");
+    s.async = true;
+    s.src = "https://w951024.yclients.com/widgetJS"; // замените w135 на ваш поддомен из кабинета YCLIENTS
+    s.onload = function () {
+      // 2) Вешаем обработчики на все элементы с data-booking
+      var btns = document.querySelectorAll("[data-booking]");
+      btns.forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          
+          if (!(window.YC && YC.init && YC.open)) {
+            alert("Виджет YCLIENTS не загрузился. Проверьте companyId и домен скрипта.");
+            return;
+          }
+
+          // Инициализация виджета
+          YC.init({ companyId: COMPANY_ID });
+
+          // Собираем опции (если передали service_id, staff_id и т.п.)
+          var opts = {};
+          var serviceId = btn.getAttribute("data-service-id");
+          var staffId = btn.getAttribute("data-staff-id");
+          var bundleId = btn.getAttribute("data-bundle-id");
+
+          if (serviceId)  opts.service_id = parseInt(serviceId, 10);
+          if (staffId)    opts.staff_id   = parseInt(staffId, 10);
+          // Если у вас в YCLIENTS есть сущность комплексной услуги и они принимают её id:
+          if (bundleId)   opts.bundle_id  = parseInt(bundleId, 10);
+
+          // 3) Открываем виджет
+          // если опций нет — откроется общий виджет компании
+          YC.open(opts);
+        });
+      });
+    };
+    document.head.appendChild(s);
+  })();
+</script>
+{% else %}
+<script>
+  // Если company_id не задан — показываем заглушку
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-booking]");
+    if (t) {
+      e.preventDefault();
+      alert("Запись временно недоступна: не указан YCLIENTS company id в настройках сайта.");
+    }
+  });
+</script>
+{% endif %}
+</body>
+</html>

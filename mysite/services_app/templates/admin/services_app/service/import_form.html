@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block content %}
+<h1>Импорт услуг из CSV</h1>
+<form method="post" enctype="multipart/form-data" novalidate>
+  {% csrf_token %}
+  <table>
+    {{ form.as_table }}
+  </table>
+  <p>Ожидаемые колонки: <code>category,name,short,description,price_from,duration_min,is_active</code></p>
+  <input type="submit" value="Импортировать" class="default">
+</form>
+{% endblock %}

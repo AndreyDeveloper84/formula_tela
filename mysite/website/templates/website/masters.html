@@ -1,0 +1,32 @@
+{% extends "website/base.html" %}
+{% load static %}
+
+{% block title %}Мастера — {{ settings.salon_name }}{% endblock %}
+
+{% block content %}
+  <h1>Наши мастера</h1>
+  <div class="grid grid-3">
+    {% for m in masters %}
+      <div class="card">
+        {% if m.photo %}<img src="{{ m.photo.url }}" alt="{{ m.name }}" style="width:100%;border-radius:10px;margin-bottom:8px">{% endif %}
+        <div style="font-weight:600">{{ m.name }}</div>
+        {% if m.bio %}
+          <p style="margin:12px 0 8px 0;white-space:pre-wrap">{{ m.bio }}</p>
+        {% endif %}
+        {% if m.specialization %}<div class="muted">{{ m.specialization }}</div>{% endif %}
+        {% if m.experience %}<div class="muted">{{ m.experience }}</div>{% endif %}
+        {% if m.services.all %}
+          <div class="muted" style="margin-top:8px">Услуги:</div>
+          <ul style="margin:6px 0 0 18px">
+            {% for s in m.services.all|slice:":3" %}
+              <li>{{ s.name }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        <p><a class="btn" href="#book">Записаться</a></p>
+      </div>
+    {% empty %}
+      <p class="muted">Пока нет мастеров</p>
+    {% endfor %}
+  </div>
+{% endblock %}

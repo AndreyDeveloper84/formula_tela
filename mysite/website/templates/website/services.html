@@ -1,0 +1,65 @@
+{% extends "website/base.html" %}
+{% load service_extras humanize %}
+{% block title %}Услуги — {{ settings.salon_name }}{% endblock %}
+{% block content %}
+  <h1 class="text-3xl font-bold mb-6">Услуги</h1>
+{# website/services.html #}
+{% for cat in categories %}
+  <h2 class="mb-4">{{ cat.name }}</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {% for s in cat.services.all %}
+    {% if s.is_active %}
+    <div class="p-5 rounded-2xl shadow bg-white">
+      <h3 class="text-lg font-semibold mb-2">{{ s.name }}</h3>
+      {% if s.options.all %}
+        <form method="get" action="{% url 'website:book_service' %}">
+          <label class="block text-sm mb-1">Вариант</label>
+          <select name="service_option_id" class="w-full border rounded px-3 py-2 mb-3">
+            {% for opt in s.options.all %}
+              {% if opt.is_active %}
+                <option
+                  value="{{ opt.id }}"
+                  data-duration="{{ opt.duration_min }}"
+                  data-units="{{ opt.units }}"
+                  data-unit-type="{{ opt.unit_type }}"
+                  data-price="{{ opt.price }}"
+                >
+                  {{ opt|option_label }}
+                </option>
+              {% endif %}
+            {% endfor %}
+          </select>
+
+          <a class="btn" data-booking
+          {% if s.yclients_service_id %}data-service-id="{{ s.yclients_service_id }}"{% endif %}
+          href="#">Записаться</a>
+        </form>
+      {% else %}
+        <p class="text-sm text-gray-500">Нет активных вариантов</p>
+      {% endif %}
+      {% comment %}
+      {% if s.options.all %}
+        <form method="get" action="{% url 'website:book_service' %}">
+          <label class="block text-sm mb-1">Длительность</label>
+          <select name="service_option_id" class="w-full border rounded px-3 py-2 mb-3">
+            {% for opt in s.options.all %}
+              {% if opt.is_active %}
+                <option value="{{ opt.id }}">{{ opt.duration_min }} мин — {{ opt.price }} ₽</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          <a class="btn" data-booking
+          {% if s.yclients_service_id %}data-service-id="{{ s.yclients_service_id }}"{% endif %}
+          href="#">Записаться</a>
+        </form>
+      {% else %}
+        <p class="text-sm text-gray-500">Нет активных вариантов</p>
+      {% endif %}
+      {% endcomment %}
+    </div>
+    {% endif %}
+  {% endfor %}
+  </div>
+{% endfor %}
+{% endblock %}

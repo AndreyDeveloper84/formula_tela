@@ -1,0 +1,98 @@
+{% extends "website/base.html" %}
+
+{# website/templates/website/bundles.html #}
+{% load service_extras humanize %}
+{% block content %}
+<section class="container" style="margin-top:24px">
+  <h1 class="mb-6">Комплексы</h1>
+
+  {% if bundles %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {% for ctx in bundles %}
+        {% with b=ctx.bundle items=ctx.items %}
+        <div class="p-5 rounded-2xl shadow bg-white" id="bundle-{{ b.id }}">
+          <h2 class="text-xl font-semibold mb-1">{{ b.name }}</h2>
+
+          <div class="text-sm text-gray-600 mb-3">
+            Минимум: <b>{{ ctx.min_duration }} мин</b> •
+            <b>{{ ctx.price|floatformat:0|intcomma }} ₽</b>
+          </div>
+
+          <form method="get" action="{% url 'website:services' %}" class="space-y-3"
+                data-bundle data-gaps="1">
+            {% for it in items %}
+              <div class="border rounded p-3">
+
+                <div class="font-medium mb-1">{% if it.option %}{{ it.option.service.name }}{% else %}Не выбрано{% endif %}</div>
+
+                {% if it.option %}
+                <div class="text-sm text-gray-700 mt-1">
+                  {{ it.option|option_label }}
+                </div>
+                {% else %}
+                    <div class="text-sm text-red-600 mt-1">
+                    ⚠ Не выбран вариант для элемента (настрой в админке).
+                    </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+
+            <div class="mt-2">
+                <a class="btn btn-primary" href="{% url 'website:services' %}">Записаться</a>
+            </div>
+          </form>
+        </div>
+        {% endwith %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Пока нет активных комплексов.</p>
+  {% endif %}
+</section>
+{% endblock %}
+<script>
+  // Пересчёт итогов при смене любого select внутри комплекта
+  function formatRub(n) {
+    // простое форматирование с пробелами; можно заменить на Intl.NumberFormat
+    return (Math.round(Number(n)) || 0).toLocaleString('ru-RU');
+  }
+
+  document.querySelectorAll('[data-bundle]').forEach(form => {
+    const recalc = () => {
+      const selects = form.querySelectorAll('[data-item]');
+      // собираем по группам параллельности
+      const groups = {};
+      let gaps = 0;
+
+      selects.forEach(sel => {
+        const selected = sel.options[sel.selectedIndex];
+        const price = Number(selected.dataset.price || 0);
+        const duration = Number(selected.dataset.duration || 0);
+        const group = String(sel.dataset.group || '0');
+        const gap = Number(sel.dataset.gap || 0);
+
+        groups[group] = groups[group] || {maxDuration: 0, price: 0};
+        groups[group].price += price;
+        groups[group].maxDuration = Math.max(groups[group].maxDuration, duration);
+        gaps += gap;
+      });
+
+      let totalPrice = 0;
+      let totalDuration = 0;
+      Object.values(groups).forEach(g => {
+        totalPrice += g.price;
+        totalDuration += g.maxDuration;
+      });
+      totalDuration += gaps;
+
+      form.querySelector('[data-total-price]').textContent = formatRub(totalPrice);
+      form.querySelector('[data-total-duration]').textContent = totalDuration;
+    };
+
+    form.addEventListener('change', e => {
+      if (e.target.matches('[data-item]')) recalc();
+    });
+    // начальный пересчёт
+    recalc();
+  });
+</script>

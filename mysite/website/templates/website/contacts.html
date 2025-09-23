@@ -1,0 +1,15 @@
+{% extends "website/base.html" %}
+{% block title %}Контакты — {{ settings.salon_name }}{% endblock %}
+{% block content %}
+  <h1>Контакты</h1>
+  <div class="card">
+    <p><b>Адрес:</b> {{ settings.address }}</p>
+    <p><b>Телефон:</b> <a href="tel:{{ settings.phone }}">{{ settings.phone }}</a></p>
+    {% if settings.work_hours %}<p><b>Режим работы:</b> {{ settings.work_hours }}</p>{% endif %}
+    <p>
+      <a class="btn" href="#book">Записаться</a>
+      {% if settings.instagram %}<a href="{{ settings.instagram }}" style="margin-left:10px">Instagram</a>{% endif %}
+      {% if settings.telegram %}<a href="{{ settings.telegram }}" style="margin-left:10px">Telegram</a>{% endif %}
+    </p>
+  </div>
+{% endblock %}

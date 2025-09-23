@@ -1,0 +1,107 @@
+{% extends "website/base.html" %}
+{% block title %}Главная — {{ settings.salon_name }}{% endblock %}
+{% block content %}
+  <section class="card">
+    <h1 style="margin:0 0 6px">Красота и здоровье — рядом</h1>
+    <p class="muted">Массаж, уход за телом и лицом. Опытные мастера, удобная запись.</p>
+    <p><a class="btn" href="#book">Записаться</a></p>
+  </section>
+
+  <section style="margin-top:24px">
+    <h2>Популярные услуги</h2>
+    <div class="grid grid-3">
+      {% for item in top_items %}
+        {% with s=item.service opts=item.options %}
+        <div class="card">
+          <div style="font-weight:600">{{ s.name }}</div>
+          {% if opts %}
+            <form action="{% url 'website:book_service' %}" method="get" style="margin-top:8px">
+              <label for="opt-{{ s.id }}" class="muted">Выберите вариант:</label>
+              <select id="opt-{{ s.id }}" name="service_option_id" style="display:block; width:100%; margin:6px 0 10px">
+                {% for o in opts %}
+                  <option value="{{ o.id }}">
+                    {{ o.duration_min }} мин{% if o.units and o.units > 1 %} × {{ o.units }} {{ o.get_unit_type_display }}{% endif %} — {{ o.price|floatformat:0 }} ₽
+                  </option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn">Записаться</button>
+            </form>
+          {% else %}
+            <div class="muted">Нет активных вариантов</div>
+            <p><a class="btn" href="{% url 'website:services' %}">Подробнее</a></p>
+          {% endif %}
+        </div>
+        {% endwith %}
+      {% empty %}
+        <p class="muted">Пока нет услуг</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if promotions %}
+  <section style="margin-top:24px">
+    <h2>Акции</h2>
+    <div class="grid grid-3">
+      {% for p in promotions %}
+        <div class="card">
+          <div style="font-weight:600">{{ p.title }}</div>
+          {% if p.subtitle %}<div class="muted">{{ p.subtitle }}</div>{% endif %}
+          {% if p.discount_percent %}
+            <div style="margin-top:6px"><b>Скидка: {{ p.discount_percent }}%</b></div>
+          {% endif %}
+          {% if p.starts_at or p.ends_at %}
+            <div class="muted" style="margin-top:4px">
+              {% if p.starts_at %}с {{ p.starts_at|date:"d.m.Y" }}{% endif %}
+              {% if p.ends_at %} по {{ p.ends_at|date:"d.m.Y" }}{% endif %}
+            </div>
+          {% endif %}
+          <p style="margin-top:8px"><a class="btn" href="{% url 'website:promotions' %}">Подробнее</a></p>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if popular_bundles %}
+  <section style="margin-top:24px">
+    <h2>Популярные комплексы</h2>
+    <div class="grid grid-3">
+      {% for b in popular_bundles %}
+        <div class="card">
+          <div style="font-weight:600">{{ b.name|default:"Комплекс" }}</div>
+          <div class="muted">Длительность: {{ b.total_duration_min }} мин</div>
+          <div style="margin-top:8px"><b>{{ b.total_price|floatformat:0 }} ₽</b></div>
+          {% if b.items.all %}
+            <ul class="muted" style="margin:8px 0 0 18px">
+              {% for it in b.items.all|slice:':3' %}
+                <li>
+                  {% if it.option %}
+                    {{ it.option.service.name }} — {{ it.option.duration_min }} мин{% if it.option.units and it.option.units > 1 %} × {{ it.option.units }} {{ it.option.get_unit_type_display }}{% endif %}{% if it.quantity and it.quantity > 1 %} × {{ it.quantity }}{% endif %}
+                  {% else %}
+                    Элемент без варианта
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          <p style="margin-top:8px"><a class="btn" href="{% url 'website:bundles' %}">Подробнее</a></p>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if faq %}
+  <section style="margin-top:24px">
+    <h2>Частые вопросы</h2>
+    <div class="grid">
+      {% for f in faq %}
+        <div class="card">
+          <div style="font-weight:600">{{ f.question }}</div>
+          <div class="muted">{{ f.answer }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+{% endblock %}
