@@ -19,6 +19,10 @@ from django.urls import path, include
 from core.views import home, about  # Добавляем импорт about
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
+
+def healthz(_request):
+    return JsonResponse({"status": "ok"})
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,6 +30,7 @@ urlpatterns = [
     path('about/', about, name='about'), # Добавляем маршрут для страницы "О нас"
     path('booking/', include('booking.urls')),  # Added trailing slash
     path('', include('website.urls')),
+    path('healthz/', healthz, name='healthz'),
 ]
 
 if settings.DEBUG:
