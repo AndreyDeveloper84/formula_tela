@@ -1,55 +1,54 @@
-name: CI/CD to VPS (SSH)  # имя pipeline — видно во вкладке Actions
+name: Deploy to Production (SSH)
 
 on:
   push:
-    branches: [ main ]    # запускать при пуше в main
+    branches: [ main ]      # деплой только на коммитах в main
+  workflow_dispatch: {}      # ручной запуск кнопкой
+
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: true   # не перекрывать деплои
 
 jobs:
-  test-and-deploy:         # имя job (набора шагов)
-    runs-on: ubuntu-latest # где крутится job — GitHub runner Ubuntu
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # требуем, чтобы CI-джоб из другого workflow был зеленый (по желанию)
+    # strategy: можно добавить здесь “needs” к reusable workflow, но оставим просто отдельный прогон ниже
+    environment:
+      name: production       # включает ручной approve и подхватывает env-secrets
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        # Скачивает код репозитория в раннер (временную машину GitHub)
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Quick smoke tests on CI (optional)
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-        # Ставит Python на раннере (для локальных тестов/линтов на CI)
-
-      - name: Install deps (CI)
+      - name: Install & run tests (optional)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-        # Устанавливаем зависимости, чтобы (при желании) гонять тесты на CI
-
-      - name: Run tests (optional)
-        run: |
-          python -m pip install pytest
-          pytest -q
-        continue-on-error: true
-        # Тесты помечены как optional (не валят деплой, если упали).
-        # Убери continue-on-error, если хочешь "жёсткую" проверку.
+          pip install -r requirements.txt || true
+          python -m pip install pytest || true
+          pytest -q || true   # не валим деплой, если тестов нет
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}       # напр. formulatela58.ru
-          username: ${{ secrets.SSH_USER }}   # taximeter
-          port: ${{ secrets.SSH_PORT }}       # 22
-          key: ${{ secrets.SSH_KEY }}         # приватный ключ из Secrets
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_KEY }}
           script: |
             set -euo pipefail
-            REPO_DIR="${{ secrets.REPO_DIR }}"  # /home/taximeter/mysite/formula_tela
-            APP_DIR="${{ secrets.APP_DIR }}"    # /home/taximeter/mysite/formula_tela/mysite
-            VENV="${{ secrets.VENV }}"          # /home/taximeter/mysite/formula_tela/.venv312
+            REPO_DIR="${{ secrets.REPO_DIR }}"
+            APP_DIR="${{ secrets.APP_DIR }}"
+            VENV="${{ secrets.VENV }}"
 
-            # 0) Убедимся, что git установлен
             command -v git || (sudo apt-get update && sudo apt-get install -y git)
 
-            # 1) Обновляем код на сервере
             if [ -d "$REPO_DIR/.git" ]; then
               cd "$REPO_DIR"
               git fetch --all
@@ -59,22 +58,20 @@ jobs:
               git clone --depth 1 https://github.com/${{ github.repository }} "$REPO_DIR"
               cd "$REPO_DIR"
             fi
-            # ВАЖНО: этот clone/fetch по HTTPS сработает, только если репо публичный.
-            # Если приватный — переключим remote на SSH и используем Deploy Key (помогу настроить).
 
-            # 2) Python-зависимости в твоём серверном venv
+            # серверное venv
             source "$VENV/bin/activate"
             pip install -r "$REPO_DIR/requirements.txt"
 
-            # 3) Django-команды (запускаем из папки, где лежит manage.py)
-            export DJANGO_SETTINGS_MODULE=${{ secrets.DJANGO_SETTINGS_MODULE }}  # mysite.settings
+            # Django рутины
+            export DJANGO_SETTINGS_MODULE=${{ secrets.DJANGO_SETTINGS_MODULE }}
             cd "$APP_DIR"
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
-            python manage.py check --deploy || true  # полезные предупреждения, но не валим деплой
+            python manage.py check --deploy || true
 
-            # 4) Перезапуск Gunicorn-сервиса
+            # рестарт gunicorn
             sudo systemctl restart ${SERVICE_NAME:-formula_tela}
 
-            # 5) (Опционально) Health-check (если добавишь /healthz)
-            # curl -fsS https://formulatela58.ru/healthz || (journalctl -u ${SERVICE_NAME:-formula_tela} -n 200 --no-pager; exit 1)
+      - name: Health check (optional)
+        run: curl -fsS https://formulatela58.ru/healthz || exit 1
