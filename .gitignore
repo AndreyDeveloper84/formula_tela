@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .venv/
 env/
+.env
+.env.*
 venv/
 *.sqlite3
 db.sqlite3
@@ -10,13 +12,6 @@ db.sqlite3
 # django
 /staticfiles/
 /media/
+/data/
 /*.log
 
-# IDE
-.vscode/
-.idea/
-*.code-workspace
-
-# OS
-.DS_Store
-Thumbs.db
