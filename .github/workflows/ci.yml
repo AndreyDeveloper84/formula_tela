@@ -13,12 +13,13 @@ jobs:
       DJANGO_SECRET_KEY: test-secret
       DJANGO_DEBUG: "True"
       DB_ENGINE: django.db.backends.sqlite3
-      DB_NAME: ${{ github.workspace }}/data/test.sqlite3
+      DB_NAME: ${{ github.workspace }}/mysite/data/test.sqlite3
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Ensure data dir exists
+        working-directory: mysite
         run: mkdir -p data
 
       - uses: actions/setup-python@v5
