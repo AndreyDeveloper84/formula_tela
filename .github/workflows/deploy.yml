@@ -16,7 +16,8 @@ jobs:
     # требуем, чтобы CI-джоб из другого workflow был зеленый (по желанию)
     # strategy: можно добавить здесь “needs” к reusable workflow, но оставим просто отдельный прогон ниже
     environment:
-      name: production       # включает ручной approve и подхватывает env-secrets
+      # включает ручной approve и подхватывает env-secrets
+      name: "production"
     permissions:
       contents: read
 
