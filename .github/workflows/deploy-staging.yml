@@ -40,42 +40,45 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            set -euo pipefail
             REPO_DIR="${{ secrets.REPO_DIR }}"
             APP_DIR="${{ secrets.APP_DIR }}"
             VENV="${{ secrets.VENV }}"
+            SERVICE="${{ secrets.SERVICE_NAME }}"
 
             command -v git || (sudo apt-get update && sudo apt-get install -y git)
 
-            # тянем ветку dev
+            # Тянем ветку dev
             if [ -d "$REPO_DIR/.git" ]; then
-              cd "$REPO_DIR"
-              git fetch --all
-              git reset --hard origin/dev
+            cd "$REPO_DIR"
+            git fetch --all --prune
+            git reset --hard origin/dev
             else
-              mkdir -p "$REPO_DIR"
-              git clone --depth 1 https://github.com/${{ github.repository }} "$REPO_DIR"
-              cd "$REPO_DIR"
-              git checkout dev || git fetch origin dev && git checkout -b dev origin/dev
+            mkdir -p "$REPO_DIR"
+            git clone --depth 1 https://github.com/${{ github.repository }} "$REPO_DIR"
+            cd "$REPO_DIR"
+            git checkout dev || git fetch origin dev && git checkout -b dev origin/dev
             fi
 
-            # venv и зависимости
+            # Активация venv и зависимости
             source "$VENV/bin/activate"
             pip install -r "$REPO_DIR/requirements.txt"
 
-            # Django рутины
-            echo "REPO_DIR=$REPO_DIR"
-            echo "APP_DIR=$APP_DIR"
-            echo "VENV=$VENV"
-            echo "DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE"
-            export DJANGO_SETTINGS_MODULE=${{ secrets.DJANGO_SETTINGS_MODULE }}
+            # Сначала экспорт, потом echo (чтобы не ловить set -u на пустой переменной)
+            export DJANGO_SETTINGS_MODULE="${{ secrets.DJANGO_SETTINGS_MODULE }}"
+
+            echo "REPO_DIR=${REPO_DIR:-<unset>}"
+            echo "APP_DIR=${APP_DIR:-<unset>}"
+            echo "VENV=${VENV:-<unset>}"
+            echo "DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-<unset>}"
+
+            # Django рутины (в $APP_DIR должен лежать manage.py)
             cd "$APP_DIR"
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
             python manage.py check --deploy || true
 
-            # рестарт gunicorn
-            sudo systemctl restart ${SERVICE_NAME:-formula_tela_staging}
+            # Рестарт gunicorn (sudoers уже настроен)
+            sudo systemctl restart "${SERVICE:-formula_tela_staging}"
 
       - name: Health check
         run: curl -fsS ${{ secrets.HEALTH_URL }} -I
