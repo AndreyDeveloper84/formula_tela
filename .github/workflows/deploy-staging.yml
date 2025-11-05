@@ -64,6 +64,10 @@ jobs:
             pip install -r "$REPO_DIR/requirements.txt"
 
             # Django рутины
+            echo "REPO_DIR=$REPO_DIR"
+            echo "APP_DIR=$APP_DIR"
+            echo "VENV=$VENV"
+            echo "DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE"
             export DJANGO_SETTINGS_MODULE=${{ secrets.DJANGO_SETTINGS_MODULE }}
             cd "$APP_DIR"
             python manage.py migrate --noinput
