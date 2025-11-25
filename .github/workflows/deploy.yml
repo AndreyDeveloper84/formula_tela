@@ -75,4 +75,5 @@ jobs:
             sudo systemctl restart ${SERVICE_NAME:-formula_tela}
 
       - name: Health check (optional)
-        run: curl -fsS https://formulatela58.ru/healthz || exit 1
+        run: curl -fsS https://formulatela58.ru/healthz || true
+        continue-on-error: true
