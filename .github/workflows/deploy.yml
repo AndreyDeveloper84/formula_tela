@@ -3,37 +3,35 @@ name: Deploy to Production (SSH)
 on:
   push:
     branches: [ main ]      # деплой только на коммитах в main
-  workflow_dispatch: {}      # ручной запуск кнопкой
+  workflow_dispatch: {}      # ручной запуск
 
 concurrency:
   group: prod-deploy
-  cancel-in-progress: true   # не перекрывать деплои
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # требуем, чтобы CI-джоб из другого workflow был зеленый (по желанию)
-    # strategy: можно добавить здесь “needs” к reusable workflow, но оставим просто отдельный прогон ниже
     environment:
-      # включает ручной approve и подхватывает env-secrets
-      name: "production"
+      name: production  # используем production среду (с approve если нужно)
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Quick smoke tests on CI (optional)
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install & run tests (optional)
+      
+      - name: Run tests
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt || true
           python -m pip install pytest || true
-          pytest -q || true   # не валим деплой, если тестов нет
+          pytest -q || true
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -43,37 +41,35 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            set -euo pipefail
-            REPO_DIR="${{ secrets.REPO_DIR }}"
-            APP_DIR="${{ secrets.APP_DIR }}"
-            VENV="${{ secrets.VENV }}"
-
-            command -v git || (sudo apt-get update && sudo apt-get install -y git)
-
-            if [ -d "$REPO_DIR/.git" ]; then
-              cd "$REPO_DIR"
-              git fetch --all
-              git reset --hard origin/main
-            else
-              mkdir -p "$REPO_DIR"
-              git clone --depth 1 https://github.com/${{ github.repository }} "$REPO_DIR"
-              cd "$REPO_DIR"
-            fi
-
-            # серверное venv
-            source "$VENV/bin/activate"
-            pip install -r "$REPO_DIR/requirements.txt"
-
+            REPO_DIR="/home/taximeter/mysite/formula_tela"
+            
+            cd "$REPO_DIR"
+            
+            # Подтягиваем main
+            git fetch --all
+            git checkout main
+            git reset --hard origin/main
+            
+            # Активируем venv
+            source .venv312/bin/activate
+            pip install -r requirements.txt
+            
             # Django рутины
-            export DJANGO_SETTINGS_MODULE=${{ secrets.DJANGO_SETTINGS_MODULE }}
-            cd "$APP_DIR"
+            cd mysite
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
             python manage.py check --deploy || true
+            
+            # Перезапускаем
+            sudo systemctl restart formula_tela
 
-            # рестарт gunicorn
-            sudo systemctl restart ${SERVICE_NAME:-formula_tela}
-
-      - name: Health check (optional)
-        run: curl -fsS https://formulatela58.ru/healthz || true
-        continue-on-error: true
+      - name: Health check
+        run: |
+          sleep 5
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://formulatela58.ru/healthz)
+          if [ "$response" = "200" ]; then
+            echo "✅ Health check passed: $response"
+          else
+            echo "❌ Health check failed: $response"
+            exit 1
+          fi

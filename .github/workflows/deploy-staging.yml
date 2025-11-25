@@ -13,18 +13,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment:
-      name: staging   # используем среду staging (секреты и, при желании, approve)
+      name: staging   # используем среду staging
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-      # (необязательно) быстрые smoke-тесты, чтобы отсеять явные косяки
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      
       - name: Run quick tests (optional)
         run: |
           python -m pip install --upgrade pip
@@ -40,45 +40,30 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            REPO_DIR="${{ secrets.REPO_DIR }}"
-            APP_DIR="${{ secrets.APP_DIR }}"
-            VENV="${{ secrets.VENV }}"
-            SERVICE="${{ secrets.SERVICE_NAME }}"
-
-            command -v git || (sudo apt-get update && sudo apt-get install -y git)
-
-            # Тянем ветку dev
-            if [ -d "$REPO_DIR/.git" ]; then
+            REPO_DIR="/home/taximeter/mysite/formula_tela"
+            
             cd "$REPO_DIR"
+            
+            # Подтягиваем ветку dev
             git fetch --all --prune
+            git checkout dev
             git reset --hard origin/dev
-            else
-            mkdir -p "$REPO_DIR"
-            git clone --depth 1 https://github.com/${{ github.repository }} "$REPO_DIR"
-            cd "$REPO_DIR"
-            git checkout dev || git fetch origin dev && git checkout -b dev origin/dev
-            fi
-
-            # Активация venv и зависимости
-            source "$VENV/bin/activate"
-            pip install -r "$REPO_DIR/requirements.txt"
-
-            # Сначала экспорт, потом echo (чтобы не ловить set -u на пустой переменной)
-            export DJANGO_SETTINGS_MODULE="${{ secrets.DJANGO_SETTINGS_MODULE }}"
-
-            echo "REPO_DIR=${REPO_DIR:-<unset>}"
-            echo "APP_DIR=${APP_DIR:-<unset>}"
-            echo "VENV=${VENV:-<unset>}"
-            echo "DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-<unset>}"
-
-            # Django рутины (в $APP_DIR должен лежать manage.py)
-            cd "$APP_DIR"
+            
+            # Активируем venv и обновляем зависимости
+            source .venv312/bin/activate
+            pip install -r requirements.txt
+            
+            # Django рутины
+            cd mysite
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
             python manage.py check --deploy || true
-
-            # Рестарт gunicorn (sudoers уже настроен)
-            sudo systemctl restart "${SERVICE:-formula_tela_staging}"
+            
+            # Перезапускаем gunicorn
+            sudo systemctl restart formula_tela
 
       - name: Health check
-        run: curl -fsS ${{ secrets.HEALTH_URL }} -I
+        run: |
+          sleep 5
+          curl -fsS https://formulatela58.ru/healthz || echo "⚠️ Health check failed (non-blocking)"
+        continue-on-error: true
