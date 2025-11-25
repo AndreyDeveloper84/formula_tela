@@ -44,10 +44,22 @@ jobs:
             
             cd "$REPO_DIR"
             
+            # ВАЖНО: Сохраняем .env перед git pull
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
+            
             # Подтягиваем ветку dev
             git fetch --all --prune
             git checkout dev
             git reset --hard origin/dev
+            
+            # ВАЖНО: Восстанавливаем .env после git pull
+            if [ -f .env.backup ]; then
+              cp .env.backup .env
+              echo "✅ .env restored"
+            fi
             
             # Активируем venv и обновляем зависимости
             source .venv312/bin/activate
