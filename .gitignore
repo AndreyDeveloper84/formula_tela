@@ -6,6 +6,7 @@ env/
 .env
 .env.*
 venv/
+temp_venv/     # ← ДОБАВЬ ЭТУ СТРОКУ
 *.sqlite3
 db.sqlite3
 
@@ -15,3 +16,6 @@ db.sqlite3
 /data/
 /*.log
 
+# Временные файлы миграции
+data_backup.json     # ← ДОБАВЬ ЭТУ СТРОКУ
+export_data.py       # ← ДОБАВЬ ЭТУ СТРОКУ
