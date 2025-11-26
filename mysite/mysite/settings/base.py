@@ -1,7 +1,10 @@
 from pathlib import Path
 import os
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # .../mysite
+
+load_dotenv(BASE_DIR.parent / '.env')
 
 # === ENV helpers ===
 def _csv(name, default=""):
