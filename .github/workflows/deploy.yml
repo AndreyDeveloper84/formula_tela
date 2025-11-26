@@ -2,8 +2,8 @@ name: Deploy to Production (SSH)
 
 on:
   push:
-    branches: [ main ]      # деплой только на коммитах в main
-  workflow_dispatch: {}      # ручной запуск
+    branches: [ main ]
+  workflow_dispatch: {}
 
 concurrency:
   group: prod-deploy
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
-      name: production  # используем production среду (с approve если нужно)
+      name: production
     permissions:
       contents: read
 
@@ -41,32 +41,47 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            REPO_DIR="/home/taximeter/mysite/formula_tela"
+            REPO_DIR="${{ secrets.REPO_DIR }}"
+            APP_DIR="${{ secrets.APP_DIR }}"
+            VENV="${{ secrets.VENV }}"
+            SERVICE="${{ secrets.SERVICE_NAME }}"
             
             cd "$REPO_DIR"
+            
+            # ВАЖНО: Сохраняем .env перед git pull
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
             
             # Подтягиваем main
             git fetch --all
             git checkout main
             git reset --hard origin/main
             
+            # ВАЖНО: Восстанавливаем .env после git pull
+            if [ -f .env.backup ]; then
+              cp .env.backup .env
+              echo "✅ .env restored"
+            fi
+            
             # Активируем venv
-            source .venv312/bin/activate
+            source "$VENV/bin/activate"
             pip install -r requirements.txt
             
             # Django рутины
-            cd mysite
+            cd "$APP_DIR"
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
             python manage.py check --deploy || true
             
             # Перезапускаем
-            sudo systemctl restart formula_tela
+            sudo systemctl restart "$SERVICE"
 
       - name: Health check
         run: |
           sleep 5
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://formulatela58.ru/healthz)
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.HEALTH_URL }})
           if [ "$response" = "200" ]; then
             echo "✅ Health check passed: $response"
           else
