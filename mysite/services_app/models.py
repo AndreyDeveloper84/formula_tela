@@ -76,10 +76,10 @@ class ServiceOption(models.Model):
         ordering = ["order", "duration_min", "unit_type", "units"]
         constraints = [
             models.CheckConstraint(
-                check=Q(duration_min__gte=1), name='svcopt_duration_gte_1'
+                condition=Q(duration_min__gte=1), name='svcopt_duration_gte_1'
                 ),
             models.CheckConstraint(
-                check=Q(units__gte=1), name="svcopt_units_gte_1"
+                condition=Q(units__gte=1), name="svcopt_units_gte_1"
             )
         ]
         indexes = [

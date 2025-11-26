@@ -1,0 +1,7 @@
+import pytest
+
+@pytest.mark.django_db
+def test_healthz(client):
+    resp = client.get("/healthz/")
+    assert resp.status_code == 200
+    assert resp.json().get("status") == "ok"

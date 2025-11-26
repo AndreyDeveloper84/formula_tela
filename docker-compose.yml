@@ -1,0 +1,68 @@
+# docker-compose.yml
+services:
+  # === БАЗА ДАННЫХ PostgreSQL ===
+  db:
+    image: postgres:16-alpine  # Готовый образ PostgreSQL из Docker Hub
+    container_name: formula_tela_db
+    environment:
+      # Настройки БД (логин/пароль/название)
+      POSTGRES_DB: mysite_db
+      POSTGRES_USER: mysite_user
+      POSTGRES_PASSWORD: mysite_pass
+    volumes:
+      # Сохраняем данные БД на диск (чтобы не потерять при перезапуске)
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Пробрасываем порт 5432 наружу (для подключения через DBeaver/pgAdmin)
+      - "5432:5432"
+    healthcheck:
+      # Проверяем, что БД запустилась
+      test: ["CMD-SHELL", "pg_isready -U mysite_user -d mysite_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === REDIS (для кеширования и Celery) ===
+  redis:
+    image: redis:7-alpine
+    container_name: formula_tela_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # === DJANGO ПРИЛОЖЕНИЕ ===
+  web:
+    build:
+      context: .  # Берём Dockerfile из текущей папки
+      dockerfile: Dockerfile
+    container_name: formula_tela_web
+    command: python mysite/manage.py runserver 0.0.0.0:8000
+    volumes:
+      # Пробрасываем код внутрь контейнера (изменения видны сразу)
+      - ./mysite:/app/mysite
+      - ./requirements.txt:/app/requirements.txt
+    ports:
+      - "8000:8000"  # Django будет доступен на localhost:8000
+    environment:
+      # Переменные окружения для Django
+      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
+      - DJANGO_DEBUG=True
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=mysite_db
+      - DB_USER=mysite_user
+      - DB_PASSWORD=mysite_pass
+      - DB_HOST=db  # Имя сервиса из docker-compose
+      - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy  # Запускаем только после успешного старта БД
+      redis:
+        condition: service_healthy
+
+# Volumes для сохранения данных
+volumes:
+  postgres_data:

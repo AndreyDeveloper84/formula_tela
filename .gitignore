@@ -3,20 +3,31 @@ __pycache__/
 *.py[cod]
 .venv/
 env/
+.env
+.env.*
 venv/
+temp_venv/     # ← ДОБАВЬ ЭТУ СТРОКУ
 *.sqlite3
 db.sqlite3
 
 # django
 /staticfiles/
 /media/
+/data/
 /*.log
 
-# IDE
-.vscode/
-.idea/
-*.code-workspace
+# Временные файлы миграции
+data_backup.json     # ← ДОБАВЬ ЭТУ СТРОКУ
+export_data.py       # ← ДОБАВЬ ЭТУ СТРОКУ
+# Python virtual environment
+.venv312/
+venv/
 
-# OS
-.DS_Store
-Thumbs.db
+# Django
+staticfiles/
+data/
+*.sqlite3
+
+# Environment variables
+.env
+.env.*

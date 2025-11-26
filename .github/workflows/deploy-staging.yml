@@ -1,0 +1,81 @@
+name: Deploy to Staging (SSH)
+
+on:
+  push:
+    branches: [ dev ]   # триггер на пуши в dev
+  workflow_dispatch: {}  # вручную тоже можно
+
+concurrency:
+  group: stg-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging   # используем среду staging
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Run quick tests (optional)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+          python -m pip install pytest || true
+          pytest -q || true
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            REPO_DIR="/home/taximeter/mysite/formula_tela"
+            
+            cd "$REPO_DIR"
+            
+            # ВАЖНО: Сохраняем .env перед git pull
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
+            
+            # Подтягиваем ветку dev
+            git fetch --all --prune
+            git checkout dev
+            git reset --hard origin/dev
+            
+            # ВАЖНО: Восстанавливаем .env после git pull
+            if [ -f .env.backup ]; then
+              cp .env.backup .env
+              echo "✅ .env restored"
+            fi
+            
+            # Активируем venv и обновляем зависимости
+            source .venv312/bin/activate
+            pip install -r requirements.txt
+            
+            # Django рутины
+            cd mysite
+            python manage.py migrate --noinput
+            python manage.py collectstatic --noinput
+            python manage.py check --deploy || true
+            
+            # Перезапускаем gunicorn
+            sudo systemctl restart formula_tela
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -fsS https://formulatela58.ru/healthz || echo "⚠️ Health check failed (non-blocking)"
+        continue-on-error: true

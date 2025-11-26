@@ -1,0 +1,7 @@
+from .base import *
+from .base import _bool
+
+DEBUG = _bool("DJANGO_DEBUG", False)  # staging обычно False
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE    = True
