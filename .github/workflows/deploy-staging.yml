@@ -2,8 +2,8 @@ name: Deploy to Staging (SSH)
 
 on:
   push:
-    branches: [ dev ]   # триггер на пуши в dev
-  workflow_dispatch: {}  # вручную тоже можно
+    branches: [ dev ]
+  workflow_dispatch: {}
 
 concurrency:
   group: stg-deploy
@@ -13,7 +13,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment:
-      name: staging   # используем среду staging
+      name: staging
     permissions:
       contents: read
 
@@ -40,7 +40,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            REPO_DIR="/home/taximeter/mysite/formula_tela"
+            REPO_DIR="${{ secrets.REPO_DIR }}"
+            APP_DIR="${{ secrets.APP_DIR }}"
+            VENV="${{ secrets.VENV }}"
+            SERVICE="${{ secrets.SERVICE_NAME }}"
             
             cd "$REPO_DIR"
             
@@ -62,20 +65,20 @@ jobs:
             fi
             
             # Активируем venv и обновляем зависимости
-            source .venv312/bin/activate
+            source "$VENV/bin/activate"
             pip install -r requirements.txt
             
             # Django рутины
-            cd mysite
+            cd "$APP_DIR"
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
             python manage.py check --deploy || true
             
             # Перезапускаем gunicorn
-            sudo systemctl restart formula_tela
+            sudo systemctl restart "$SERVICE"
 
       - name: Health check
         run: |
           sleep 5
-          curl -fsS https://formulatela58.ru/healthz || echo "⚠️ Health check failed (non-blocking)"
+          curl -fsS ${{ secrets.HEALTH_URL }} || echo "⚠️ Health check failed (non-blocking)"
         continue-on-error: true
