@@ -81,7 +81,7 @@ jobs:
       - name: Health check
         run: |
           sleep 5
-          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.HEALTH_URL }})
+          response=$(curl -L -s -o /dev/null -w "%{http_code}" ${{ secrets.HEALTH_URL }})
           if [ "$response" = "200" ]; then
             echo "✅ Health check passed: $response"
           else
