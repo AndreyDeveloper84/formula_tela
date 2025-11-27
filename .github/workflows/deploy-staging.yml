@@ -51,12 +51,12 @@ jobs:
             mkdir -p "$BACKUP_DIR"
             
             echo "📦 Creating database backup..."
-            PGPASSWORD="${{ secrets.DB_PASSWORD_STAGING  }}" pg_dump -U mysite_stage_user  -h localhost mysite_stage > "$BACKUP_DIR/prod_${DATE}.sql"
+            PGPASSWORD="${{ secrets.DB_PASSWORD_STAGING  }}" pg_dump -U mysite_stage_user  -h localhost mysite_stage > "$BACKUP_DIR/stage_${DATE}.sql"
             
             # Удаляем старые бэкапы (старше 7 дней)
-            find "$BACKUP_DIR" -name "prod_*.sql" -mtime +7 -delete
+            find "$BACKUP_DIR" -name "stage_*.sql" -mtime +7 -delete
             
-            echo "✅ Backup saved: prod_${DATE}.sql"
+            echo "✅ Backup saved: stage_${DATE}.sql"
 
             cd "$REPO_DIR"
             
