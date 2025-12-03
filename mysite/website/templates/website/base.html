@@ -25,7 +25,14 @@
     <a href="{% url 'website:promotions' %}">Акции</a>
     <a href="{% url 'website:bundles' %}">Комплексы</a>
     <a href="{% url 'website:contacts' %}">Контакты</a>
-    <a class="btn" style="float:right" id="book-btn" data-booking href="#">Записаться</a>
+    
+    {% if settings.yclients_company_id %}
+    <a class="btn" style="float:right" 
+       href="https://n951024.yclients.com/company/{{ settings.yclients_company_id }}" 
+       target="_blank">
+      Записаться
+    </a>
+    {% endif %}
   </nav>
 </header>
 
@@ -39,145 +46,5 @@
   </div>
 </footer>
 
-{# Заглушка под виджет YCLIENTS. Позже подставим реальный скрипт и companyId #}
-{% if settings.yclients_company_id %}
-<script>
-(function () {
-  var COMPANY_ID = "{{ settings.yclients_company_id|escapejs }}";
-  var WIDGET_DOMAIN = "n951024"; // Поддомен виджета из настроек YClients
-  
-  console.log("🔧 Загрузка виджета YClients");
-  console.log("   Company ID:", COMPANY_ID);
-  console.log("   Widget Domain:", WIDGET_DOMAIN);
-
-  var widgetReady = false;
-  var pendingClicks = [];
-
-  // Загружаем скрипт виджета
-  var s = document.createElement("script");
-  s.async = true;
-  s.src = "https://" + WIDGET_DOMAIN + ".yclients.com/widgetJS";
-  
-  console.log("📡 URL виджета:", s.src);
-  
-  s.onload = function () {
-    console.log("✅ Скрипт виджета загружен");
-    
-    // Проверяем доступность API
-    setTimeout(function() {
-      if (window.YC && YC.init && YC.open) {
-        console.log("✅ YClients API доступен");
-        widgetReady = true;
-        
-        // Обрабатываем отложенные клики
-        if (pendingClicks.length > 0) {
-          console.log("📋 Обработка отложенных кликов:", pendingClicks.length);
-          pendingClicks.forEach(function(data) {
-            openWidget(data.serviceId, data.staffId);
-          });
-          pendingClicks = [];
-        }
-      } else {
-        console.warn("⚠️ window.YC не доступен после загрузки скрипта");
-      }
-    }, 300);
-  };
-  
-  s.onerror = function(e) {
-    console.error("❌ Ошибка загрузки виджета YClients");
-    console.error("   URL:", s.src);
-    console.error("   Проверьте доступность YClients и правильность поддомена");
-  };
-  
-  document.head.appendChild(s);
-
-  // Функция открытия виджета
-  function openWidget(serviceId, staffId) {
-    if (!widgetReady) {
-      console.warn("⚠️ Виджет ещё не готов");
-      return false;
-    }
-    
-    console.log("=== ОТКРЫТИЕ ВИДЖЕТА ===");
-    console.log("   Service ID:", serviceId);
-    console.log("   Staff ID:", staffId);
-    console.log("   Company ID:", COMPANY_ID);
-    
-    try {
-      // Инициализация
-      YC.init({ companyId: COMPANY_ID });
-      console.log("   ✅ Инициализирован");
-      
-      // Параметры
-      var opts = {};
-      if (serviceId) {
-        opts.service_id = parseInt(serviceId, 10);
-        console.log("   📋 Service ID:", opts.service_id);
-      }
-      if (staffId) {
-        opts.staff_id = parseInt(staffId, 10);
-        console.log("   👤 Staff ID:", opts.staff_id);
-      }
-      
-      console.log("📤 Параметры виджета:", opts);
-      
-      // Открываем
-      YC.open(opts);
-      
-      console.log("✅ Виджет открыт!");
-      console.log("=======================");
-      
-      return true;
-    } catch (error) {
-      console.error("❌ Ошибка открытия виджета:", error);
-      alert("Ошибка при открытии виджета записи. Попробуйте позже или позвоните нам.");
-      return false;
-    }
-  }
-
-  // Обработчик кликов
-  document.addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-booking]");
-    if (!btn) return;
-    
-    e.preventDefault();
-    console.log("🖱️ Клик на кнопку записи");
-    
-    var serviceId = btn.getAttribute("data-service-id");
-    var staffId = btn.getAttribute("data-staff-id");
-    
-    console.log("   data-service-id:", serviceId);
-    console.log("   data-staff-id:", staffId);
-    
-    // Если виджет не готов
-    if (!widgetReady) {
-      console.warn("⏳ Виджет загружается...");
-      
-      // Добавляем в очередь
-      pendingClicks.push({ serviceId: serviceId, staffId: staffId });
-      
-      alert("Виджет записи загружается, пожалуйста подождите пару секунд и нажмите снова.");
-      return;
-    }
-    
-    // Открываем виджет
-    openWidget(serviceId, staffId);
-  });
-  
-  console.log("✅ Обработчики зарегистрированы");
-})();
-</script>
-{% else %}
-<script>
-  console.warn("⚠️ YClients Company ID не настроен в настройках сайта");
-  document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-booking]");
-    if (t) {
-      e.preventDefault();
-      alert("Запись временно недоступна: не указан YCLIENTS company id в настройках сайта.");
-    }
-  });
-</script>
-{% endif %}
 </body>
 </html>

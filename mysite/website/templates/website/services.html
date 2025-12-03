@@ -16,7 +16,7 @@
       {% if s.options.all %}
         <div>
           <label class="block text-sm mb-1">Вариант</label>
-          <select name="service_option_id" id="opt-{{ s.id }}" class="w-full border rounded px-3 py-2 mb-3" onchange="updateBookingButton('{{ s.id }}')">
+          <select name="service_option_id" id="opt-{{ s.id }}" class="w-full border rounded px-3 py-2 mb-3">
             {% for opt in s.options.all %}
               {% if opt.is_active %}
                 <option
@@ -31,12 +31,10 @@
             {% endfor %}
           </select>
 
-          {# Кнопка записи с динамическим service-id #}
+          {# Кнопка записи - открывает YClients напрямую #}
           <a class="btn" 
-             id="btn-{{ s.id }}"
-             data-booking 
-             data-service-id=""
-             href="#">
+             href="#"
+             onclick="openYClientsBooking(event, 'opt-{{ s.id }}'); return false;">
             Записаться
           </a>
         </div>
@@ -50,43 +48,48 @@
 {% endfor %}
 
 <script>
-// Функция обновления service_id на кнопке при смене варианта
-function updateBookingButton(serviceId) {
-  const select = document.getElementById('opt-' + serviceId);
-  const button = document.getElementById('btn-' + serviceId);
+function openYClientsBooking(event, selectId) {
+  event.preventDefault();
   
-  if (!select || !button) return;
+  const select = document.getElementById(selectId);
+  if (!select) {
+    console.error("❌ Селект не найден:", selectId);
+    return;
+  }
   
   const selectedOption = select.options[select.selectedIndex];
   const yclientsId = selectedOption.getAttribute('data-yclients-id');
   
-  console.log('🔄 Обновление кнопки для услуги', serviceId);
-  console.log('   YClients ID:', yclientsId || 'не указан');
+  console.log("📋 Открываем запись на YClients");
+  console.log("   Service ID:", yclientsId || "не указан");
   
-  if (yclientsId) {
-    button.setAttribute('data-service-id', yclientsId);
+  // Базовый URL компании
+  let url = "https://n951024.yclients.com/company/{{ settings.yclients_company_id }}";
+  
+  // Если есть ID услуги - добавляем в URL для предвыбора
+  if (yclientsId && yclientsId !== 'None' && yclientsId !== '') {
+    url += `/select-service?o=&id=${yclientsId}`;
+    console.log("   ✅ С предвыбранной услугой");
   } else {
-    button.removeAttribute('data-service-id');
+    console.log("   ℹ️ Общая форма записи (ID услуги не указан)");
+  }
+  
+  console.log("   🔗 URL:", url);
+  
+  // Открываем в новом окне
+  const popup = window.open(
+    url, 
+    'yclients_booking', 
+    'width=900,height=700,scrollbars=yes,resizable=yes'
+  );
+  
+  if (!popup) {
+    alert("Не удалось открыть окно записи. Пожалуйста, разрешите всплывающие окна для этого сайта.");
+    console.error("❌ Попап заблокирован браузером");
+  } else {
+    console.log("✅ Окно записи открыто");
   }
 }
-
-// Инициализация: устанавливаем service_id для всех кнопок при загрузке
-document.addEventListener('DOMContentLoaded', function() {
-  console.log('📋 Инициализация кнопок записи');
-  
-  // Находим все селекты с вариантами
-  const selects = document.querySelectorAll('[id^="opt-"]');
-  
-  selects.forEach(function(select) {
-    // Извлекаем ID услуги из id селекта (opt-123 → 123)
-    const serviceId = select.id.replace('opt-', '');
-    
-    // Обновляем кнопку
-    updateBookingButton(serviceId);
-  });
-  
-  console.log('✅ Кнопки инициализированы');
-});
 </script>
 
 {% endblock %}
