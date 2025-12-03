@@ -81,6 +81,7 @@ jobs:
             source "$VENV/bin/activate"
             pip install -r requirements.txt
             
+            export DJANGO_SETTINGS_MODULE=mysite.settings.staging
             # Django рутины
             cd "$APP_DIR"
             python manage.py migrate --noinput

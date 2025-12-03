@@ -3,7 +3,7 @@
 {% block title %}Услуги — {{ settings.salon_name }}{% endblock %}
 {% block content %}
   <h1 class="text-3xl font-bold mb-6">Услуги</h1>
-{# website/services.html #}
+
 {% for cat in categories %}
   <h2 class="mb-4">{{ cat.name }}</h2>
 
@@ -12,18 +12,18 @@
     {% if s.is_active %}
     <div class="p-5 rounded-2xl shadow bg-white">
       <h3 class="text-lg font-semibold mb-2">{{ s.name }}</h3>
+      
       {% if s.options.all %}
-        <form method="get" action="{% url 'website:book_service' %}">
+        <div>
           <label class="block text-sm mb-1">Вариант</label>
-          <select name="service_option_id" class="w-full border rounded px-3 py-2 mb-3">
+          <select name="service_option_id" id="opt-{{ s.id }}" class="w-full border rounded px-3 py-2 mb-3" onchange="updateBookingButton('{{ s.id }}')">
             {% for opt in s.options.all %}
               {% if opt.is_active %}
                 <option
                   value="{{ opt.id }}"
                   data-duration="{{ opt.duration_min }}"
-                  data-units="{{ opt.units }}"
-                  data-unit-type="{{ opt.unit_type }}"
                   data-price="{{ opt.price }}"
+                  data-yclients-id="{{ opt.yclients_service_id }}"
                 >
                   {{ opt|option_label }}
                 </option>
@@ -31,35 +31,62 @@
             {% endfor %}
           </select>
 
-          <a class="btn" data-booking
-          {% if s.yclients_service_id %}data-service-id="{{ s.yclients_service_id }}"{% endif %}
-          href="#">Записаться</a>
-        </form>
+          {# Кнопка записи с динамическим service-id #}
+          <a class="btn" 
+             id="btn-{{ s.id }}"
+             data-booking 
+             data-service-id=""
+             href="#">
+            Записаться
+          </a>
+        </div>
       {% else %}
         <p class="text-sm text-gray-500">Нет активных вариантов</p>
       {% endif %}
-      {% comment %}
-      {% if s.options.all %}
-        <form method="get" action="{% url 'website:book_service' %}">
-          <label class="block text-sm mb-1">Длительность</label>
-          <select name="service_option_id" class="w-full border rounded px-3 py-2 mb-3">
-            {% for opt in s.options.all %}
-              {% if opt.is_active %}
-                <option value="{{ opt.id }}">{{ opt.duration_min }} мин — {{ opt.price }} ₽</option>
-              {% endif %}
-            {% endfor %}
-          </select>
-          <a class="btn" data-booking
-          {% if s.yclients_service_id %}data-service-id="{{ s.yclients_service_id }}"{% endif %}
-          href="#">Записаться</a>
-        </form>
-      {% else %}
-        <p class="text-sm text-gray-500">Нет активных вариантов</p>
-      {% endif %}
-      {% endcomment %}
     </div>
     {% endif %}
   {% endfor %}
   </div>
 {% endfor %}
+
+<script>
+// Функция обновления service_id на кнопке при смене варианта
+function updateBookingButton(serviceId) {
+  const select = document.getElementById('opt-' + serviceId);
+  const button = document.getElementById('btn-' + serviceId);
+  
+  if (!select || !button) return;
+  
+  const selectedOption = select.options[select.selectedIndex];
+  const yclientsId = selectedOption.getAttribute('data-yclients-id');
+  
+  console.log('🔄 Обновление кнопки для услуги', serviceId);
+  console.log('   YClients ID:', yclientsId || 'не указан');
+  
+  if (yclientsId) {
+    button.setAttribute('data-service-id', yclientsId);
+  } else {
+    button.removeAttribute('data-service-id');
+  }
+}
+
+// Инициализация: устанавливаем service_id для всех кнопок при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('📋 Инициализация кнопок записи');
+  
+  // Находим все селекты с вариантами
+  const selects = document.querySelectorAll('[id^="opt-"]');
+  
+  selects.forEach(function(select) {
+    // Извлекаем ID услуги из id селекта (opt-123 → 123)
+    const serviceId = select.id.replace('opt-', '');
+    
+    // Обновляем кнопку
+    updateBookingButton(serviceId);
+  });
+  
+  console.log('✅ Кнопки инициализированы');
+});
+</script>
+
 {% endblock %}
