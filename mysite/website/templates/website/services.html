@@ -105,23 +105,27 @@ function openYClientsModal(selectId) {
   document.getElementById('modal-service-details').textContent = details;
   document.getElementById('modal-hint-service').textContent = serviceName;
   
-  // Базовый URL
+  // Базовый URL компании
   const companyId = "{{ settings.yclients_company_id }}";
-  let url = `https://n951024.yclients.com/company/${companyId}`;
   
-  // ВАЖНО: Добавляем параметр o=s{service_id} если есть
+  // ВАЖНО: Если есть service_id - открываем СРАЗУ выбор времени
+  // Иначе - общую форму
+  let url;
   if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
-    url += `?o=s${serviceId}`;
-    console.log("   ✅ Service ID передан:", serviceId);
+    // Прямой переход к выбору времени
+    url = `https://n951024.yclients.com/company/${companyId}/personal/select_time?o=s${serviceId}`;
+    console.log("   ✅ Переход напрямую к выбору времени");
+    console.log("   ✅ Service ID:", serviceId);
   } else {
-    console.log("   ⚠️ Service ID не указан, откроется общая форма");
+    // Общая форма (если service_id не указан)
+    url = `https://n951024.yclients.com/company/${companyId}`;
+    console.log("   ℹ️ Service ID не указан - общая форма");
   }
   
   // Логируем
   console.log("=== ОТКРЫТИЕ МОДАЛЬНОГО ОКНА ===");
   console.log("   Услуга:", serviceName);
   console.log("   Детали:", details);
-  console.log("   Service ID:", serviceId || "не указан");
   console.log("   URL:", url);
   console.log("===================================");
   
