@@ -34,7 +34,8 @@
           {# Кнопка записи - открывает YClients напрямую #}
           <a class="btn" 
              href="#"
-             onclick="openYClientsBooking(event, 'opt-{{ s.id }}'); return false;">
+             {% if s.preferred_master_id %}data-staff-id="{{ s.preferred_master_id }}"{% endif %}
+             onclick="openYClientsBooking(event, 'opt-{{ s.id }}', this.getAttribute('data-staff-id')); return false;">
             Записаться
           </a>
         </div>
@@ -48,7 +49,7 @@
 {% endfor %}
 
 <script>
-function openYClientsBooking(event, selectId) {
+function openYClientsBooking(event, selectId, staffId) {
   event.preventDefault();
   
   const select = document.getElementById(selectId);
@@ -58,36 +59,57 @@ function openYClientsBooking(event, selectId) {
   }
   
   const selectedOption = select.options[select.selectedIndex];
-  const yclientsId = selectedOption.getAttribute('data-yclients-id');
+  const serviceId = selectedOption.getAttribute('data-yclients-id');
   
-  console.log("📋 Открываем запись на YClients");
-  console.log("   Service ID:", yclientsId || "не указан");
+  console.log("=== ОТКРЫТИЕ ЗАПИСИ YCLIENTS ===");
+  console.log("   Company ID: {{ settings.yclients_company_id }}");
+  console.log("   Service ID:", serviceId || "не указан (будет общий список)");
+  console.log("   Staff ID:", staffId || "не указан (любой мастер)");
   
-  // Базовый URL компании
-  let url = "https://n951024.yclients.com/company/{{ settings.yclients_company_id }}";
+  // Базовый URL
+  const baseUrl = "https://n951024.yclients.com/company/{{ settings.yclients_company_id }}";
   
-  // Если есть ID услуги - добавляем в URL для предвыбора
-  if (yclientsId && yclientsId !== 'None' && yclientsId !== '') {
-    url += `/select-service?o=&id=${yclientsId}`;
-    console.log("   ✅ С предвыбранной услугой");
-  } else {
-    console.log("   ℹ️ Общая форма записи (ID услуги не указан)");
+  // Строим URL с параметрами
+  let url = baseUrl;
+  const params = new URLSearchParams();
+  
+  // Добавляем service_id если есть
+  if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
+    params.append('service_id', serviceId);
+    console.log("   ✅ Параметр service_id добавлен");
   }
   
-  console.log("   🔗 URL:", url);
+  // Добавляем staff_id если есть
+  if (staffId && staffId !== 'None' && staffId !== '' && staffId !== 'null') {
+    params.append('staff_id', staffId);
+    console.log("   ✅ Параметр staff_id добавлен");
+  }
+  
+  // Формируем финальный URL
+  const paramsString = params.toString();
+  if (paramsString) {
+    url += '?' + paramsString;
+  }
+  
+  console.log("   🔗 Финальный URL:", url);
+  console.log("===================================");
   
   // Открываем в новом окне
   const popup = window.open(
     url, 
     'yclients_booking', 
-    'width=900,height=700,scrollbars=yes,resizable=yes'
+    'width=1000,height=800,scrollbars=yes,resizable=yes,location=yes'
   );
   
   if (!popup) {
-    alert("Не удалось открыть окно записи. Пожалуйста, разрешите всплывающие окна для этого сайта.");
+    alert("Не удалось открыть окно записи.\n\nПожалуйста, разрешите всплывающие окна для этого сайта в настройках браузера.");
     console.error("❌ Попап заблокирован браузером");
+    
+    // Fallback: открываем в текущей вкладке
+    console.log("   ℹ️ Пытаемся открыть в текущей вкладке...");
+    window.location.href = url;
   } else {
-    console.log("✅ Окно записи открыто");
+    console.log("✅ Окно записи успешно открыто");
   }
 }
 </script>
