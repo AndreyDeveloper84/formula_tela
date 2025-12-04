@@ -12,18 +12,19 @@
     {% if s.is_active %}
     <div class="p-5 rounded-2xl shadow bg-white">
       <h3 class="text-lg font-semibold mb-2">{{ s.name }}</h3>
-      
       {% if s.options.all %}
-        <div>
+        <form method="get">
           <label class="block text-sm mb-1">Вариант</label>
-          <select name="service_option_id" id="opt-{{ s.id }}" class="w-full border rounded px-3 py-2 mb-3">
+          <select id="opt-{{ s.id }}" class="w-full border rounded px-3 py-2 mb-3">
             {% for opt in s.options.all %}
               {% if opt.is_active %}
                 <option
                   value="{{ opt.id }}"
-                  data-duration="{{ opt.duration_min }}"
-                  data-price="{{ opt.price }}"
                   data-yclients-id="{{ opt.yclients_service_id }}"
+                  data-duration="{{ opt.duration_min }}"
+                  data-units="{{ opt.units }}"
+                  data-unit-type="{{ opt.unit_type }}"
+                  data-price="{{ opt.price }}"
                 >
                   {{ opt|option_label }}
                 </option>
@@ -31,14 +32,12 @@
             {% endfor %}
           </select>
 
-          {# Кнопка записи - открывает YClients напрямую #}
           <a class="btn" 
-             href="#"
-             {% if s.preferred_master_id %}data-staff-id="{{ s.preferred_master_id }}"{% endif %}
-             onclick="openYClientsBooking(event, 'opt-{{ s.id }}', this.getAttribute('data-staff-id')); return false;">
+             href="#" 
+             onclick="openYClientsModal('opt-{{ s.id }}'); return false;">
             Записаться
           </a>
-        </div>
+        </form>
       {% else %}
         <p class="text-sm text-gray-500">Нет активных вариантов</p>
       {% endif %}
@@ -48,61 +47,58 @@
   </div>
 {% endfor %}
 
+{# Модальное окно с iframe #}
+<div id="yclients-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999;">
+  <div style="position:relative; width:90%; max-width:1000px; height:90%; margin:5% auto; background:white; border-radius:10px; overflow:hidden;">
+    <button onclick="closeYClientsModal()" style="position:absolute; top:10px; right:10px; z-index:10000; background:red; color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:5px; font-size:18px;">✕ Закрыть</button>
+    <iframe id="yclients-iframe" src="" style="width:100%; height:100%; border:none;"></iframe>
+  </div>
+</div>
+
 <script>
-function openYClientsBooking(event, selectId, staffId) {
-  event.preventDefault();
-  
+function openYClientsModal(selectId) {
   const select = document.getElementById(selectId);
-  if (!select) {
-    console.error("❌ Селект не найден:", selectId);
-    return;
-  }
+  if (!select) return;
   
   const selectedOption = select.options[select.selectedIndex];
   const serviceId = selectedOption.getAttribute('data-yclients-id');
   
-  console.log("=== ОТКРЫТИЕ ЗАПИСИ YCLIENTS ===");
-  console.log("   Company ID: {{ settings.yclients_company_id }}");
-  console.log("   Service ID:", serviceId || "не указан");
-  console.log("   Staff ID:", staffId || "не указан");
-  
-  // Базовый URL компании
+  // Базовый URL
   const companyId = "{{ settings.yclients_company_id }}";
-  const baseUrl = `https://n951024.yclients.com/company/${companyId}`;
+  let url = `https://n951024.yclients.com/company/${companyId}`;
   
-  // YClients не поддерживает прямую передачу параметров через URL
-  // Открываем базовую форму, пользователь выбирает услугу вручную
-  let url = baseUrl;
-  
-  console.log("   ℹ️ Открываем общую форму записи");
-  console.log("   💡 Пользователь выберет услугу вручную");
-  console.log("   🔗 Финальный URL:", url);
-  console.log("===================================");
-  
-  // Открываем в новом окне
-  const windowFeatures = 'width=1000,height=850,scrollbars=yes,resizable=yes,location=yes,menubar=no,toolbar=no';
-  const popup = window.open(url, 'yclients_booking', windowFeatures);
-  
-  if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-    console.error("❌ Попап заблокирован браузером");
-    
-    // Показываем уведомление
-    const message = "Не удалось открыть окно записи.\n\n" +
-                   "Пожалуйста:\n" +
-                   "1. Разрешите всплывающие окна для этого сайта\n" +
-                   "2. Или откройте запись в новой вкладке";
-    
-    if (confirm(message + "\n\nОткрыть в текущей вкладке?")) {
-      window.location.href = url;
-    } else {
-      // Пытаемся открыть в новой вкладке через _blank
-      window.open(url, '_blank');
-    }
-  } else {
-    console.log("✅ Окно записи успешно открыто");
-    popup.focus();
+  // Если есть service_id - пробуем добавить (может и не сработает, но попробуем)
+  if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
+    url += `?o=s${serviceId}`;
   }
+  
+  console.log("Открываем iframe с URL:", url);
+  
+  // Загружаем в iframe
+  document.getElementById('yclients-iframe').src = url;
+  
+  // Показываем модальное окно
+  document.getElementById('yclients-modal').style.display = 'block';
 }
+
+function closeYClientsModal() {
+  document.getElementById('yclients-modal').style.display = 'none';
+  document.getElementById('yclients-iframe').src = '';
+}
+
+// Закрытие по клику вне окна
+document.getElementById('yclients-modal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    closeYClientsModal();
+  }
+});
+
+// Закрытие по Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeYClientsModal();
+  }
+});
 </script>
 
 {% endblock %}
