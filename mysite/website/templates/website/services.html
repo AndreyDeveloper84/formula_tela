@@ -63,53 +63,44 @@ function openYClientsBooking(event, selectId, staffId) {
   
   console.log("=== ОТКРЫТИЕ ЗАПИСИ YCLIENTS ===");
   console.log("   Company ID: {{ settings.yclients_company_id }}");
-  console.log("   Service ID:", serviceId || "не указан (будет общий список)");
-  console.log("   Staff ID:", staffId || "не указан (любой мастер)");
+  console.log("   Service ID:", serviceId || "не указан");
+  console.log("   Staff ID:", staffId || "не указан");
   
-  // Базовый URL
-  const baseUrl = "https://n951024.yclients.com/company/{{ settings.yclients_company_id }}";
+  // Базовый URL компании
+  const companyId = "{{ settings.yclients_company_id }}";
+  const baseUrl = `https://n951024.yclients.com/company/${companyId}`;
   
-  // Строим URL с параметрами
+  // YClients не поддерживает прямую передачу параметров через URL
+  // Открываем базовую форму, пользователь выбирает услугу вручную
   let url = baseUrl;
-  const params = new URLSearchParams();
   
-  // Добавляем service_id если есть
-  if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
-    params.append('service_id', serviceId);
-    console.log("   ✅ Параметр service_id добавлен");
-  }
-  
-  // Добавляем staff_id если есть
-  if (staffId && staffId !== 'None' && staffId !== '' && staffId !== 'null') {
-    params.append('staff_id', staffId);
-    console.log("   ✅ Параметр staff_id добавлен");
-  }
-  
-  // Формируем финальный URL
-  const paramsString = params.toString();
-  if (paramsString) {
-    url += '?' + paramsString;
-  }
-  
+  console.log("   ℹ️ Открываем общую форму записи");
+  console.log("   💡 Пользователь выберет услугу вручную");
   console.log("   🔗 Финальный URL:", url);
   console.log("===================================");
   
   // Открываем в новом окне
-  const popup = window.open(
-    url, 
-    'yclients_booking', 
-    'width=1000,height=800,scrollbars=yes,resizable=yes,location=yes'
-  );
+  const windowFeatures = 'width=1000,height=850,scrollbars=yes,resizable=yes,location=yes,menubar=no,toolbar=no';
+  const popup = window.open(url, 'yclients_booking', windowFeatures);
   
-  if (!popup) {
-    alert("Не удалось открыть окно записи.\n\nПожалуйста, разрешите всплывающие окна для этого сайта в настройках браузера.");
+  if (!popup || popup.closed || typeof popup.closed === 'undefined') {
     console.error("❌ Попап заблокирован браузером");
     
-    // Fallback: открываем в текущей вкладке
-    console.log("   ℹ️ Пытаемся открыть в текущей вкладке...");
-    window.location.href = url;
+    // Показываем уведомление
+    const message = "Не удалось открыть окно записи.\n\n" +
+                   "Пожалуйста:\n" +
+                   "1. Разрешите всплывающие окна для этого сайта\n" +
+                   "2. Или откройте запись в новой вкладке";
+    
+    if (confirm(message + "\n\nОткрыть в текущей вкладке?")) {
+      window.location.href = url;
+    } else {
+      // Пытаемся открыть в новой вкладке через _blank
+      window.open(url, '_blank');
+    }
   } else {
     console.log("✅ Окно записи успешно открыто");
+    popup.focus();
   }
 }
 </script>
