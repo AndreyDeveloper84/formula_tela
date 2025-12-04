@@ -48,10 +48,27 @@
 {% endfor %}
 
 {# Модальное окно с iframe #}
-<div id="yclients-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999;">
-  <div style="position:relative; width:90%; max-width:1000px; height:90%; margin:5% auto; background:white; border-radius:10px; overflow:hidden;">
-    <button onclick="closeYClientsModal()" style="position:absolute; top:10px; right:10px; z-index:10000; background:red; color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:5px; font-size:18px;">✕ Закрыть</button>
-    <iframe id="yclients-iframe" src="" style="width:100%; height:100%; border:none;"></iframe>
+<div id="yclients-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; overflow:auto;">
+  <div style="position:relative; width:95%; max-width:1100px; height:95%; margin:2.5% auto; background:white; border-radius:12px; overflow:hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+    
+    {# Заголовок с информацией об услуге #}
+    <div id="modal-header" style="background:#2563eb; color:white; padding:20px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <h3 id="modal-service-name" style="margin:0; font-size:20px; font-weight:600;"></h3>
+        <p id="modal-service-details" style="margin:5px 0 0 0; opacity:0.9; font-size:14px;"></p>
+      </div>
+      <button onclick="closeYClientsModal()" style="background:rgba(255,255,255,0.2); color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:8px; font-size:20px; font-weight:bold; transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+        ✕ Закрыть
+      </button>
+    </div>
+    
+    {# iframe с формой YClients #}
+    <iframe id="yclients-iframe" src="" style="width:100%; height:calc(100% - 80px); border:none; display:block;"></iframe>
+    
+    {# Подсказка внизу #}
+    <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.05); padding:10px; text-align:center; font-size:12px; color:#666;">
+      💡 Выберите услугу "<span id="modal-hint-service"></span>" в форме записи
+    </div>
   </div>
 </div>
 
@@ -62,28 +79,70 @@ function openYClientsModal(selectId) {
   
   const selectedOption = select.options[select.selectedIndex];
   const serviceId = selectedOption.getAttribute('data-yclients-id');
+  const price = selectedOption.getAttribute('data-price');
+  const duration = selectedOption.getAttribute('data-duration');
+  const units = selectedOption.getAttribute('data-units');
+  const unitType = selectedOption.getAttribute('data-unit-type');
+  
+  // Получаем название услуги из текста option
+  const serviceLabel = selectedOption.text;
+  const serviceName = select.closest('.p-5').querySelector('h3').textContent;
+  
+  // Формируем детали
+  let details = duration + ' мин';
+  if (units && units > 1) {
+    const unitLabels = {
+      'session': 'процедур',
+      'zone': 'зон',
+      'visit': 'визитов'
+    };
+    details += ' × ' + units + ' ' + (unitLabels[unitType] || 'ед.');
+  }
+  details += ' — ' + Math.round(price) + ' ₽';
+  
+  // Обновляем заголовок модального окна
+  document.getElementById('modal-service-name').textContent = serviceName;
+  document.getElementById('modal-service-details').textContent = details;
+  document.getElementById('modal-hint-service').textContent = serviceName;
   
   // Базовый URL
   const companyId = "{{ settings.yclients_company_id }}";
   let url = `https://n951024.yclients.com/company/${companyId}`;
   
-  // Если есть service_id - пробуем добавить (может и не сработает, но попробуем)
+  // ВАЖНО: Добавляем параметр o=s{service_id} если есть
   if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
     url += `?o=s${serviceId}`;
+    console.log("   ✅ Service ID передан:", serviceId);
+  } else {
+    console.log("   ⚠️ Service ID не указан, откроется общая форма");
   }
   
-  console.log("Открываем iframe с URL:", url);
+  // Логируем
+  console.log("=== ОТКРЫТИЕ МОДАЛЬНОГО ОКНА ===");
+  console.log("   Услуга:", serviceName);
+  console.log("   Детали:", details);
+  console.log("   Service ID:", serviceId || "не указан");
+  console.log("   URL:", url);
+  console.log("===================================");
   
   // Загружаем в iframe
   document.getElementById('yclients-iframe').src = url;
   
   // Показываем модальное окно
   document.getElementById('yclients-modal').style.display = 'block';
+  
+  // Блокируем скролл body
+  document.body.style.overflow = 'hidden';
 }
 
 function closeYClientsModal() {
   document.getElementById('yclients-modal').style.display = 'none';
   document.getElementById('yclients-iframe').src = '';
+  
+  // Восстанавливаем скролл
+  document.body.style.overflow = '';
+  
+  console.log("✅ Модальное окно закрыто");
 }
 
 // Закрытие по клику вне окна
@@ -96,7 +155,10 @@ document.getElementById('yclients-modal').addEventListener('click', function(e) 
 // Закрытие по Escape
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    closeYClientsModal();
+    const modal = document.getElementById('yclients-modal');
+    if (modal.style.display === 'block') {
+      closeYClientsModal();
+    }
   }
 });
 </script>
