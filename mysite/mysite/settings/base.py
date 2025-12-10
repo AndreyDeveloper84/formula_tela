@@ -102,4 +102,16 @@ LOGGING = {
     "formatters": {"simple": {"format": "[{levelname}] {asctime} {name}: {message}", "style": "{"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
     "root": {"handlers": ["console"], "level": "INFO" if not DEBUG else "DEBUG"},
+    "loggers": {
+        "services_app.yclients_api": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        }
+    }
 }
+
+# === YClients API Configuration ===
+YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
+YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
+YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")
