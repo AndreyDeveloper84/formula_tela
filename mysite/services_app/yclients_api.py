@@ -88,3 +88,136 @@ class YClientsAPI:
         except Exception as e:
             logger.exception(f"Unexpected error in YClients API request: {e}")
             raise YClientsAPIError(f"Unexpected error: {str(e)}")
+
+    @staticmethod
+    def authenticate(login: str, password: str, partner_token: str) -> str:
+        """
+        Авторизация и получение User Token
+        
+        Args:
+            login: логин пользователя (телефон: 79023413065)
+            password: пароль
+            partner_token: токен партнёра
+        
+        Returns:
+            user_token для дальнейших запросов
+        
+        Example:
+            user_token = YClientsAPI.authenticate(
+                login="79023413065",
+                password="karzakova1",
+                partner_token="gmn9rncz9nhr66yj23yc"
+            )
+        """
+        url = "https://api.yclients.com/api/v1/auth"
+        
+        headers = {
+            "Accept": "application/vnd.yclients.v2+json",
+            "Authorization": f"Bearer {partner_token}",
+            "Content-Type": "application/json",
+        }
+        
+        data = {
+            "login": login,
+            "password": password
+        }
+        
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            json_response = response.json()
+            
+            if not json_response.get("success"):
+                error_msg = json_response.get("meta", {}).get("message", "Auth failed")
+                raise YClientsAPIError(f"Authentication failed: {error_msg}")
+            
+            user_token = json_response["data"]["user_token"]
+            logger.info(f"✅ Successfully authenticated user: {login}")
+            
+            return user_token
+            
+        except Exception as e:
+            logger.error(f"❌ Authentication failed for {login}: {e}")
+            raise YClientsAPIError(f"Authentication error: {str(e)}")
+            
+    @classmethod
+    def from_credentials(
+        cls,
+        login: str,
+        password: str,
+        partner_token: Optional[str] = None,
+        company_id: Optional[str] = None
+    ) -> "YClientsAPI":
+        """
+        Создать API-клиент через авторизацию по логину/паролю
+        
+        Args:
+            login: логин (телефон)
+            password: пароль
+            partner_token: токен партнёра (по умолчанию из settings)
+            company_id: ID компании (по умолчанию из settings)
+        
+        Returns:
+            Экземпляр YClientsAPI с полученным user_token
+        
+        Example:
+            api = YClientsAPI.from_credentials(
+                login="79023413065",
+                password="karzakova1"
+            )
+        """
+        from django.conf import settings
+        
+        partner_token = partner_token or settings.YCLIENTS_PARTNER_TOKEN
+        company_id = company_id or settings.YCLIENTS_COMPANY_ID
+        
+        if not partner_token or not company_id:
+            raise YClientsAPIError("Partner token and company ID must be configured")
+        
+        # Получаем user token через авторизацию
+        user_token = cls.authenticate(login, password, partner_token)
+        
+        # Создаём экземпляр с полученным токеном
+        return cls(
+            partner_token=partner_token,
+            user_token=user_token,
+            company_id=company_id
+        )
+
+def get_yclients_api() -> YClientsAPI:
+    """
+    Получить готовый экземпляр YClientsAPI из настроек
+    
+    Использует токены из .env через Django settings
+    
+    Returns:
+        Сконфигурированный YClientsAPI клиент
+    
+    Example:
+        from services_app.yclients_api import get_yclients_api
+        
+        api = get_yclients_api()
+        services = api.get_services()
+    """
+    from django.conf import settings
+    
+    # Проверка наличия всех необходимых настроек
+    required_settings = {
+        'YCLIENTS_PARTNER_TOKEN': settings.YCLIENTS_PARTNER_TOKEN,
+        'YCLIENTS_USER_TOKEN': settings.YCLIENTS_USER_TOKEN,
+        'YCLIENTS_COMPANY_ID': settings.YCLIENTS_COMPANY_ID,
+    }
+    
+    missing = [k for k, v in required_settings.items() if not v]
+    if missing:
+        raise YClientsAPIError(
+            f"Missing YClients settings: {', '.join(missing)}\n"
+            "Please configure them in .env file"
+        )
+    
+    return YClientsAPI(
+        partner_token=settings.YCLIENTS_PARTNER_TOKEN,
+        user_token=settings.YCLIENTS_USER_TOKEN,
+        company_id=settings.YCLIENTS_COMPANY_ID
+    )
