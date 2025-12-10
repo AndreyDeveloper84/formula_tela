@@ -6,6 +6,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent  # .../mysite
 
 load_dotenv(BASE_DIR.parent / '.env')
 
+# ============================================================
+# YCLIENTS API SETTINGS
+# ============================================================
+
+YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "gmn9rncz9nhr66yj23yc")
+YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "884045")
+YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "7fcdd6c3643da0f14a4cdddbce34c9de")
+
+# Кеширование (чтобы не спамить API YClients)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'yclients-cache',
+        'TIMEOUT': 300,  # 5 минут по умолчанию
+    }
+}
+
 # === ENV helpers ===
 def _csv(name, default=""):
     raw = os.getenv(name, default)

@@ -1,0 +1,552 @@
+{% extends "website/base.html" %}
+{% load service_extras humanize %}
+
+{% block title %}Онлайн-запись — {{ settings.salon_name }}{% endblock %}
+
+{% block content %}
+<style>
+  .booking-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-top: 40px;
+  }
+  
+  @media (max-width: 768px) {
+    .booking-container {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .booking-form {
+    background: #fff;
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  
+  .booking-image {
+    border-radius: 20px;
+    overflow: hidden;
+    height: 600px;
+  }
+  
+  .booking-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .form-group {
+    margin-bottom: 20px;
+  }
+  
+  .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #222;
+  }
+  
+  .form-control {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 16px;
+    transition: border-color 0.2s;
+  }
+  
+  .form-control:focus {
+    outline: none;
+    border-color: #2563eb;
+  }
+  
+  .form-control:disabled {
+    background: #f9fafb;
+    cursor: not-allowed;
+  }
+  
+  .time-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  
+  .time-slot {
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .time-slot:hover {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
+  
+  .time-slot.selected {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  
+  .time-slot.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  
+  .price-display {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  
+  .price-display .price {
+    font-size: 24px;
+    font-weight: 700;
+    color: #16a34a;
+  }
+  
+  .btn-submit {
+    width: 100%;
+    padding: 16px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  
+  .btn-submit:hover {
+    background: #1d4ed8;
+  }
+  
+  .btn-submit:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+  }
+  
+  .loading {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    color: #6b7280;
+  }
+  
+  .loading.active {
+    display: block;
+  }
+  
+  .error-message {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #dc2626;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+  
+  .success-message {
+    background: #d1fae5;
+    border: 1px solid #86efac;
+    color: #16a34a;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+</style>
+
+<div class="booking-container">
+  <!-- Левая колонка: Форма записи -->
+  <div class="booking-form">
+    <h1 style="margin: 0 0 10px 0;">Онлайн-запись</h1>
+    <p style="color: #6b7280; margin-bottom: 30px;">
+      Выберите услугу, мастера, дату и время — мы отправим SMS с подтверждением
+    </p>
+    
+    <!-- Сообщения об ошибках/успехе -->
+    <div id="message-container"></div>
+    
+    <form id="booking-form">
+      {% csrf_token %}
+      
+      <!-- Услуга -->
+      <div class="form-group">
+        <label for="service-select">Услуга</label>
+        <select id="service-select" name="service_option_id" class="form-control" required>
+          <option value="">Выберите услугу...</option>
+          {% regroup options by service.category as category_list %}
+          {% for category in category_list %}
+            <optgroup label="{{ category.grouper.name|default:'Без категории' }}">
+              {% for opt in category.list %}
+                <option 
+                  value="{{ opt.id }}"
+                  data-price="{{ opt.price }}"
+                  data-duration="{{ opt.duration_min }}"
+                  data-yclients-id="{{ opt.yclients_service_id }}"
+                  {% if selected_option and selected_option.id == opt.id %}selected{% endif %}
+                >
+                  {{ opt.service.name }} — {{ opt|option_label }}
+                </option>
+              {% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- Мастер -->
+      <div class="form-group">
+        <label for="staff-select">Мастер</label>
+        <select id="staff-select" name="staff_id" class="form-control" required disabled>
+          <option value="">Сначала выберите услугу...</option>
+        </select>
+      </div>
+      
+      <!-- Дата -->
+      <div class="form-group">
+        <label for="date-input">Дата</label>
+        <input 
+          type="date" 
+          id="date-input" 
+          name="date" 
+          class="form-control" 
+          required 
+          disabled
+          min="{{ today|date:'Y-m-d' }}"
+        >
+      </div>
+      
+      <!-- Время -->
+      <div class="form-group">
+        <label>Время</label>
+        <div id="loading-times" class="loading">Загрузка...</div>
+        <div id="time-slots" class="time-slots"></div>
+        <input type="hidden" id="time-input" name="time" required>
+      </div>
+      
+      <!-- Стоимость -->
+      <div id="price-display" class="price-display" style="display:none;">
+        <div style="color: #6b7280; font-size: 14px; margin-bottom: 4px;">Стоимость</div>
+        <div class="price" id="price-value">0 ₽</div>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+      
+      <!-- Имя -->
+      <div class="form-group">
+        <label for="name-input">Ваше имя</label>
+        <input 
+          type="text" 
+          id="name-input" 
+          name="name" 
+          class="form-control" 
+          placeholder="Введите ваше имя"
+          required
+        >
+      </div>
+      
+      <!-- Телефон -->
+      <div class="form-group">
+        <label for="phone-input">Телефон</label>
+        <input 
+          type="tel" 
+          id="phone-input" 
+          name="phone" 
+          class="form-control" 
+          placeholder="+7 (999) 123-45-67"
+          required
+        >
+      </div>
+      
+      <!-- Email (опционально) -->
+      <div class="form-group">
+        <label for="email-input">Email (необязательно)</label>
+        <input 
+          type="email" 
+          id="email-input" 
+          name="email" 
+          class="form-control" 
+          placeholder="your@email.com"
+        >
+      </div>
+      
+      <!-- Комментарий (опционально) -->
+      <div class="form-group">
+        <label for="comment-input">Комментарий (необязательно)</label>
+        <textarea 
+          id="comment-input" 
+          name="comment" 
+          class="form-control" 
+          rows="3"
+          placeholder="Если у вас есть пожелания или особые указания..."
+        ></textarea>
+      </div>
+      
+      <!-- Кнопка записи -->
+      <button type="submit" class="btn-submit" id="submit-btn" disabled>
+        Записаться онлайн
+      </button>
+    </form>
+  </div>
+  
+  <!-- Правая колонка: Изображение -->
+  <div class="booking-image">
+    <img 
+      src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800&auto=format&fit=crop" 
+      alt="Салон красоты"
+    >
+  </div>
+</div>
+
+<script>
+(function() {
+  const form = document.getElementById('booking-form');
+  const serviceSelect = document.getElementById('service-select');
+  const staffSelect = document.getElementById('staff-select');
+  const dateInput = document.getElementById('date-input');
+  const timeInput = document.getElementById('time-input');
+  const timeSlotsContainer = document.getElementById('time-slots');
+  const loadingTimes = document.getElementById('loading-times');
+  const priceDisplay = document.getElementById('price-display');
+  const priceValue = document.getElementById('price-value');
+  const submitBtn = document.getElementById('submit-btn');
+  const messageContainer = document.getElementById('message-container');
+  
+  let selectedTime = null;
+  
+  // Показать сообщение
+  function showMessage(text, type = 'error') {
+    const className = type === 'success' ? 'success-message' : 'error-message';
+    messageContainer.innerHTML = `<div class="${className}">${text}</div>`;
+    messageContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  
+  // Очистить сообщения
+  function clearMessages() {
+    messageContainer.innerHTML = '';
+  }
+  
+  // Обновить стоимость
+  function updatePrice() {
+    const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
+    if (selectedOption && selectedOption.value) {
+      const price = selectedOption.dataset.price;
+      priceValue.textContent = `${Number(price).toLocaleString('ru-RU')} ₽`;
+      priceDisplay.style.display = 'block';
+    } else {
+      priceDisplay.style.display = 'none';
+    }
+  }
+  
+  // Проверить можно ли submit
+  function checkSubmitEnabled() {
+    const isValid = form.checkValidity() && selectedTime !== null;
+    submitBtn.disabled = !isValid;
+  }
+  
+  // Шаг 1: Выбор услуги → загрузить мастеров
+  serviceSelect.addEventListener('change', async function() {
+    clearMessages();
+    const serviceOptionId = this.value;
+    
+    if (!serviceOptionId) {
+      staffSelect.innerHTML = '<option value="">Сначала выберите услугу...</option>';
+      staffSelect.disabled = true;
+      dateInput.disabled = true;
+      timeSlotsContainer.innerHTML = '';
+      selectedTime = null;
+      checkSubmitEnabled();
+      return;
+    }
+    
+    updatePrice();
+    
+    // Загружаем мастеров
+    staffSelect.innerHTML = '<option value="">Загрузка...</option>';
+    staffSelect.disabled = true;
+    
+    try {
+      const res = await fetch(`{% url 'website:api_get_staff' %}?service_option_id=${serviceOptionId}`);
+      const data = await res.json();
+      
+      if (data.error) {
+        showMessage(`Ошибка: ${data.error}`);
+        return;
+      }
+      
+      // Заполняем список мастеров
+      staffSelect.innerHTML = '<option value="">Выберите мастера...</option>';
+      staffSelect.innerHTML += '<option value="0">Любой мастер</option>';
+      
+      data.staff.forEach(s => {
+        staffSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+      });
+      
+      staffSelect.disabled = false;
+      
+    } catch (err) {
+      showMessage(`Ошибка загрузки мастеров: ${err.message}`);
+    }
+  });
+  
+  // Шаг 2: Выбор мастера → разблокировать дату
+  staffSelect.addEventListener('change', function() {
+    clearMessages();
+    const staffId = this.value;
+    
+    if (staffId) {
+      dateInput.disabled = false;
+      // Устанавливаем минимальную дату (сегодня)
+      const today = new Date().toISOString().split('T')[0];
+      dateInput.min = today;
+    } else {
+      dateInput.disabled = true;
+      timeSlotsContainer.innerHTML = '';
+      selectedTime = null;
+      checkSubmitEnabled();
+    }
+  });
+  
+  // Шаг 3: Выбор даты → загрузить время
+  dateInput.addEventListener('change', async function() {
+    clearMessages();
+    const date = this.value;
+    const serviceOptionId = serviceSelect.value;
+    const staffId = staffSelect.value;
+    
+    if (!date || !serviceOptionId || !staffId) return;
+    
+    // Показываем загрузку
+    timeSlotsContainer.innerHTML = '';
+    loadingTimes.classList.add('active');
+    selectedTime = null;
+    checkSubmitEnabled();
+    
+    try {
+      const res = await fetch(
+        `{% url 'website:api_get_times' %}?service_option_id=${serviceOptionId}&staff_id=${staffId}&date=${date}`
+      );
+      const data = await res.json();
+      
+      loadingTimes.classList.remove('active');
+      
+      if (data.error) {
+        showMessage(`Ошибка: ${data.error}`);
+        return;
+      }
+      
+      if (!data.times || data.times.length === 0) {
+        timeSlotsContainer.innerHTML = '<p style="color: #6b7280;">Нет свободного времени на эту дату</p>';
+        return;
+      }
+      
+      // Рендерим слоты времени
+      timeSlotsContainer.innerHTML = '';
+      data.times.forEach(time => {
+        const slot = document.createElement('div');
+        slot.className = 'time-slot';
+        slot.textContent = time;
+        slot.dataset.time = time;
+        
+        slot.addEventListener('click', function() {
+          // Убираем выбор с других
+          document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
+          // Выбираем текущий
+          this.classList.add('selected');
+          selectedTime = this.dataset.time;
+          timeInput.value = selectedTime;
+          checkSubmitEnabled();
+        });
+        
+        timeSlotsContainer.appendChild(slot);
+      });
+      
+    } catch (err) {
+      loadingTimes.classList.remove('active');
+      showMessage(`Ошибка загрузки времени: ${err.message}`);
+    }
+  });
+  
+  // Проверка формы на изменения
+  form.addEventListener('input', checkSubmitEnabled);
+  form.addEventListener('change', checkSubmitEnabled);
+  
+  // Submit формы
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    clearMessages();
+    
+    if (!form.checkValidity() || !selectedTime) {
+      showMessage('Пожалуйста, заполните все обязательные поля');
+      return;
+    }
+    
+    // Блокируем кнопку
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Создаём запись...';
+    
+    // Собираем данные
+    const formData = {
+      service_option_id: serviceSelect.value,
+      staff_id: staffSelect.value,
+      date: dateInput.value,
+      time: selectedTime,
+      name: document.getElementById('name-input').value.trim(),
+      phone: document.getElementById('phone-input').value.trim(),
+      email: document.getElementById('email-input').value.trim(),
+      comment: document.getElementById('comment-input').value.trim(),
+    };
+    
+    try {
+      const res = await fetch('{% url "website:api_quick_submit" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        },
+        body: JSON.stringify(formData),
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        showMessage(data.message, 'success');
+        
+        // Очищаем форму и перенаправляем через 3 секунды
+        setTimeout(() => {
+          window.location.href = '{% url "website:home" %}';
+        }, 3000);
+        
+      } else {
+        showMessage(data.error || 'Не удалось создать запись');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Записаться онлайн';
+      }
+      
+    } catch (err) {
+      showMessage(`Ошибка: ${err.message}`);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Записаться онлайн';
+    }
+  });
+  
+  // Инициализация
+  if (serviceSelect.value) {
+    serviceSelect.dispatchEvent(new Event('change'));
+  }
+  
+  updatePrice();
+  checkSubmitEnabled();
+})();
+</script>
+{% endblock %}
