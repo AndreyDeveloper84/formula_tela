@@ -335,8 +335,166 @@ class YClientsAPI:
                 f"date={date}, service_id={service_id}: {e}"
             )
             return []
+    
+
+        """
+        Создать запись клиента в YClients
+        
+        Args:
+            staff_id: ID мастера
+            services: Список ID услуг [123, 456]
+            datetime: Дата и время в формате "2025-12-15T10:00:00"
+            client: Данные клиента
+                {
+                    "name": "Иван Петров",
+                    "phone": "79001234567",
+                    "email": "ivan@example.com"
+                }
+            comment: Комментарий к записи
+            notify_by_sms: За сколько часов отправить SMS (0 = не отправлять)
+            notify_by_email: За сколько часов отправить Email (0 = не отправлять)
+        
+        Returns:
+            {
+                'id': 1,  # Наш ID
+                'record_id': 123456,  # ID в YClients
+                'record_hash': 'abc123...'  # Hash записи
+            }
+        
+        Example:
+            >>> api = get_yclients_api()
+            >>> result = api.create_booking(
+            ...     staff_id=4416525,
+            ...     services=[10461107, 10461108],  # ID услуг из YClients
+            ...     datetime="2025-12-15T10:00:00",
+            ...     client={
+            ...         "name": "Тест Тестов",
+            ...         "phone": "79001234567",
+            ...         "email": "test@example.com"
+            ...     },
+            ...     comment="Тестовая запись"
+            ... )
+            >>> print(result['record_id'])
+            123456
+        """
+        endpoint = f"/book_record/{self.company_id}"
+        
+        # Формируем данные запроса согласно документации
+        data = {
+            "phone": client.get("phone"),
+            "fullname": client.get("name"),
+            "email": client.get("email", ""),
+            "appointments": [
+                {
+                    "id": 1,  # ID для обратной связи (можем использовать любое число)
+                    "services": services,  # Массив ID услуг
+                    "staff_id": staff_id,
+                    "datetime": datetime
+                }
+            ],
+            "notify_by_sms": notify_by_sms,
+            "notify_by_email": notify_by_email
+        }
+        
+        if comment:
+            data["comment"] = comment
+        
+        logger.info(
+            f"🔖 Создание записи: staff={staff_id}, "
+            f"datetime={datetime}, client={client.get('name')}, "
+            f"services={services}"
+        )
+        
+        try:
+            response = self._request('POST', endpoint, data=data)
             
-                
+            # Проверяем success
+            if not response.get('success', False):
+                error_msg = response.get('meta', {}).get('message', 'Unknown error')
+                raise YClientsAPIError(f"Failed to create booking: {error_msg}")
+            
+            # Извлекаем данные первой (и единственной) записи
+            bookings = response.get('data', [])
+            
+            if not bookings:
+                raise YClientsAPIError("No booking data returned")
+            
+            booking_data = bookings[0]  # Берём первую запись
+            
+            logger.info(
+                f"✅ Запись создана! "
+                f"Record ID: {booking_data.get('record_id')}, "
+                f"Hash: {booking_data.get('record_hash')}"
+            )
+            
+            return booking_data
+            
+        except YClientsAPIError as e:
+            logger.error(f"❌ Ошибка создания записи: {e}")
+            raise
+    
+    def create_booking(
+        self,
+        staff_id: int,
+        services: List[int],
+        datetime: str,
+        client: Dict,
+        comment: Optional[str] = None,
+        notify_by_sms: int = 0,
+        notify_by_email: int = 0
+    ) -> Dict:
+        """Создать запись клиента в YClients"""
+        endpoint = f"/book_record/{self.company_id}"
+        
+        data = {
+            "phone": client.get("phone"),
+            "fullname": client.get("name"),
+            "email": client.get("email", ""),
+            "appointments": [
+                {
+                    "id": 1,
+                    "services": services,
+                    "staff_id": staff_id,
+                    "datetime": datetime
+                }
+            ],
+            "notify_by_sms": notify_by_sms,
+            "notify_by_email": notify_by_email
+        }
+        
+        if comment:
+            data["comment"] = comment
+        
+        logger.info(
+            f"🔖 Создание записи: staff={staff_id}, "
+            f"datetime={datetime}, services={services}"
+        )
+        
+        try:
+            response = self._request('POST', endpoint, data=data)
+            
+            if not response.get('success', False):
+                error_msg = response.get('meta', {}).get('message', 'Unknown error')
+                raise YClientsAPIError(f"Failed to create booking: {error_msg}")
+            
+            bookings = response.get('data', [])
+            
+            if not bookings:
+                raise YClientsAPIError("No booking data returned")
+            
+            booking_data = bookings[0]
+            
+            logger.info(
+                f"✅ Запись создана! "
+                f"Record ID: {booking_data.get('record_id')}"
+            )
+            
+            return booking_data
+            
+        except YClientsAPIError as e:
+            logger.error(f"❌ Ошибка создания записи: {e}")
+            raise
+
 def get_yclients_api() -> YClientsAPI:
     """
     Получить готовый экземпляр YClientsAPI из настроек

@@ -2,9 +2,11 @@ from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from collections import defaultdict
 from django.db.models import Prefetch
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.csrf import csrf_exempt
 from services_app.yclients_api import get_yclients_api, YClientsAPIError
 import logging
+import json
 
 from services_app.models import SiteSettings, ServiceCategory, Service, Master, FAQ, ServiceOption, Promotion, Bundle, BundleItem
 
@@ -292,7 +294,6 @@ def api_get_staff(request):
             'meta': {'total': 0, 'active': 0, 'bookable': 0}
         }, status=500)
 
-
 @require_GET
 def api_available_times(request):
     """
@@ -402,3 +403,93 @@ def api_available_times(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+@csrf_exempt
+@require_POST
+def api_create_booking(request):
+    """API: создать запись"""
+    try:
+        from services_app.yclients_api import get_yclients_api, YClientsAPIError
+        from datetime import datetime
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        
+        # Валидация
+        required = ['staff_id', 'service_ids', 'date', 'time', 'client']
+        missing = [f for f in required if f not in body]
+        if missing:
+            return JsonResponse({
+                'success': False,
+                'error': f'Missing: {", ".join(missing)}'
+            }, status=400)
+        
+        staff_id = body['staff_id']
+        service_ids = body['service_ids']
+        date = body['date']
+        time = body['time']
+        client = body['client']
+        comment = body.get('comment', '')
+        
+        # Валидация client
+        if not isinstance(client, dict):
+            return JsonResponse({'success': False, 'error': 'client must be object'}, status=400)
+        
+        if 'name' not in client or 'phone' not in client:
+            return JsonResponse({'success': False, 'error': 'client needs name and phone'}, status=400)
+        
+        # Валидация service_ids
+        if not isinstance(service_ids, list) or not service_ids:
+            return JsonResponse({'success': False, 'error': 'service_ids must be array'}, status=400)
+        
+        # Формируем datetime
+        booking_datetime = f"{date}T{time}:00"
+        
+        # API клиент
+        api = get_yclients_api()
+        
+        # Информация о мастере
+        staff_list = api.get_staff()
+        master = next((s for s in staff_list if s['id'] == staff_id), None)
+        
+        if not master:
+            return JsonResponse({'success': False, 'error': f'Staff {staff_id} not found'}, status=404)
+        
+        logger.info(f"📝 Создание записи: staff={master['name']}, datetime={booking_datetime}")
+        
+        # Создаём запись
+        booking = api.create_booking(
+            staff_id=staff_id,
+            services=service_ids,
+            datetime=booking_datetime,
+            client=client,
+            comment=comment
+        )
+        
+        logger.info(f"✅ Запись создана! Record ID: {booking.get('record_id')}")
+        
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'booking_id': booking.get('record_id'),
+                'booking_hash': booking.get('record_hash'),
+                'staff_id': staff_id,
+                'staff_name': master.get('name'),
+                'datetime': booking_datetime,
+                'service_ids': service_ids,
+                'client_name': client['name'],
+                'comment': comment
+            }
+        })
+        
+    except YClientsAPIError as e:
+        logger.exception(f"❌ YClients API Error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    except Exception as e:
+        logger.exception(f"❌ Error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
