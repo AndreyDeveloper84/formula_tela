@@ -48,7 +48,7 @@ class YClientsAPI:
             data: тело запроса (для POST/PUT)
         
         Returns:
-            Ответ API в виде словаря
+            ПОЛНЫЙ ответ API в виде словаря (включая success, data, meta)
         
         Raises:
             YClientsAPIError: при ошибке запроса
@@ -68,16 +68,20 @@ class YClientsAPI:
             # Логируем запрос для отладки
             logger.debug(f"YClients API: {method} {url} → {response.status_code}")
             
-            response.raise_for_status()
+            # Проверяем HTTP статус
+            if response.status_code >= 400:
+                logger.error(
+                    f"HTTP Error {response.status_code}: {response.text}"
+                )
+                raise YClientsAPIError(
+                    f"HTTP {response.status_code}: {response.text}"
+                )
             
+            # Парсим JSON
             json_response = response.json()
             
-            # YClients возвращает {"success": true/false, "data": {...}}
-            if not json_response.get("success", False):
-                error_msg = json_response.get("meta", {}).get("message", "Unknown error")
-                raise YClientsAPIError(f"API returned error: {error_msg}")
-            
-            return json_response.get("data", {})
+            # ВАЖНО: Возвращаем ПОЛНЫЙ ответ, не только data!
+            return json_response
             
         except requests.exceptions.Timeout:
             raise YClientsAPIError("API request timeout")
@@ -85,10 +89,13 @@ class YClientsAPI:
             raise YClientsAPIError("API connection error")
         except requests.exceptions.HTTPError as e:
             raise YClientsAPIError(f"HTTP error {e.response.status_code}: {e.response.text}")
+        except ValueError as e:
+            # JSON decode error
+            raise YClientsAPIError(f"Invalid JSON response: {str(e)}")
         except Exception as e:
             logger.exception(f"Unexpected error in YClients API request: {e}")
             raise YClientsAPIError(f"Unexpected error: {str(e)}")
-
+    
     @staticmethod
     def authenticate(login: str, password: str, partner_token: str) -> str:
         """
@@ -185,6 +192,151 @@ class YClientsAPI:
             company_id=company_id
         )
 
+    def get_staff(self) -> List[Dict]:
+        """
+        Получить список мастеров (сотрудников) компании
+        
+        Returns:
+            Список мастеров:
+            [
+                {
+                    "id": 456,
+                    "name": "Ирина Хабибулина",
+                    "specialization": "Массажист",
+                    "avatar": "https://...",
+                    "bookable": True,  # доступен для онлайн-записи
+                    "position": {"id": 1, "title": "Мастер"},
+                    "rating": 4.8,
+                    "votes_count": 125
+                },
+                ...
+            ]
+        
+        Example:
+            staff = api.get_staff()
+            bookable_staff = [s for s in staff if s.get('bookable')]
+            print(f"Доступно мастеров: {len(bookable_staff)}")
+        """
+        endpoint = f"/staff/{self.company_id}"
+        
+        response = self._request('GET', endpoint)
+        
+        # Возвращаем список мастеров
+        if isinstance(response, list):
+            return response
+        elif isinstance(response, dict) and 'data' in response:
+            return response['data']
+        else:
+            logger.warning(f"Unexpected staff response format: {type(response)}")
+            return []
+
+    def get_book_dates(self, staff_id: int) -> Dict:
+        """
+        Получить доступные даты для записи к мастеру
+        """
+        endpoint = f"/book_dates/{self.company_id}"
+        params = {'staff_id': staff_id}
+        
+        response = self._request('GET', endpoint, params=params)
+        
+        # Проверяем success
+        if not response.get('success', False):
+            error_msg = response.get('meta', {}).get('message', 'Unknown error')
+            raise YClientsAPIError(f"Failed to get book dates: {error_msg}")
+        
+        data = response.get('data', {})
+        
+        logger.info(
+            f"✅ Доступных дат для мастера {staff_id}: "
+            f"{len(data.get('booking_dates', []))}"
+        )
+        
+        return data
+
+
+    def get_available_times(
+        self,
+        staff_id: int,
+        date: str,  # "2025-12-15"
+        service_id: Optional[int] = None
+    ) -> List[str]:
+        """
+        Получить свободные временные слоты для записи
+        """
+        endpoint = f"/book_times/{self.company_id}/{staff_id}/{date}"
+        
+        params = {}
+        if service_id:
+            params['service_id'] = service_id
+        
+        try:
+            logger.info(
+                f"🔍 Запрос свободного времени: staff={staff_id}, "
+                f"date={date}, service_id={service_id}"
+            )
+            
+            response = self._request('GET', endpoint, params=params)
+            
+            # Проверяем success
+            if not response.get('success', False):
+                logger.warning(
+                    f"⚠️ API вернул success=false для book_times: {response}"
+                )
+                return []
+            
+            # Извлекаем data
+            data = response.get('data', [])
+            
+            logger.debug(f"Raw API response data type: {type(data)}")
+            logger.debug(f"Raw API response data: {data}")
+            
+            # Обрабатываем разные форматы
+            times = []
+            
+            if isinstance(data, list):
+                # Если список строк ['09:00', '10:00', ...]
+                if data and isinstance(data[0], str):
+                    times = data
+                # Если список словарей [{'time': '09:00'}, ...]
+                elif data and isinstance(data[0], dict):
+                    for item in data:
+                        if 'time' in item:
+                            times.append(item['time'])
+                        elif 'datetime' in item:
+                            # Извлекаем только время из datetime
+                            dt = item['datetime']
+                            if isinstance(dt, str) and 'T' in dt:
+                                times.append(dt.split('T')[1][:5])  # "HH:MM"
+                            else:
+                                times.append(str(dt))
+                        elif 'seance_date' in item:
+                            times.append(item['seance_date'])
+            elif isinstance(data, dict):
+                # Если словарь с ключом 'times' или 'slots' или 'seances'
+                times = data.get('times', data.get('slots', data.get('seances', [])))
+                
+                # Если это список словарей, извлекаем time
+                if times and isinstance(times[0], dict):
+                    times = [
+                        t.get('time', t.get('datetime', str(t)))
+                        for t in times
+                    ]
+            
+            logger.info(
+                f"✅ Свободных слотов для мастера {staff_id} "
+                f"на {date}: {len(times)}"
+            )
+            
+            return times
+            
+        except YClientsAPIError as e:
+            logger.error(
+                f"❌ Ошибка получения времени для staff_id={staff_id}, "
+                f"date={date}, service_id={service_id}: {e}"
+            )
+            return []
+            
+                
 def get_yclients_api() -> YClientsAPI:
     """
     Получить готовый экземпляр YClientsAPI из настроек

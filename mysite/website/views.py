@@ -1,7 +1,10 @@
 from django.shortcuts import render, get_object_or_404
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from collections import defaultdict
 from django.db.models import Prefetch
+from django.views.decorators.http import require_GET
+from services_app.yclients_api import get_yclients_api, YClientsAPIError
+import logging
 
 from services_app.models import SiteSettings, ServiceCategory, Service, Master, FAQ, ServiceOption, Promotion, Bundle, BundleItem
 
@@ -164,3 +167,238 @@ def bundles(request):
         "settings": _settings(),
         "bundles": bundles,
     })
+
+logger = logging.getLogger(__name__)
+
+@require_GET
+def api_get_staff(request):
+    """
+    API endpoint: получить список мастеров из YClients
+    
+    Query параметры:
+    - show_all=1  показать всех (включая уволенных/скрытых)
+    - show_all=0  только активные (по умолчанию)
+    """
+    try:
+        from services_app.yclients_api import get_yclients_api, YClientsAPIError
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Получаем параметр фильтрации
+        show_all = request.GET.get('show_all', '0') == '1'
+        
+        # Получаем API клиент
+        api = get_yclients_api()
+        
+        # Получаем список мастеров
+        all_staff = api.get_staff()
+        
+        logger.info(f"📥 Получено мастеров из YClients: {len(all_staff)}")
+        
+        # Статистика (считаем ДО фильтрации!)
+        stats = {
+            'total': len(all_staff),
+            'active': 0,
+            'bookable': 0,
+            'hidden': 0,
+            'fired': 0,
+            'deleted': 0,
+        }
+        
+        # Форматируем мастеров
+        formatted_staff = []
+        
+        for s in all_staff:
+            is_hidden = s.get('hidden', 0) == 1
+            is_fired = s.get('fired', 0) == 1
+            is_deleted = s.get('status', 0) == 1
+            is_bookable = s.get('bookable', False)
+            
+            # Обновляем статистику (для ВСЕХ мастеров)
+            if is_hidden:
+                stats['hidden'] += 1
+            if is_fired:
+                stats['fired'] += 1
+            if is_deleted:
+                stats['deleted'] += 1
+            if is_bookable:
+                stats['bookable'] += 1
+            
+            # Определяем доступность
+            is_available = not is_hidden and not is_fired and not is_deleted
+            
+            if is_available:
+                stats['active'] += 1
+            
+            # Определяем статус
+            if is_deleted:
+                availability_status = 'deleted'
+                availability_info = 'Удалён из системы'
+            elif is_fired:
+                availability_status = 'fired'
+                availability_info = 'Уволен'
+            elif is_hidden:
+                availability_status = 'hidden'
+                availability_info = 'Скрыт от онлайн-записи'
+            elif not is_bookable:
+                availability_status = 'not_configured'
+                availability_info = 'Онлайн-запись не настроена'
+            else:
+                availability_status = 'available'
+                availability_info = 'Доступен для записи'
+            
+            # ФИЛЬТР: Пропускаем неактивных (если show_all=0)
+            if not show_all and not is_available:
+                logger.debug(f"⏭️ Пропущен мастер {s.get('name')}: hidden={is_hidden}, fired={is_fired}, deleted={is_deleted}")
+                continue
+            
+            formatted_staff.append({
+                'id': s['id'],
+                'name': s.get('name', ''),
+                'specialization': s.get('specialization', ''),
+                'avatar': s.get('avatar', ''),
+                'avatar_big': s.get('avatar_big', ''),
+                'rating': s.get('rating', 0),
+                'votes_count': s.get('votes_count', 0),
+                'comments_count': s.get('comments_count', 0),
+                'information': s.get('information', ''),
+                # Флаги
+                'is_available': is_available,
+                'bookable': is_bookable,
+                'hidden': is_hidden,
+                'fired': is_fired,
+                'deleted': is_deleted,
+                # Статус для UI
+                'availability_status': availability_status,
+                'availability_info': availability_info,
+            })
+        
+        logger.info(f"✅ Отфильтровано мастеров: {len(formatted_staff)} из {stats['total']}")
+        logger.info(f"📊 Активных: {stats['active']}, Доступных для записи: {stats['bookable']}")
+        
+        return JsonResponse({
+            'success': True,
+            'data': formatted_staff,
+            'count': len(formatted_staff),
+            'meta': stats
+        })
+        
+    except Exception as e:
+        logger.exception(f"❌ Error in api_get_staff: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'meta': {'total': 0, 'active': 0, 'bookable': 0}
+        }, status=500)
+
+
+@require_GET
+def api_available_times(request):
+    """
+    API endpoint: получить свободные временные слоты
+    
+    Query параметры:
+    - staff_id (обязательно): ID мастера
+    - date (обязательно): дата в формате YYYY-MM-DD
+    - service_id (опционально): ID услуги
+    """
+    try:
+        from services_app.yclients_api import get_yclients_api, YClientsAPIError
+        from datetime import datetime
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"Start api_available_times")
+        logger.info(f"Request: {request.GET}")
+        
+        # Валидация параметров
+        staff_id = request.GET.get('staff_id')
+        date = request.GET.get('date')
+        service_id = request.GET.get('service_id')
+        
+        if not staff_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required parameter: staff_id'
+            }, status=400)
+        
+        if not date:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required parameter: date'
+            }, status=400)
+        
+        # Валидация формата даты
+        try:
+            datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid date format. Use YYYY-MM-DD'
+            }, status=400)
+        
+        # Получаем API клиент
+        api = get_yclients_api()
+        
+        # Получаем информацию о мастере
+        # ИСПРАВЛЕНИЕ: get_staff() возвращает СПИСОК, не словарь!
+        staff_list = api.get_staff()
+        
+        # Проверяем, что получили список
+        if not isinstance(staff_list, list):
+            logger.error(f"Unexpected get_staff() response: {type(staff_list)}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid staff data format'
+            }, status=500)
+        
+        # Ищем мастера по ID
+        master = None
+        for s in staff_list:
+            if str(s.get('id')) == str(staff_id):
+                master = s
+                break
+        
+        if not master:
+            return JsonResponse({
+                'success': False,
+                'error': f'Staff member {staff_id} not found'
+            }, status=404)
+        
+        logger.info(f"🔍 Получение времени для мастера: {master.get('name')}")
+        
+        # Получаем свободные слоты
+        times = api.get_available_times(
+            staff_id=int(staff_id),
+            date=date,
+            service_id=int(service_id) if service_id else None
+        )
+        
+        logger.info(f"✅ Найдено слотов: {len(times)}")
+        
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'staff_id': int(staff_id),
+                'staff_name': master.get('name', ''),
+                'staff_specialization': master.get('specialization', ''),
+                'date': date,
+                'service_id': int(service_id) if service_id else None,
+                'times': times,
+                'count': len(times)
+            }
+        })
+        
+    except YClientsAPIError as e:
+        logger.exception(f"❌ YClients API Error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'YClients API error: {str(e)}'
+        }, status=500)
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error in api_available_times: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
