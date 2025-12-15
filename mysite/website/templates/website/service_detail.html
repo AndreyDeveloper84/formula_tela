@@ -1,6 +1,7 @@
 {% extends 'website/base.html' %}
+{% load static %}
 
-{% block title %}{{ service.name }} | Студия эстетики Формула Тела{% endblock %}
+{% block title %}{{ service.name }} | {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -107,6 +108,12 @@
         border: 1px solid #f5c6cb;
     }
     
+    .alert-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+    }
+    
     .spinner {
         display: inline-block;
         width: 20px;
@@ -139,6 +146,7 @@
         text-align: center;
         padding: 20px;
     }
+    
     /* ============================================
        КАСТОМИЗАЦИЯ FLATPICKR КАЛЕНДАРЯ
        ============================================ */
@@ -335,195 +343,242 @@
         font-weight: 600;
         color: #1f2937;
     }
+    
+    /* Стили для формы бронирования */
+    .form-select,
+    .form-control,
+    .text-def {
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        width: 100%;
+        font-size: 16px;
+    }
+    
+    .form-select:focus,
+    .form-control:focus {
+        outline: none;
+        border-color: #000;
+        box-shadow: 0 0 0 3px rgba(0,0,0,0.1);
+    }
+    
+    .text-def {
+        background: #f5f5f5;
+        color: #666;
+    }
+    
+    .submit {
+        width: 100%;
+        margin-top: 10px;
+    }
+    
+    .in-form {
+        margin-bottom: 20px;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<section class="service serv3 mb-5 mt-4">
-    <div class="container"> 
-        <div class="row">
-            <div class="col-lg-6">
-                <h2 class="mb-4">{{ service.name }}</h2>
-                
+    <!-- ========================= Баннер услуги ========================= -->
+    <section class="banner2 cat1">
+        <div class="container"> 
+            <div class="b2 d-flex flex-column">
+                <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ service.name }}</h2>
                 {% if service.description %}
-                <div class="mb-4">{{ service.description|linebreaks }}</div>
+                    <p class="text-banner wow fadeInUp" data-wow-delay=".4s">{{ service.description|linebreaks }}</p>
                 {% endif %}
-                
-                <!-- ФОРМА БРОНИРОВАНИЯ -->
-                <form id="booking-form" class="mt-4">
-                    <div class="in-form">
-                        <!-- Выбор варианта услуги (если есть несколько) -->
-                        {% if service.options_filtered.count > 1 %}
-                        <select 
-                            id="option-select" 
-                            class="form-select" 
-                            required>
-                            <option value="">Выберите вариант услуги</option>
-                            {% for opt in service.options_filtered %}
-                            <option 
+            </div>
+        </div>
+    </section>
+    
+    <!-- ========================= Форма бронирования ========================= -->
+    <section class="service serv3 mb-72">
+        <div class="container"> 
+            <div class="row">
+                <div class="col-lg-6">
+                    <h2 class="mb-4 wow fadeInUp" data-wow-delay=".2s">Записаться на процедуру</h2>
+                    
+                    <!-- ФОРМА БРОНИРОВАНИЯ -->
+                    <form id="booking-form" class="mt-4">
+                        <div class="in-form">
+                            <!-- Выбор варианта услуги (если есть несколько) -->
+                            {% if service.options_filtered.count > 1 %}
+                            <select 
+                                id="option-select" 
+                                class="form-select" 
+                                required>
+                                <option value="">Выберите вариант услуги</option>
+                                {% for opt in service.options_filtered %}
+                                <option 
+                                    value="{{ opt.id }}"
+                                    data-yclients-id="{{ opt.yclients_service_id }}"
+                                    data-duration="{{ opt.duration_min }}"
+                                    data-price="{{ opt.price }}">
+                                    {{ opt.duration_min }} мин — {{ opt.price|floatformat:0 }} ₽
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% elif service.options_filtered.count == 1 %}
+                            <!-- Если только один вариант - показываем как disabled -->
+                            {% with opt=service.options_filtered.0 %}
+                            <input type="text" class="text-def" value="{{ opt.duration_min }} минут" disabled>
+                            <input 
+                                type="hidden" 
+                                id="option-select" 
                                 value="{{ opt.id }}"
                                 data-yclients-id="{{ opt.yclients_service_id }}"
                                 data-duration="{{ opt.duration_min }}"
                                 data-price="{{ opt.price }}">
-                                {{ opt.duration_min }} мин — {{ opt.price|floatformat:0 }} ₽
-                            </option>
-                            {% endfor %}
-                        </select>
-                        {% elif service.options_filtered.count == 1 %}
-                        <!-- Если только один вариант - показываем как disabled -->
-                        {% with opt=service.options_filtered.0 %}
-                        <input type="text" class="text-def" value="{{ opt.duration_min }} минут" disabled>
-                        <input 
-                            type="hidden" 
-                            id="option-select" 
-                            value="{{ opt.id }}"
-                            data-yclients-id="{{ opt.yclients_service_id }}"
-                            data-duration="{{ opt.duration_min }}"
-                            data-price="{{ opt.price }}">
-                        {% endwith %}
-                        {% else %}
-                        <!-- Нет доступных вариантов услуги -->
-                        <div class="alert alert-warning">
-                            Нет доступных вариантов услуги для онлайн-записи
-                        </div>
-                        {% endif %}
-                        
-                        <!-- Выбор мастера -->
-                        <select 
-                            id="master-select" 
-                            class="form-select" 
-                            required>
-                            <option value="">Загрузка мастеров...</option>
-                        </select>
-                        
-                        <!-- Выбор даты -->
-                        <input 
-                            type="date" 
-                            id="date-zapis" 
-                            class="form-control" 
-                            required>
-                        
-                        <!-- Выбор времени (SELECT вместо INPUT) -->
-                        <div class="time-select-wrapper">
-                            <label class="time-label" for="time-zapis">
-                                <span>Время записи</span>
-                                <span id="time-badge" class="time-badge" style="display: none;">0 слотов</span>
-                            </label>
-                            <select id="time-zapis" class="form-select" required>
-                                <option value="">Сначала выберите мастера и дату</option>
-                            </select>
-                            <div class="loading-overlay" id="time-loading">
-                                <div class="loading-spinner"></div>
+                            {% endwith %}
+                            {% else %}
+                            <!-- Нет доступных вариантов услуги -->
+                            <div class="alert alert-warning">
+                                Нет доступных вариантов услуги для онлайн-записи
                             </div>
+                            {% endif %}
+                            
+                            <!-- Выбор мастера -->
+                            <select 
+                                id="master-select" 
+                                class="form-select" 
+                                required>
+                                <option value="">Загрузка мастеров...</option>
+                            </select>
+                            
+                            <!-- Выбор даты -->
+                            <input 
+                                type="date" 
+                                id="date-zapis" 
+                                class="form-control" 
+                                required>
+                            
+                            <!-- Выбор времени (SELECT вместо INPUT) -->
+                            <div class="time-select-wrapper">
+                                <label class="time-label" for="time-zapis">
+                                    <span>Время записи</span>
+                                    <span id="time-badge" class="time-badge" style="display: none;">0 слотов</span>
+                                </label>
+                                <select id="time-zapis" class="form-select" required>
+                                    <option value="">Сначала выберите мастера и дату</option>
+                                </select>
+                                <div class="loading-overlay" id="time-loading">
+                                    <div class="loading-spinner"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Стоимость -->
+                            <input 
+                                type="text" 
+                                id="price-display" 
+                                class="text-def" 
+                                value="Стоимость: {% if service.options_filtered.count == 1 %}{{ service.options_filtered.0.price|floatformat:0 }}{% else %}—{% endif %} ₽" 
+                                disabled>
                         </div>
                         
-                        <!-- Стоимость -->
-                        <input 
-                            type="text" 
-                            id="price-display" 
-                            class="text-def" 
-                            value="Стоимость: {% if service.options_filtered.count == 1 %}{{ service.options_filtered.0.price|floatformat:0 }}{% else %}—{% endif %} ₽" 
-                            disabled>
+                        <!-- Кнопка записи -->
+                        <button 
+                            type="submit" 
+                            id="submit-booking" 
+                            class="btn-black t-btn submit">
+                            Записаться онлайн
+                        </button>
+                    </form>	
+                </div>
+                
+                <div class="col-lg-6">
+                    <div class="service-image wow fadeInUp" data-wow-delay=".4s">
+                        {% if service.image %}
+                            <img src="{{ service.image.url }}" alt="{{ service.name }}" class="img-fluid" style="max-height: 100%; width: 100%; object-fit: cover; border-radius: 12px;">
+                        {% else %}
+                            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                                <div>{{ service.name }}</div>
+                            </div>
+                        {% endif %}
                     </div>
-                    
-                    <!-- Кнопка записи -->
-                    <button 
-                        type="submit" 
-                        id="submit-booking" 
-                        class="btn-black submit">
-                        Записаться онлайн
-                    </button>
-                </form>	
-            </div>
-            
-            <div class="col-lg-6">
-                <div class="service-image">
-                    {{ service.name }}
                 </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
 
-<!-- Модальное окно для ввода контактов -->
-<div id="contact-modal" class="modal-contact">
-    <div class="modal-contact-content">
-        <span class="modal-contact-close" onclick="closeContactModal()">&times;</span>
-        
-        <h3 style="margin-bottom: 20px;">Подтверждение записи</h3>
-        
-        <!-- Сводка бронирования -->
-        <div class="booking-summary">
-            <div class="booking-summary-item">
-                <span>Услуга:</span>
-                <strong id="summary-service"></strong>
+    <!-- Модальное окно для ввода контактов -->
+    <div id="contact-modal" class="modal-contact">
+        <div class="modal-contact-content">
+            <span class="modal-contact-close" onclick="closeContactModal()">&times;</span>
+            
+            <h3 style="margin-bottom: 20px;">Подтверждение записи</h3>
+            
+            <!-- Сводка бронирования -->
+            <div class="booking-summary">
+                <div class="booking-summary-item">
+                    <span>Услуга:</span>
+                    <strong id="summary-service"></strong>
+                </div>
+                <div class="booking-summary-item">
+                    <span>Мастер:</span>
+                    <strong id="summary-master"></strong>
+                </div>
+                <div class="booking-summary-item">
+                    <span>Дата и время:</span>
+                    <strong id="summary-datetime"></strong>
+                </div>
+                <div class="booking-summary-item">
+                    <span>Стоимость:</span>
+                    <strong id="summary-price"></strong>
+                </div>
             </div>
-            <div class="booking-summary-item">
-                <span>Мастер:</span>
-                <strong id="summary-master"></strong>
-            </div>
-            <div class="booking-summary-item">
-                <span>Дата и время:</span>
-                <strong id="summary-datetime"></strong>
-            </div>
-            <div class="booking-summary-item">
-                <span>Стоимость:</span>
-                <strong id="summary-price"></strong>
-            </div>
+            
+            <!-- Форма контактов -->
+            <form id="contact-form">
+                <div class="form-group">
+                    <label for="client-name">Ваше имя *</label>
+                    <input 
+                        type="text" 
+                        id="client-name" 
+                        placeholder="Иван Петров" 
+                        required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="client-phone">Телефон *</label>
+                    <input 
+                        type="tel" 
+                        id="client-phone" 
+                        placeholder="+7 (900) 123-45-67" 
+                        required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="client-email">Email</label>
+                    <input 
+                        type="email" 
+                        id="client-email" 
+                        placeholder="email@example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="client-comment">Комментарий</label>
+                    <textarea 
+                        id="client-comment" 
+                        rows="3"
+                        placeholder="Дополнительные пожелания"></textarea>
+                </div>
+                
+                <div id="modal-alert"></div>
+                
+                <button 
+                    type="submit" 
+                    id="confirm-booking" 
+                    class="btn-black t-btn" 
+                    style="width: 100%; margin-top: 10px;">
+                    Подтвердить запись
+                </button>
+            </form>
         </div>
-        
-        <!-- Форма контактов -->
-        <form id="contact-form">
-            <div class="form-group">
-                <label for="client-name">Ваше имя *</label>
-                <input 
-                    type="text" 
-                    id="client-name" 
-                    placeholder="Иван Петров" 
-                    required>
-            </div>
-            
-            <div class="form-group">
-                <label for="client-phone">Телефон *</label>
-                <input 
-                    type="tel" 
-                    id="client-phone" 
-                    placeholder="+7 (900) 123-45-67" 
-                    required>
-            </div>
-            
-            <div class="form-group">
-                <label for="client-email">Email</label>
-                <input 
-                    type="email" 
-                    id="client-email" 
-                    placeholder="email@example.com">
-            </div>
-            
-            <div class="form-group">
-                <label for="client-comment">Комментарий</label>
-                <textarea 
-                    id="client-comment" 
-                    rows="3"
-                    placeholder="Дополнительные пожелания"></textarea>
-            </div>
-            
-            <div id="modal-alert"></div>
-            
-            <button 
-                type="submit" 
-                id="confirm-booking" 
-                class="btn-black" 
-                style="width: 100%; margin-top: 10px;">
-                Подтвердить запись
-            </button>
-        </form>
     </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
-
 <script>
     // Конфигурация
     const API_BASE_URL = '{{ request.scheme }}://{{ request.get_host }}';
@@ -638,6 +693,7 @@
             }
         });
     }
+    
     // Флаги для предотвращения повторных запросов
     let isLoadingDates = false;
     let isLoadingTimes = false;
@@ -1135,7 +1191,6 @@
     
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
     document.addEventListener('DOMContentLoaded', function() {
-
         initializeEmptyDatePicker();
         
         console.log('🚀 Инициализация формы бронирования...');
