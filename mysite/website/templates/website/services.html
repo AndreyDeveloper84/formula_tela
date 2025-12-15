@@ -1,170 +1,237 @@
 {% extends "website/base.html" %}
-{% load service_extras humanize %}
-{% block title %}Услуги — {{ settings.salon_name }}{% endblock %}
+{% load static service_extras humanize %}
+{% block title %}Услуги — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+
 {% block content %}
-  <h1 class="text-3xl font-bold mb-6">Услуги</h1>
-
-{% for cat in categories %}
-  <h2 class="mb-4">{{ cat.name }}</h2>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-  {% for s in cat.services.all %}
-    {% if s.is_active %}
-    <div class="p-5 rounded-2xl shadow bg-white">
-      <h3 class="text-lg font-semibold mb-2">{{ s.name }}</h3>
-      {% if s.options.all %}
-        <form method="get">
-          <label class="block text-sm mb-1">Вариант</label>
-          <select id="opt-{{ s.id }}" class="w-full border rounded px-3 py-2 mb-3">
-            {% for opt in s.options.all %}
-              {% if opt.is_active %}
-                <option
-                  value="{{ opt.id }}"
-                  data-yclients-id="{{ opt.yclients_service_id }}"
-                  data-duration="{{ opt.duration_min }}"
-                  data-units="{{ opt.units }}"
-                  data-unit-type="{{ opt.unit_type }}"
-                  data-price="{{ opt.price }}"
-                >
-                  {{ opt|option_label }}
-                </option>
-              {% endif %}
-            {% endfor %}
-          </select>
-
-          <a class="btn" 
-             href="#" 
-             onclick="openYClientsModal('opt-{{ s.id }}'); return false;">
-            Записаться
-          </a>
-        </form>
-      {% else %}
-        <p class="text-sm text-gray-500">Нет активных вариантов</p>
-      {% endif %}
-    </div>
+    <!-- ========================= Баннер (опционально, если есть промо) ========================= -->
+    {% if promotions %}
+    <section class="banner2">
+        <div class="container"> 
+            <div class="b2 d-flex flex-column" id="parallax">
+                {% with promo=promotions.0 %}
+                    <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ promo.title|default:"Специальное предложение" }}</h2>
+                    <p class="text-banner wow fadeInUp" data-wow-delay=".4s">
+                        {{ promo.subtitle|default:"Запишитесь на процедуры прямо сейчас"|safe }}
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="#" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s" data-bs-toggle="modal" data-bs-target="#exampleModal">Записаться</a>
+                    </div>
+                {% endwith %}
+            </div>
+        </div>
+    </section>
     {% endif %}
-  {% endfor %}
-  </div>
-{% endfor %}
-
-{# Модальное окно с iframe #}
-<div id="yclients-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; overflow:auto;">
-  <div style="position:relative; width:95%; max-width:1100px; height:95%; margin:2.5% auto; background:white; border-radius:12px; overflow:hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
     
-    {# Заголовок с информацией об услуге #}
-    <div id="modal-header" style="background:#2563eb; color:white; padding:20px; display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <h3 id="modal-service-name" style="margin:0; font-size:20px; font-weight:600;"></h3>
-        <p id="modal-service-details" style="margin:5px 0 0 0; opacity:0.9; font-size:14px;"></p>
-      </div>
-      <button onclick="closeYClientsModal()" style="background:rgba(255,255,255,0.2); color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:8px; font-size:20px; font-weight:bold; transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
-        ✕ Закрыть
-      </button>
+    <!-- ========================= Услуги по категориям ========================= -->
+    {% for cat in categories %}
+        <section class="service serv1 mb-72" id="category-{{ cat.id }}">
+            <div class="container"> 
+                <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ cat.name }}</h2>
+                {% if cat.description %}
+                    <p class="text-banner mb-4 wow fadeInUp" data-wow-delay=".3s">{{ cat.description }}</p>
+                {% endif %}
+                <div class="row">
+                    {% for s in cat.services.all %}
+                        {% if s.is_active %}
+                            <div class="col-lg-4 col-md-6 col-sm-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% else %}1.4{% endif %}s">
+                                <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
+                                    {% if s.image %}
+                                        <img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                        <img src="{{ s.image.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                    {% else %}
+                                        <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                        <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                    {% endif %}
+                                </a>
+                                
+                                <div class="text-center mb-40">
+                                    <a href="{% url 'website:service_detail' service_id=s.id %}" class="d-block">
+                                        <span class="semi f20 mb-15 d-block">{{ s.name }}</span>
+                                        {% if s.options.all %}
+                                            {% with first_option=s.options.all|first %}
+                                                <span class="op50">
+                                                    {% if first_option.units and first_option.units > 1 %}
+                                                        {{ first_option.duration_min }} мин × {{ first_option.units }} {{ first_option.get_unit_type_display }} — от {{ first_option.price|floatformat:0 }} ₽
+                                                    {% else %}
+                                                        {{ first_option.duration_min }} мин — от {{ first_option.price|floatformat:0 }} ₽
+                                                    {% endif %}
+                                                </span>
+                                            {% endwith %}
+                                        {% elif s.price_from %}
+                                            <span class="op50">от {{ s.price_from|floatformat:0 }} ₽</span>
+                                        {% endif %}
+                                    </a>
+                                    
+                                    {% if s.options.all %}
+                                        <form method="get" class="mt-3" onsubmit="event.preventDefault(); openYClientsModal('opt-{{ s.id }}'); return false;">
+                                            <select id="opt-{{ s.id }}" class="form-select mb-2" style="width: 100%;">
+                                                {% for opt in s.options.all %}
+                                                    {% if opt.is_active %}
+                                                        <option
+                                                            value="{{ opt.id }}"
+                                                            data-yclients-id="{{ opt.yclients_service_id }}"
+                                                            data-duration="{{ opt.duration_min }}"
+                                                            data-units="{{ opt.units }}"
+                                                            data-unit-type="{{ opt.unit_type }}"
+                                                            data-price="{{ opt.price }}"
+                                                        >
+                                                            {{ opt|option_label }}
+                                                        </option>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </select>
+                                            <a class="btn-black t-btn" 
+                                               href="#" 
+                                               onclick="openYClientsModal('opt-{{ s.id }}'); return false;"
+                                               style="display: inline-block; width: 100%; text-align: center;">
+                                                Записаться
+                                            </a>
+                                        </form>
+                                    {% else %}
+                                        <a href="{% url 'website:service_detail' service_id=s.id %}" class="btn-black t-btn mt-3" style="display: inline-block; width: 100%; text-align: center;">
+                                            Подробнее
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% empty %}
+                        <div class="col-12">
+                            <p class="text-center op50">В этой категории пока нет услуг</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    {% empty %}
+        <section class="service serv1 mb-72">
+            <div class="container"> 
+                <h2 class="wow fadeInUp" data-wow-delay=".2s">Услуги салона</h2>
+                <div class="row">
+                    <div class="col-12">
+                        <p class="text-center">Категории услуг пока не добавлены</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    {% endfor %}
+
+    {# Модальное окно с iframe YClients #}
+    <div id="yclients-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; overflow:auto;">
+        <div style="position:relative; width:95%; max-width:1100px; height:95%; margin:2.5% auto; background:white; border-radius:12px; overflow:hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+            
+            {# Заголовок с информацией об услуге #}
+            <div id="modal-header" style="background:#2563eb; color:white; padding:20px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h3 id="modal-service-name" style="margin:0; font-size:20px; font-weight:600;"></h3>
+                    <p id="modal-service-details" style="margin:5px 0 0 0; opacity:0.9; font-size:14px;"></p>
+                </div>
+                <button onclick="closeYClientsModal()" style="background:rgba(255,255,255,0.2); color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:8px; font-size:20px; font-weight:bold; transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+                    ✕ Закрыть
+                </button>
+            </div>
+            
+            {# iframe с формой YClients #}
+            <iframe id="yclients-iframe" src="" style="width:100%; height:calc(100% - 80px); border:none; display:block;"></iframe>
+            
+            {# Подсказка внизу #}
+            <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.05); padding:10px; text-align:center; font-size:12px; color:#666;">
+                💡 Выберите услугу "<span id="modal-hint-service"></span>" в форме записи
+            </div>
+        </div>
     </div>
-    
-    {# iframe с формой YClients #}
-    <iframe id="yclients-iframe" src="" style="width:100%; height:calc(100% - 80px); border:none; display:block;"></iframe>
-    
-    {# Подсказка внизу #}
-    <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.05); padding:10px; text-align:center; font-size:12px; color:#666;">
-      💡 Выберите услугу "<span id="modal-hint-service"></span>" в форме записи
-    </div>
-  </div>
-</div>
 
-<script>
-function openYClientsModal(selectId) {
-  const select = document.getElementById(selectId);
-  if (!select) return;
-  
-  const selectedOption = select.options[select.selectedIndex];
-  const serviceId = selectedOption.getAttribute('data-yclients-id');
-  const price = selectedOption.getAttribute('data-price');
-  const duration = selectedOption.getAttribute('data-duration');
-  const units = selectedOption.getAttribute('data-units');
-  const unitType = selectedOption.getAttribute('data-unit-type');
-  
-  // Получаем название услуги из текста option
-  const serviceLabel = selectedOption.text;
-  const serviceName = select.closest('.p-5').querySelector('h3').textContent;
-  
-  // Формируем детали
-  let details = duration + ' мин';
-  if (units && units > 1) {
-    const unitLabels = {
-      'session': 'процедур',
-      'zone': 'зон',
-      'visit': 'визитов'
-    };
-    details += ' × ' + units + ' ' + (unitLabels[unitType] || 'ед.');
-  }
-  details += ' — ' + Math.round(price) + ' ₽';
-  
-  // Обновляем заголовок модального окна
-  document.getElementById('modal-service-name').textContent = serviceName;
-  document.getElementById('modal-service-details').textContent = details;
-  document.getElementById('modal-hint-service').textContent = serviceName;
-  
-  // Базовый URL компании
-  const companyId = "{{ settings.yclients_company_id }}";
-  
-  // ВАЖНО: Если есть service_id - открываем СРАЗУ выбор времени
-  // Иначе - общую форму
-  let url;
-  if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
-    // Прямой переход к выбору времени
-    url = `https://n951024.yclients.com/company/${companyId}/personal/select_time?o=s${serviceId}`;
-    console.log("   ✅ Переход напрямую к выбору времени");
-    console.log("   ✅ Service ID:", serviceId);
-  } else {
-    // Общая форма (если service_id не указан)
-    url = `https://n951024.yclients.com/company/${companyId}`;
-    console.log("   ℹ️ Service ID не указан - общая форма");
-  }
-  
-  // Логируем
-  console.log("=== ОТКРЫТИЕ МОДАЛЬНОГО ОКНА ===");
-  console.log("   Услуга:", serviceName);
-  console.log("   Детали:", details);
-  console.log("   URL:", url);
-  console.log("===================================");
-  
-  // Загружаем в iframe
-  document.getElementById('yclients-iframe').src = url;
-  
-  // Показываем модальное окно
-  document.getElementById('yclients-modal').style.display = 'block';
-  
-  // Блокируем скролл body
-  document.body.style.overflow = 'hidden';
-}
-
-function closeYClientsModal() {
-  document.getElementById('yclients-modal').style.display = 'none';
-  document.getElementById('yclients-iframe').src = '';
-  
-  // Восстанавливаем скролл
-  document.body.style.overflow = '';
-  
-  console.log("✅ Модальное окно закрыто");
-}
-
-// Закрытие по клику вне окна
-document.getElementById('yclients-modal').addEventListener('click', function(e) {
-  if (e.target === this) {
-    closeYClientsModal();
-  }
-});
-
-// Закрытие по Escape
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    const modal = document.getElementById('yclients-modal');
-    if (modal.style.display === 'block') {
-      closeYClientsModal();
+    <script>
+    function openYClientsModal(selectId) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        
+        const selectedOption = select.options[select.selectedIndex];
+        const serviceId = selectedOption.getAttribute('data-yclients-id');
+        const price = selectedOption.getAttribute('data-price');
+        const duration = selectedOption.getAttribute('data-duration');
+        const units = selectedOption.getAttribute('data-units');
+        const unitType = selectedOption.getAttribute('data-unit-type');
+        
+        // Получаем название услуги
+        const serviceName = select.closest('.col-lg-4, .col-md-6, .col-sm-6').querySelector('.semi.f20').textContent;
+        
+        // Формируем детали
+        let details = duration + ' мин';
+        if (units && units > 1) {
+            const unitLabels = {
+                'session': 'процедур',
+                'zone': 'зон',
+                'visit': 'визитов'
+            };
+            details += ' × ' + units + ' ' + (unitLabels[unitType] || 'ед.');
+        }
+        details += ' — ' + Math.round(price) + ' ₽';
+        
+        // Обновляем заголовок модального окна
+        document.getElementById('modal-service-name').textContent = serviceName;
+        document.getElementById('modal-service-details').textContent = details;
+        document.getElementById('modal-hint-service').textContent = serviceName;
+        
+        // Базовый URL компании
+        const companyId = "{{ settings.yclients_company_id }}";
+        
+        // ВАЖНО: Если есть service_id - открываем СРАЗУ выбор времени
+        // Иначе - общую форму
+        let url;
+        if (serviceId && serviceId !== 'None' && serviceId !== '' && serviceId !== 'null') {
+            // Прямой переход к выбору времени
+            url = `https://n951024.yclients.com/company/${companyId}/personal/select_time?o=s${serviceId}`;
+            console.log("   ✅ Переход напрямую к выбору времени");
+            console.log("   ✅ Service ID:", serviceId);
+        } else {
+            // Общая форма (если service_id не указан)
+            url = `https://n951024.yclients.com/company/${companyId}`;
+            console.log("   ℹ️ Service ID не указан - общая форма");
+        }
+        
+        // Логируем
+        console.log("=== ОТКРЫТИЕ МОДАЛЬНОГО ОКНА ===");
+        console.log("   Услуга:", serviceName);
+        console.log("   Детали:", details);
+        console.log("   URL:", url);
+        console.log("===================================");
+        
+        // Загружаем в iframe
+        document.getElementById('yclients-iframe').src = url;
+        
+        // Показываем модальное окно
+        document.getElementById('yclients-modal').style.display = 'block';
+        
+        // Блокируем скролл body
+        document.body.style.overflow = 'hidden';
     }
-  }
-});
-</script>
 
+    function closeYClientsModal() {
+        document.getElementById('yclients-modal').style.display = 'none';
+        document.getElementById('yclients-iframe').src = '';
+        
+        // Восстанавливаем скролл
+        document.body.style.overflow = '';
+        
+        console.log("✅ Модальное окно закрыто");
+    }
+
+    // Закрытие по клику вне окна
+    document.getElementById('yclients-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeYClientsModal();
+        }
+    });
+
+    // Закрытие по Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('yclients-modal');
+            if (modal.style.display === 'block') {
+                closeYClientsModal();
+            }
+        }
+    });
+    </script>
 {% endblock %}

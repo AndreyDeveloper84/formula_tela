@@ -72,9 +72,17 @@ def services(request):
         .all()
         .order_by("order", "name")
     )
+    
+    # Промо для баннера (если нужно)
+    promos = (
+        Promotion.objects.filter(is_active=True)
+        .order_by("order", "-starts_at", "title")[:1]
+    )
+    
     return render(request, "website/services.html", {
         "settings": _settings(),
         "categories": categories,
+        "promotions": promos,
     })
 
 
