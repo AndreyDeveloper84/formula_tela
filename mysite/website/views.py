@@ -32,6 +32,17 @@ def home(request):
         opts = list(svc.options.all())
         top_items.append({"service": svc, "options": opts})
 
+    # Категории услуг для секции "Услуги салона"
+    categories = (
+        ServiceCategory.objects.prefetch_related("services")
+        .filter(services__is_active=True)
+        .distinct()
+        .order_by("order", "name")[:8]
+    )
+
+    # Мастера для секции "Наши мастера"
+    masters = Master.objects.filter(is_active=True).prefetch_related("services").all().order_by("name")[:4]
+
     promos = (
         Promotion.objects.filter(is_active=True)
         .order_by("order", "-starts_at", "title")[:3]
@@ -47,6 +58,8 @@ def home(request):
     ctx = {
         "settings": _settings(),
         "top_items": top_items,
+        "categories": categories,
+        "masters": masters,
         "faq": FAQ.objects.filter(is_active=True).order_by("order", "id")[:6],
         "promotions": promos,
         "popular_bundles": popular_bundles,

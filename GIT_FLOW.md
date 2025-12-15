@@ -106,9 +106,23 @@ git push origin main
 ## Быстрые команды
 
 ### Пуш изменений в dev (ежедневная разработка)
+
+**⚠️ ВАЖНО:** При использовании `git add` в Windows могут возникать ошибки с путями. 
+См. [GIT_ADD_GUIDE.md](GIT_ADD_GUIDE.md) для правильного подхода.
+
 ```bash
-git add .
+# Безопасный способ: добавление конкретных файлов
+git add mysite/services_app/yclients_api.py
+git add mysite/website/views.py
+git add mysite/website/templates/website/service_detail.html
+
+# Или добавление всех измененных файлов (осторожно!)
+git add -u
+
+# Коммит
 git commit -m "feat: Description"
+
+# Пуш
 git push origin dev
 ```
 
@@ -188,3 +202,10 @@ sudo systemctl restart formula_tela
 - **GitHub Actions:** https://github.com/AndreyDeveloper84/formula_tela/actions
 - **Staging сайт:** https://formulatela58.ru/ (dev)
 - **Production сайт:** https://formulatela58.ru/ (main, когда запустим)
+
+## Дополнительные руководства
+
+- **[GIT_ADD_GUIDE.md](GIT_ADD_GUIDE.md)** - Руководство по безопасному использованию `git add` в Windows
+  - Решение проблем с путями
+  - Проверка существования файлов
+  - Обработка ошибок
