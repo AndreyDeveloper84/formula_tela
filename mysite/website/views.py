@@ -401,19 +401,50 @@ def api_create_booking(request):
 def service_detail(request, service_id):
     """Страница конкретной услуги с формой бронирования"""
     from services_app.models import Service
+    import logging
     
-    service = get_object_or_404(Service, pk=service_id, is_active=True)
+    logger = logging.getLogger(__name__)
     
-    # Получаем только активные опции с YClients ID
-    service.options_filtered = service.options.filter(
-        is_active=True,
-        yclients_service_id__isnull=False
-    ).exclude(yclients_service_id='').order_by('order', 'duration_min')
-    
-    return render(request, 'website/service_detail.html', {
-        'settings': _settings(),
-        'service': service,
-    })
+    try:
+        # Сначала пытаемся найти активную услугу
+        service = Service.objects.filter(pk=service_id, is_active=True).first()
+        
+        if not service:
+            # Проверяем, существует ли услуга вообще (для отладки)
+            service_exists = Service.objects.filter(pk=service_id).exists()
+            if service_exists:
+                logger.warning(f"⚠️ Услуга {service_id} существует, но неактивна (is_active=False)")
+                # Можно показать услугу даже если она неактивна (для отладки на staging)
+                # Или вернуть 404 с более информативным сообщением
+                service = Service.objects.get(pk=service_id)
+            else:
+                logger.error(f"❌ Услуга {service_id} не найдена в базе данных")
+                from django.http import Http404
+                raise Http404(f"Услуга с ID {service_id} не найдена")
+        
+        logger.info(f"✅ Загружена услуга: {service.name} (ID: {service_id}, active: {service.is_active})")
+        
+        # Получаем только активные опции с YClients ID
+        service.options_filtered = service.options.filter(
+            is_active=True,
+            yclients_service_id__isnull=False
+        ).exclude(yclients_service_id='').order_by('order', 'duration_min')
+        
+        logger.info(f"📋 Найдено активных вариантов с YClients ID: {service.options_filtered.count()}")
+        
+        return render(request, 'website/service_detail.html', {
+            'settings': _settings(),
+            'service': service,
+        })
+        
+    except Service.DoesNotExist:
+        logger.error(f"❌ Услуга {service_id} не найдена (DoesNotExist)")
+        from django.http import Http404
+        raise Http404(f"Услуга с ID {service_id} не найдена")
+    except Exception as e:
+        logger.exception(f"❌ Ошибка при загрузке услуги {service_id}: {e}")
+        from django.http import Http404
+        raise Http404(f"Ошибка при загрузке услуги: {str(e)}")
 
 @csrf_exempt
 def api_available_dates(request):
