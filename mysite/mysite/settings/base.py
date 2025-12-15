@@ -92,6 +92,9 @@ USE_TZ   = True
 
 STATIC_URL  = "/static/"
 STATIC_ROOT = os.getenv("STATIC_ROOT", str(BASE_DIR / "staticfiles"))
+STATICFILES_DIRS = [
+    BASE_DIR / "static",  # Глобальная папка static в корне проекта
+]
 MEDIA_URL   = "/media/"
 MEDIA_ROOT  = os.getenv("MEDIA_ROOT", str(BASE_DIR / "media"))
 

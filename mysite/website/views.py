@@ -172,242 +172,97 @@ def bundles(request):
 
 logger = logging.getLogger(__name__)
 
-@require_GET
-def api_get_staff(request):
-    """
-    API endpoint: получить список мастеров из YClients
-    
-    Query параметры:
-    - show_all=1  показать всех (включая уволенных/скрытых)
-    - show_all=0  только активные (по умолчанию)
-    """
-    try:
-        from services_app.yclients_api import get_yclients_api, YClientsAPIError
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
-        # Получаем параметр фильтрации
-        show_all = request.GET.get('show_all', '0') == '1'
-        
-        # Получаем API клиент
-        api = get_yclients_api()
-        
-        # Получаем список мастеров
-        all_staff = api.get_staff()
-        
-        logger.info(f"📥 Получено мастеров из YClients: {len(all_staff)}")
-        
-        # Статистика (считаем ДО фильтрации!)
-        stats = {
-            'total': len(all_staff),
-            'active': 0,
-            'bookable': 0,
-            'hidden': 0,
-            'fired': 0,
-            'deleted': 0,
-        }
-        
-        # Форматируем мастеров
-        formatted_staff = []
-        
-        for s in all_staff:
-            is_hidden = s.get('hidden', 0) == 1
-            is_fired = s.get('fired', 0) == 1
-            is_deleted = s.get('status', 0) == 1
-            is_bookable = s.get('bookable', False)
-            
-            # Обновляем статистику (для ВСЕХ мастеров)
-            if is_hidden:
-                stats['hidden'] += 1
-            if is_fired:
-                stats['fired'] += 1
-            if is_deleted:
-                stats['deleted'] += 1
-            if is_bookable:
-                stats['bookable'] += 1
-            
-            # Определяем доступность
-            is_available = not is_hidden and not is_fired and not is_deleted
-            
-            if is_available:
-                stats['active'] += 1
-            
-            # Определяем статус
-            if is_deleted:
-                availability_status = 'deleted'
-                availability_info = 'Удалён из системы'
-            elif is_fired:
-                availability_status = 'fired'
-                availability_info = 'Уволен'
-            elif is_hidden:
-                availability_status = 'hidden'
-                availability_info = 'Скрыт от онлайн-записи'
-            elif not is_bookable:
-                availability_status = 'not_configured'
-                availability_info = 'Онлайн-запись не настроена'
-            else:
-                availability_status = 'available'
-                availability_info = 'Доступен для записи'
-            
-            # ФИЛЬТР: Пропускаем неактивных (если show_all=0)
-            if not show_all and not is_available:
-                logger.debug(f"⏭️ Пропущен мастер {s.get('name')}: hidden={is_hidden}, fired={is_fired}, deleted={is_deleted}")
-                continue
-            
-            formatted_staff.append({
-                'id': s['id'],
-                'name': s.get('name', ''),
-                'specialization': s.get('specialization', ''),
-                'avatar': s.get('avatar', ''),
-                'avatar_big': s.get('avatar_big', ''),
-                'rating': s.get('rating', 0),
-                'votes_count': s.get('votes_count', 0),
-                'comments_count': s.get('comments_count', 0),
-                'information': s.get('information', ''),
-                # Флаги
-                'is_available': is_available,
-                'bookable': is_bookable,
-                'hidden': is_hidden,
-                'fired': is_fired,
-                'deleted': is_deleted,
-                # Статус для UI
-                'availability_status': availability_status,
-                'availability_info': availability_info,
-            })
-        
-        logger.info(f"✅ Отфильтровано мастеров: {len(formatted_staff)} из {stats['total']}")
-        logger.info(f"📊 Активных: {stats['active']}, Доступных для записи: {stats['bookable']}")
-        
-        return JsonResponse({
-            'success': True,
-            'data': formatted_staff,
-            'count': len(formatted_staff),
-            'meta': stats
-        })
-        
-    except Exception as e:
-        logger.exception(f"❌ Error in api_get_staff: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e),
-            'meta': {'total': 0, 'active': 0, 'bookable': 0}
-        }, status=500)
 
 @require_GET
+@csrf_exempt
 def api_available_times(request):
     """
-    API endpoint: получить свободные временные слоты
-    
-    Query параметры:
-    - staff_id (обязательно): ID мастера
-    - date (обязательно): дата в формате YYYY-MM-DD
-    - service_id (опционально): ID услуги
+    API: получить список доступных времён для записи.
     """
     try:
         from services_app.yclients_api import get_yclients_api, YClientsAPIError
-        from datetime import datetime
         import logging
         
         logger = logging.getLogger(__name__)
-        logger.info(f"Start api_available_times")
-        logger.info(f"Request: {request.GET}")
         
-        # Валидация параметров
         staff_id = request.GET.get('staff_id')
         date = request.GET.get('date')
-        service_id = request.GET.get('service_id')
         
-        if not staff_id:
+        if not staff_id or not date:
             return JsonResponse({
                 'success': False,
-                'error': 'Missing required parameter: staff_id'
+                'error': 'staff_id and date are required'
             }, status=400)
         
-        if not date:
-            return JsonResponse({
-                'success': False,
-                'error': 'Missing required parameter: date'
-            }, status=400)
+        logger.info(f"⏰ Запрос доступных времён: мастер={staff_id}, дата={date}")
         
-        # Валидация формата даты
-        try:
-            datetime.strptime(date, '%Y-%m-%d')
-        except ValueError:
-            return JsonResponse({
-                'success': False,
-                'error': 'Invalid date format. Use YYYY-MM-DD'
-            }, status=400)
-        
-        # Получаем API клиент
         api = get_yclients_api()
         
-        # Получаем информацию о мастере
-        # ИСПРАВЛЕНИЕ: get_staff() возвращает СПИСОК, не словарь!
-        staff_list = api.get_staff()
-        
-        # Проверяем, что получили список
-        if not isinstance(staff_list, list):
-            logger.error(f"Unexpected get_staff() response: {type(staff_list)}")
+        try:
+            times = api.get_available_times(
+                staff_id=int(staff_id),
+                date=date
+            )
+            
+            logger.info(f"✅ Найдено свободных слотов: {len(times)}")
+            
+            # ВСЕГДА возвращаем success=true, даже если слотов 0
             return JsonResponse({
-                'success': False,
-                'error': 'Invalid staff data format'
-            }, status=500)
-        
-        # Ищем мастера по ID
-        master = None
-        for s in staff_list:
-            if str(s.get('id')) == str(staff_id):
-                master = s
-                break
-        
-        if not master:
+                'success': True,
+                'data': {
+                    'times': times,
+                    'count': len(times),
+                    'date': date,
+                    'staff_id': staff_id
+                }
+            })
+            
+        except YClientsAPIError as e:
+            logger.error(f"❌ YClients API error: {e}")
+            # Возвращаем пустой массив вместо ошибки
             return JsonResponse({
-                'success': False,
-                'error': f'Staff member {staff_id} not found'
-            }, status=404)
-        
-        logger.info(f"🔍 Получение времени для мастера: {master.get('name')}")
-        
-        # Получаем свободные слоты
-        times = api.get_available_times(
-            staff_id=int(staff_id),
-            date=date,
-            service_id=int(service_id) if service_id else None
-        )
-        
-        logger.info(f"✅ Найдено слотов: {len(times)}")
-        
-        return JsonResponse({
-            'success': True,
-            'data': {
-                'staff_id': int(staff_id),
-                'staff_name': master.get('name', ''),
-                'staff_specialization': master.get('specialization', ''),
-                'date': date,
-                'service_id': int(service_id) if service_id else None,
-                'times': times,
-                'count': len(times)
-            }
-        })
-        
-    except YClientsAPIError as e:
-        logger.exception(f"❌ YClients API Error: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': f'YClients API error: {str(e)}'
-        }, status=500)
+                'success': True,
+                'data': {
+                    'times': [],
+                    'count': 0,
+                    'date': date,
+                    'staff_id': staff_id,
+                    'warning': 'Нет доступных слотов на эту дату'
+                }
+            })
+            
     except Exception as e:
-        logger.exception(f"❌ Unexpected error in api_available_times: {e}")
+        logger.error(f"❌ Unexpected error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': 'Internal server error'
         }, status=500)
 
 @csrf_exempt
 @require_POST
 def api_create_booking(request):
-    """API: создать запись"""
+    """
+    API endpoint: создать запись клиента
+    
+    POST /api/booking/create/
+    
+    Body:
+    {
+        "staff_id": 4416525,
+        "service_ids": [10461107, 10461108],  // ID услуг из YClients
+        "date": "2025-12-15",
+        "time": "10:00",
+        "client": {
+            "name": "Иван Петров",
+            "phone": "79001234567",
+            "email": "ivan@example.com"
+        },
+        "comment": "Комментарий"
+    }
+    """
     try:
         from services_app.yclients_api import get_yclients_api, YClientsAPIError
         from datetime import datetime
@@ -415,10 +270,14 @@ def api_create_booking(request):
         
         logger = logging.getLogger(__name__)
         
+        # Парсим JSON
         try:
             body = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid JSON'
+            }, status=400)
         
         # Валидация
         required = ['staff_id', 'service_ids', 'date', 'time', 'client']
@@ -430,7 +289,7 @@ def api_create_booking(request):
             }, status=400)
         
         staff_id = body['staff_id']
-        service_ids = body['service_ids']
+        service_ids = body['service_ids']  # Массив ID услуг
         date = body['date']
         time = body['time']
         client = body['client']
@@ -438,14 +297,41 @@ def api_create_booking(request):
         
         # Валидация client
         if not isinstance(client, dict):
-            return JsonResponse({'success': False, 'error': 'client must be object'}, status=400)
+            return JsonResponse({
+                'success': False,
+                'error': 'client must be object'
+            }, status=400)
         
         if 'name' not in client or 'phone' not in client:
-            return JsonResponse({'success': False, 'error': 'client needs name and phone'}, status=400)
+            return JsonResponse({
+                'success': False,
+                'error': 'client must have name and phone'
+            }, status=400)
         
         # Валидация service_ids
         if not isinstance(service_ids, list) or not service_ids:
-            return JsonResponse({'success': False, 'error': 'service_ids must be array'}, status=400)
+            return JsonResponse({
+                'success': False,
+                'error': 'service_ids must be non-empty array'
+            }, status=400)
+        
+        # Валидация формата даты
+        try:
+            datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid date format. Use YYYY-MM-DD'
+            }, status=400)
+        
+        # Валидация формата времени
+        try:
+            datetime.strptime(time, '%H:%M')
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid time format. Use HH:MM'
+            }, status=400)
         
         # Формируем datetime
         booking_datetime = f"{date}T{time}:00"
@@ -458,20 +344,32 @@ def api_create_booking(request):
         master = next((s for s in staff_list if s['id'] == staff_id), None)
         
         if not master:
-            return JsonResponse({'success': False, 'error': f'Staff {staff_id} not found'}, status=404)
+            return JsonResponse({
+                'success': False,
+                'error': f'Staff {staff_id} not found'
+            }, status=404)
         
-        logger.info(f"📝 Создание записи: staff={master['name']}, datetime={booking_datetime}")
+        logger.info(
+            f"📝 Создание записи: "
+            f"staff={master['name']}, "
+            f"datetime={booking_datetime}, "
+            f"client={client['name']}, "
+            f"services={service_ids}"
+        )
         
         # Создаём запись
         booking = api.create_booking(
             staff_id=staff_id,
-            services=service_ids,
+            services=service_ids,  # Передаём как есть
             datetime=booking_datetime,
             client=client,
             comment=comment
         )
         
-        logger.info(f"✅ Запись создана! Record ID: {booking.get('record_id')}")
+        logger.info(
+            f"✅ Запись создана! "
+            f"Record ID: {booking.get('record_id')}"
+        )
         
         return JsonResponse({
             'success': True,
@@ -489,7 +387,187 @@ def api_create_booking(request):
         
     except YClientsAPIError as e:
         logger.exception(f"❌ YClients API Error: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
     except Exception as e:
         logger.exception(f"❌ Error: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+def service_detail(request, service_id):
+    """Страница конкретной услуги с формой бронирования"""
+    from services_app.models import Service
+    
+    service = get_object_or_404(Service, pk=service_id, is_active=True)
+    
+    # Получаем только активные опции с YClients ID
+    service.options_filtered = service.options.filter(
+        is_active=True,
+        yclients_service_id__isnull=False
+    ).exclude(yclients_service_id='').order_by('order', 'duration_min')
+    
+    return render(request, 'website/service_detail.html', {
+        'settings': _settings(),
+        'service': service,
+    })
+
+@csrf_exempt
+def api_available_dates(request):
+    """
+    API: получить список доступных дат для мастера.
+    
+    GET /api/booking/available_dates/?staff_id=4416525
+    """
+    try:
+        from services_app.yclients_api import get_yclients_api, YClientsAPIError
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        staff_id = request.GET.get('staff_id')
+        
+        if not staff_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'staff_id is required'
+            }, status=400)
+        
+        logger.info(f"📅 Запрос доступных дат для мастера: {staff_id}")
+        
+        api = get_yclients_api()
+        
+        # Получаем доступные даты
+        dates = api.get_book_dates(staff_id=int(staff_id))
+        
+        logger.info(f"✅ Найдено доступных дат: {len(dates)}")
+        logger.debug(f"Dates: {dates}")
+        
+        # Если дат нет - возвращаем пустой массив, но success=true
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'dates': dates,
+                'count': len(dates)
+            }
+        })
+        
+    except YClientsAPIError as e:
+        logger.error(f"❌ YClients API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in api_available_dates: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': 'Internal server error'
+        }, status=500)
+        
+@csrf_exempt
+@require_GET
+def api_get_staff(request):
+    """
+    API: Получить список мастеров для услуги
+    GET /api/booking/get_staff/?service_option_id=123
+    
+    Если service_option_id указан, возвращает только мастеров, которые могут оказывать эту услугу.
+    Если не указан, возвращает всех активных мастеров.
+    """
+    from services_app.yclients_api import get_yclients_api
+    from services_app.models import ServiceOption
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        service_option_id = request.GET.get('service_option_id')
+        api = get_yclients_api()
+        
+        if service_option_id:
+            # Фильтрация по услуге через YClients API
+            try:
+                option = ServiceOption.objects.get(
+                    id=int(service_option_id),
+                    is_active=True
+                )
+                
+                if not option.yclients_service_id:
+                    # Услуга без YClients ID - возвращаем пустой список
+                    logger.warning(f"⚠️ У ServiceOption {service_option_id} нет yclients_service_id")
+                    return JsonResponse({
+                        'success': True,
+                        'data': [],
+                        'count': 0,
+                        'message': 'Услуга не привязана к YClients'
+                    })
+                
+                # ✅ ИСПОЛЬЗУЕМ YCLIENTS API С ФИЛЬТРАЦИЕЙ ПО УСЛУГЕ
+                logger.info(f"🔍 Загружаем мастеров для услуги '{option.service.name}' (yclients_service_id={option.yclients_service_id})")
+                
+                # Преобразуем yclients_service_id в int (может быть строкой)
+                try:
+                    service_id_int = int(option.yclients_service_id)
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Некорректный yclients_service_id: {option.yclients_service_id}")
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Некорректный ID услуги в YClients: {option.yclients_service_id}'
+                    }, status=400)
+                
+                # Получаем мастеров, которые могут оказывать эту услугу
+                staff_list = api.get_staff(service_id=service_id_int)
+                logger.info(f"✅ YClients вернул {len(staff_list)} мастеров для услуги {service_id_int}")
+                
+                # Форматируем ответ
+                formatted_staff = []
+                for staff in staff_list:
+                    formatted_staff.append({
+                        'id': staff.get('id'),
+                        'name': staff.get('name', ''),
+                        'specialization': staff.get('specialization', ''),
+                        'avatar': staff.get('avatar', ''),
+                        'rating': staff.get('rating', 0),
+                    })
+                
+                return JsonResponse({
+                    'success': True,
+                    'data': formatted_staff,
+                    'count': len(formatted_staff)
+                })
+                    
+            except ServiceOption.DoesNotExist:
+                logger.error(f"❌ ServiceOption {service_option_id} не найден")
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Вариант услуги {service_option_id} не найден'
+                }, status=404)
+            except ValueError:
+                logger.error(f"❌ Некорректный service_option_id: {service_option_id}")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Некорректный ID варианта услуги'
+                }, status=400)
+        else:
+            # Без фильтра - возвращаем пустой список (не загружаем всех мастеров)
+            # Это предотвращает показ всех мастеров при загрузке страницы
+            logger.info("📋 Запрос мастеров без service_option_id - возвращаем пустой список")
+            return JsonResponse({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'message': 'Укажите service_option_id для получения мастеров'
+            })
+        
+    except Exception as e:
+        logger.exception(f"❌ Ошибка api_get_staff: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
