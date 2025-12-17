@@ -420,52 +420,118 @@ def api_create_booking(request):
         }, status=500)
 
 def service_detail(request, service_id):
-    """Страница конкретной услуги с формой бронирования"""
-    from services_app.models import Service
-    import logging
+    """
+    Страница конкретной услуги с формой бронирования.
     
+    Контекст:
+        - service: объект Service
+        - options: список активных ServiceOption с yclients_service_id
+        - options_count: количество вариантов
+        - durations: список уникальных длительностей [60, 90, 120]
+        - durations_count: количество уникальных длительностей
+        - quantities_count: количество вариантов для первой длительности
+        - other_services: другие услуги категории (до 8)
+        - has_yclients_options: есть ли варианты с YClients ID
+    """
     logger = logging.getLogger(__name__)
     
-    try:
-        # Сначала пытаемся найти активную услугу
-        service = Service.objects.filter(pk=service_id, is_active=True).first()
+    # 1. Получаем услугу (404 если не найдена или неактивна)
+    service = get_object_or_404(
+        Service.objects.select_related('category'),
+        pk=service_id,
+        is_active=True
+    )
+    
+    logger.info(f"✅ Услуга: {service.name} (ID: {service_id})")
+    
+    # 2. Получаем активные варианты с YClients ID
+    options = list(
+        service.options
+        .filter(is_active=True)
+        .exclude(yclients_service_id__isnull=True)
+        .exclude(yclients_service_id='')
+        .order_by('order', 'duration_min', 'units')
+    )
+    
+    has_yclients = len(options) > 0
+    
+    # Fallback: если нет вариантов с YClients — берём все активные (для отладки)
+    if not has_yclients:
+        options = list(
+            service.options
+            .filter(is_active=True)
+            .order_by('order', 'duration_min', 'units')
+        )
+        logger.warning(f"⚠️ Нет вариантов с YClients ID, fallback на все активные: {len(options)}")
+    
+    logger.info(f"📋 Вариантов: {len(options)}, has_yclients: {has_yclients}")
+    
+    # 3. Вычисляем метаданные для шаблона
+    durations = sorted(set(opt.duration_min for opt in options)) if options else []
+    
+    # Количество вариантов для первой длительности (для определения select vs input)
+    quantities_count = 0
+    if durations:
+        first_duration = durations[0]
+        quantities_count = len([opt for opt in options if opt.duration_min == first_duration])
+    
+    # 4. Другие услуги (из той же категории + популярные)
+    other_services = _get_other_services(service, limit=8)
+    
+    logger.info(f"📋 Других услуг: {len(other_services)}")
+    
+    # 5. Контекст
+    return render(request, 'website/service_detail.html', {
+        'settings': _settings(),
+        'service': service,
+        'options': options,
+        'options_count': len(options),
+        'durations': durations,
+        'durations_count': len(durations),
+        'quantities_count': quantities_count,
+        'has_yclients_options': has_yclients,
+        'other_services': other_services,
+    })
+
+
+def _get_other_services(service, limit=8):
+    """
+    Получает другие услуги для блока "Другие услуги".
+    Приоритет: из той же категории → популярные из других категорий.
+    """
+    other = []
+    
+    if service.category:
+        # Услуги из той же категории
+        other = list(
+            Service.objects
+            .filter(category=service.category, is_active=True)
+            .exclude(pk=service.pk)
+            .order_by('-is_popular', 'name')
+            [:limit]
+        )
         
-        if not service:
-            # Проверяем, существует ли услуга вообще (для отладки)
-            service_exists = Service.objects.filter(pk=service_id).exists()
-            if service_exists:
-                logger.warning(f"⚠️ Услуга {service_id} существует, но неактивна (is_active=False)")
-                # Можно показать услугу даже если она неактивна (для отладки на staging)
-                # Или вернуть 404 с более информативным сообщением
-                service = Service.objects.get(pk=service_id)
-            else:
-                logger.error(f"❌ Услуга {service_id} не найдена в базе данных")
-                from django.http import Http404
-                raise Http404(f"Услуга с ID {service_id} не найдена")
-        
-        logger.info(f"✅ Загружена услуга: {service.name} (ID: {service_id}, active: {service.is_active})")
-        
-        # Получаем только активные опции с YClients ID
-        service.options_filtered = service.options.filter(
-            is_active=True,
-            yclients_service_id__isnull=False
-        ).exclude(yclients_service_id='').order_by('order', 'duration_min')
-        
-        logger.info(f"📋 Найдено активных вариантов с YClients ID: {service.options_filtered.count()}")
-        
-        return render(request, 'website/service_detail.html', {
-            'settings': _settings(),
-            'service': service,
-        })
-        
-    except Service.DoesNotExist:
-        logger.error(f"❌ Услуга {service_id} не найдена (DoesNotExist)")
-        from django.http import Http404
-        raise Http404(f"Услуга с ID {service_id} не найдена")
-    except Exception as e:
-        logger.exception(f"❌ Ошибка при загрузке услуги {service_id}: {e}")
-        from django.http import Http404
-        raise Http404(f"Ошибка при загрузке услуги: {str(e)}")
+        # Добавляем популярные, если мало
+        if len(other) < limit:
+            popular = list(
+                Service.objects
+                .filter(is_active=True, is_popular=True)
+                .exclude(pk=service.pk)
+                .exclude(category=service.category)
+                [:limit - len(other)]
+            )
+            other.extend(popular)
+    else:
+        # Без категории — только популярные
+        other = list(
+            Service.objects
+            .filter(is_active=True, is_popular=True)
+            .exclude(pk=service.pk)
+            .order_by('name')
+            [:limit]
+        )
+    
+    return other
 
 @csrf_exempt
 def api_available_dates(request):
