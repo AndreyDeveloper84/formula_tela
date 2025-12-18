@@ -185,117 +185,6 @@
         }
         
         /* ============================================
-        КАСТОМИЗАЦИЯ ВЫБОРА ВРЕМЕНИ
-        ============================================ */
-        
-        /* Контейнер для времени */
-        .time-select-wrapper {
-            position: relative;
-            margin-top: 20px;
-        }
-        
-        /* Стилизация SELECT времени */
-        #time-zapis {
-            width: 100%;
-            padding: 14px 16px;
-            padding-right: 40px; /* Место для иконки */
-            font-size: 16px;
-            font-weight: 500;
-            color: #1f2937;
-            background: white;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-        }
-        
-        #time-zapis:hover {
-            border-color: #c7d2fe;
-            background: #fafafa;
-        }
-        
-        #time-zapis:focus {
-            outline: none;
-            border-color: #6366f1;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-        }
-        
-        #time-zapis:disabled {
-            background: #f3f4f6;
-            color: #9ca3af;
-            cursor: not-allowed;
-        }
-        
-        /* Кастомная стрелка для SELECT */
-        .time-select-wrapper::after {
-            content: '⏰';
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 18px;
-            pointer-events: none;
-        }
-        
-        /* Опции внутри SELECT */
-        #time-zapis option {
-            padding: 12px;
-            font-size: 15px;
-        }
-        
-        /* Разделители между группами времени */
-        #time-zapis option[disabled] {
-            font-weight: 700;
-            color: #6366f1;
-            background: #f3f4f6;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-        }
-        
-        /* ============================================
-        ИНДИКАТОР ЗАГРУЗКИ
-        ============================================ */
-        
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255, 255, 255, 0.9);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-            z-index: 10;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-        
-        .loading-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-        
-        .loading-spinner {
-            width: 24px;
-            height: 24px;
-            border: 3px solid #e5e7eb;
-            border-top-color: #6366f1;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* ============================================
         АДАПТИВНОСТЬ
         ============================================ */
         
@@ -308,40 +197,6 @@
                 height: 42px !important;
                 line-height: 42px !important;
             }
-            
-            #time-zapis {
-                font-size: 17px; /* На мобильных чуть больше */
-                padding: 16px;
-            }
-            
-            .time-select-wrapper::after {
-                font-size: 20px;
-            }
-        }
-        
-        /* ============================================
-        BADGE С КОЛИЧЕСТВОМ ДОСТУПНЫХ СЛОТОВ
-        ============================================ */
-        
-        .time-badge {
-            display: inline-block;
-            background: #6366f1;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-left: 8px;
-            vertical-align: middle;
-        }
-        
-        .time-label {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #1f2937;
         }
 
     </style>
@@ -433,7 +288,7 @@
                                         id="duration-select" 
                                         class="form-select" 
                                         required>
-                                        <option value="">Выберите длительность</option>
+                                        <option value="">Длительность</option>
                                         {% for duration in durations %}
                                         <option value="{{ duration }}">{{ duration }} минут</option>
                                         {% endfor %}
@@ -532,21 +387,13 @@
                                     type="date" 
                                     id="date-zapis" 
                                     class="form-control" 
+                                    disabled
                                     required>
                                 
-                                <!-- Выбор времени (SELECT вместо INPUT) -->
-                                <div class="time-select-wrapper">
-                                    <label class="time-label" for="time-zapis">
-                                        <span>Время записи</span>
-                                        <span id="time-badge" class="time-badge" style="display: none;">0 слотов</span>
-                                    </label>
-                                    <select id="time-zapis" class="form-select" required>
-                                        <option value="">Сначала выберите мастера и дату</option>
-                                    </select>
-                                    <div class="loading-overlay" id="time-loading">
-                                        <div class="loading-spinner"></div>
-                                    </div>
-                                </div>
+                                <!-- Выбор времени -->
+                                <select id="time-zapis" class="form-select" required disabled>
+                                    <option value="">Сначала выберите мастера и дату</option>
+                                </select>
                                 
                                 <!-- Стоимость -->
                                 <input 
@@ -1024,13 +871,16 @@
             }
         }
 
-        // Новая функция: создаём пустой календарь
+        // Новая функция: создаём пустой календарь (disabled)
         function initializeEmptyDatePicker() {
             const dateInput = document.getElementById('date-zapis');
             
             if (datePicker) {
                 return; // Уже инициализирован
             }
+            
+            // Календарь disabled по умолчанию
+            dateInput.disabled = true;
             
             datePicker = flatpickr(dateInput, {
                 locale: 'ru',
@@ -1041,9 +891,10 @@
                 allowInput: false,
                 disableMobile: false,
                 clickOpens: false, // Не открывать пока не выбран мастер
+                disable: true, // Отключаем календарь
                 
                 onReady: function(selectedDates, dateStr, instance) {
-                    console.log('📆 Календарь готов');
+                    console.log('📆 Календарь готов (disabled)');
                 }
             });
         }
@@ -1105,6 +956,9 @@
                 datePicker = null;
             }
             
+            // Включаем input даты
+            dateInput.disabled = false;
+            
             // Флаг для предотвращения двойного вызова при инициализации
             let isInitializing = true;
             const firstDate = availableDates[0];
@@ -1129,6 +983,12 @@
                     
                     if (!dateStr || !staffId) {
                         return;
+                    }
+                    
+                    // Включаем select времени когда дата выбрана
+                    const timeSelect = document.getElementById('time-zapis');
+                    if (timeSelect) {
+                        timeSelect.disabled = false;
                     }
                     
                     // При инициализации загружаем сразу (без debounce для первой даты)
@@ -1189,13 +1049,6 @@
             lastRequestedDate = requestKey;
             
             const timeSelect = document.getElementById('time-zapis');
-            const loadingOverlay = document.getElementById('time-loading');
-            const timeBadge = document.getElementById('time-badge');
-            
-            // Показываем индикатор загрузки
-            if (loadingOverlay) {
-                loadingOverlay.classList.add('active');
-            }
             timeSelect.disabled = true;
             
             try {
@@ -1240,40 +1093,21 @@
                             }
                         }
                         
-                        // Обновляем badge
-                        if (timeBadge) {
-                            timeBadge.textContent = `${times.length} ${getSlotWord(times.length)}`;
-                            timeBadge.style.display = 'inline-block';
-                        }
-                        
                         console.log('✅ Доступно слотов:', times.length);
                     } else {
                         // Нет доступных слотов
                         console.log('⚠️ Нет свободных слотов на эту дату');
                         timeSelect.innerHTML = '<option value="">На эту дату все занято</option>';
-                        if (timeBadge) {
-                            timeBadge.style.display = 'none';
-                        }
                     }
                 } else {
                     // Некорректный ответ от API
                     console.warn('⚠️ Некорректный ответ:', data);
                     timeSelect.innerHTML = '<option value="">Нет свободного времени</option>';
-                    if (timeBadge) {
-                        timeBadge.style.display = 'none';
-                    }
                 }
             } catch (error) {
                 console.error('❌ Ошибка загрузки времени:', error);
                 timeSelect.innerHTML = '<option value="">Ошибка загрузки. Попробуйте ещё раз</option>';
-                if (timeBadge) {
-                    timeBadge.style.display = 'none';
-                }
             } finally {
-                // Скрываем индикатор загрузки
-                if (loadingOverlay) {
-                    loadingOverlay.classList.remove('active');
-                }
                 timeSelect.disabled = false;
                 isLoadingTimes = false;
             }
@@ -1302,12 +1136,6 @@
             return periods;
         }
 
-        // Функция склонения слова "слот"
-        function getSlotWord(count) {
-            const cases = [2, 0, 1, 1, 1, 2];
-            const words = ['слот', 'слота', 'слотов'];
-            return words[(count % 100 > 4 && count % 100 < 20) ? 2 : cases[Math.min(count % 10, 5)]];
-        }
             
         // ========== ОБРАБОТЧИКИ СОБЫТИЙ ДЛЯ SELECT ДЛИТЕЛЬНОСТИ И КОЛИЧЕСТВА ==========
         
@@ -1330,16 +1158,25 @@
                     }
                     
                     const dateInput = document.getElementById('date-zapis');
-                    if (dateInput) dateInput.value = '';
+                    if (dateInput) {
+                        dateInput.value = '';
+                        dateInput.disabled = true;
+                    }
                     
                     const timeSelect = document.getElementById('time-zapis');
-                    if (timeSelect) timeSelect.innerHTML = '<option value="">Сначала выберите мастера и дату</option>';
+                    if (timeSelect) {
+                        timeSelect.innerHTML = '<option value="">Сначала выберите мастера и дату</option>';
+                        timeSelect.disabled = true;
+                    }
                     
                     // Уничтожаем календарь
                     if (datePicker) {
                         datePicker.destroy();
                         datePicker = null;
                     }
+                    
+                    // Создаём disabled календарь
+                    initializeEmptyDatePicker();
                     
                     // Сбрасываем флаги загрузки
                     lastRequestedDate = null;
@@ -1426,6 +1263,8 @@
         // ✅ ЕДИНСТВЕННЫЙ обработчик для master-select
         document.getElementById('master-select').addEventListener('change', function(e) {
             const staffId = e.target.value;
+            const dateInput = document.getElementById('date-zapis');
+            const timeSelect = document.getElementById('time-zapis');
             
             if (staffId) {
                 // Сбрасываем предыдущие данные
@@ -1433,9 +1272,9 @@
                 lastRequestedStaffId = null;
                 availableDates = [];
                 
-                // Очищаем поле времени
-                const timeSelect = document.getElementById('time-zapis');
-                timeSelect.innerHTML = '<option value="">Загрузка...</option>';
+                // Очищаем поле времени и отключаем его
+                timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>';
+                timeSelect.disabled = true;
                 
                 // Уничтожаем старый календарь
                 if (datePicker) {
@@ -1446,9 +1285,11 @@
                 // Загружаем доступные даты для выбранного мастера
                 loadAvailableDates(staffId);
             } else {
-                // Очищаем дату и время
-                document.getElementById('date-zapis').value = '';
-                document.getElementById('time-zapis').innerHTML = '<option value="">Сначала выберите мастера</option>';
+                // Мастер не выбран - отключаем календарь и время
+                dateInput.value = '';
+                dateInput.disabled = true;
+                timeSelect.innerHTML = '<option value="">Сначала выберите мастера</option>';
+                timeSelect.disabled = true;
                 availableDates = [];
                 lastRequestedDate = null;
                 lastRequestedStaffId = null;
@@ -1458,6 +1299,9 @@
                     datePicker.destroy();
                     datePicker = null;
                 }
+                
+                // Создаём disabled календарь
+                initializeEmptyDatePicker();
             }
         });
         
@@ -1651,7 +1495,11 @@
             
             // Устанавливаем минимальную дату (сегодня)
             const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date-zapis').min = today;
+            const dateInput = document.getElementById('date-zapis');
+            dateInput.min = today;
+            
+            // Календарь disabled по умолчанию (пока не выбран мастер)
+            initializeEmptyDatePicker();
         });
     </script>
     {% endblock %}
