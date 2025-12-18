@@ -77,7 +77,7 @@
                             <a class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}" href="{% url 'website:home' %}">Главная</a>
                         </li>
                         <li class="nav-item">
-                            <a class="{% if request.resolver_match.url_name == 'services' %}active{% endif %}" href="{% url 'website:services' %}">Услуги</a>
+                            <a class="{% if request.resolver_match.url_name == 'services' or request.resolver_match.url_name == 'service_detail' %}active2{% endif %}" href="{% url 'website:services' %}">Услуги</a>
                         </li>
                         <li class="nav-item">
                             <a class="{% if request.resolver_match.url_name == 'masters' %}active{% endif %}" href="{% url 'website:masters' %}">Мастера</a>

@@ -203,18 +203,6 @@
     {% endblock %}
 
     {% block content %}
-        <!-- ========================= Баннер услуги ========================= -->
-        <section class="banner2 cat1">
-            <div class="container"> 
-                <div class="b2 d-flex flex-column">
-                    <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ service.name }}</h2>
-                    {% if service.description %}
-                        <p class="text-banner wow fadeInUp" data-wow-delay=".4s">{{ service.description|linebreaks }}</p>
-                    {% endif %}
-                </div>
-            </div>
-        </section>
-        
         <!-- ========================= Форма бронирования ========================= -->
         <section class="service serv3 mb-112 mt-56">
             <div class="container"> 
