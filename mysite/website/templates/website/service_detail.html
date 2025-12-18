@@ -907,6 +907,13 @@
 
         // ========== ЗАГРУЗКА ДОСТУПНЫХ ДАТ ==========
         async function loadAvailableDates(staffId) {
+            console.log('🔍 loadAvailableDates вызвана с staffId:', staffId);
+            
+            if (!staffId) {
+                console.error('❌ staffId не передан в loadAvailableDates');
+                return;
+            }
+            
             // Защита от повторных запросов
             if (isLoadingDates) {
                 console.log('⏸️ Загрузка дат уже выполняется, пропускаем запрос');
@@ -925,12 +932,22 @@
             try {
                 const url = `${API_BASE_URL}/api/booking/available_dates/?staff_id=${staffId}`;
                 console.log('📅 Загрузка доступных дат для мастера:', staffId);
+                console.log('📡 URL:', url);
                 
                 const response = await fetch(url);
+                console.log('📥 Ответ получен, статус:', response.status);
+                
+                if (!response.ok) {
+                    console.error('❌ Ошибка HTTP:', response.status, response.statusText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Данные от API:', data);
                 
                 if (data.success && data.data && data.data.dates) {
                     availableDates = data.data.dates;
+                    console.log('✅ Получено дат:', availableDates.length, availableDates);
                     
                     if (availableDates.length > 0) {
                         console.log('✅ Доступных дат:', availableDates.length);
@@ -939,9 +956,15 @@
                         console.log('⚠️ Нет доступных дат для этого мастера');
                         alert('К сожалению, у выбранного мастера нет свободных дат для записи');
                     }
+                } else {
+                    console.warn('⚠️ Некорректный ответ от API:', data);
+                    if (data.error) {
+                        console.error('❌ Ошибка от API:', data.error);
+                    }
                 }
             } catch (error) {
                 console.error('❌ Ошибка загрузки доступных дат:', error);
+                console.error('Stack trace:', error.stack);
             } finally {
                 isLoadingDates = false;
             }
@@ -1260,50 +1283,7 @@
             }
         });
         
-        // ✅ ЕДИНСТВЕННЫЙ обработчик для master-select
-        document.getElementById('master-select').addEventListener('change', function(e) {
-            const staffId = e.target.value;
-            const dateInput = document.getElementById('date-zapis');
-            const timeSelect = document.getElementById('time-zapis');
-            
-            if (staffId) {
-                // Сбрасываем предыдущие данные
-                lastRequestedDate = null;
-                lastRequestedStaffId = null;
-                availableDates = [];
-                
-                // Очищаем поле времени и отключаем его
-                timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>';
-                timeSelect.disabled = true;
-                
-                // Уничтожаем старый календарь
-                if (datePicker) {
-                    datePicker.destroy();
-                    datePicker = null;
-                }
-                
-                // Загружаем доступные даты для выбранного мастера
-                loadAvailableDates(staffId);
-            } else {
-                // Мастер не выбран - отключаем календарь и время
-                dateInput.value = '';
-                dateInput.disabled = true;
-                timeSelect.innerHTML = '<option value="">Сначала выберите мастера</option>';
-                timeSelect.disabled = true;
-                availableDates = [];
-                lastRequestedDate = null;
-                lastRequestedStaffId = null;
-                
-                // Уничтожаем календарь
-                if (datePicker) {
-                    datePicker.destroy();
-                    datePicker = null;
-                }
-                
-                // Создаём disabled календарь
-                initializeEmptyDatePicker();
-            }
-        });
+        // ✅ ЕДИНСТВЕННЫЙ обработчик для master-select (будет добавлен в DOMContentLoaded)
         
         // ========== ОТПРАВКА ФОРМЫ БРОНИРОВАНИЯ ==========
         document.getElementById('booking-form').addEventListener('submit', function(e) {
@@ -1489,17 +1469,80 @@
                     // Если это select - не загружаем мастеров до выбора варианта
                     console.log('📋 Обнаружено несколько вариантов услуги, ждём выбора...');
                     const select = document.getElementById('master-select');
-                    select.innerHTML = '<option value="">Сначала выберите вариант услуги</option>';
+                    if (select) {
+                        select.innerHTML = '<option value="">Сначала выберите вариант услуги</option>';
+                    }
                 }
             }
             
             // Устанавливаем минимальную дату (сегодня)
             const today = new Date().toISOString().split('T')[0];
             const dateInput = document.getElementById('date-zapis');
-            dateInput.min = today;
+            if (dateInput) {
+                dateInput.min = today;
+            }
             
             // Календарь disabled по умолчанию (пока не выбран мастер)
             initializeEmptyDatePicker();
+            
+            // ✅ Добавляем обработчик для master-select
+            const masterSelect = document.getElementById('master-select');
+            if (masterSelect) {
+                masterSelect.addEventListener('change', function(e) {
+                    const staffId = e.target.value;
+                    const dateInput = document.getElementById('date-zapis');
+                    const timeSelect = document.getElementById('time-zapis');
+                    
+                    console.log('👤 Выбран мастер:', staffId);
+                    
+                    if (staffId) {
+                        // Сбрасываем предыдущие данные
+                        lastRequestedDate = null;
+                        lastRequestedStaffId = null;
+                        availableDates = [];
+                        
+                        // Очищаем поле времени и отключаем его
+                        if (timeSelect) {
+                            timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>';
+                            timeSelect.disabled = true;
+                        }
+                        
+                        // Уничтожаем старый календарь
+                        if (datePicker) {
+                            datePicker.destroy();
+                            datePicker = null;
+                        }
+                        
+                        // Загружаем доступные даты для выбранного мастера
+                        console.log('📅 Запуск загрузки дат для мастера:', staffId);
+                        loadAvailableDates(staffId);
+                    } else {
+                        // Мастер не выбран - отключаем календарь и время
+                        if (dateInput) {
+                            dateInput.value = '';
+                            dateInput.disabled = true;
+                        }
+                        if (timeSelect) {
+                            timeSelect.innerHTML = '<option value="">Сначала выберите мастера</option>';
+                            timeSelect.disabled = true;
+                        }
+                        availableDates = [];
+                        lastRequestedDate = null;
+                        lastRequestedStaffId = null;
+                        
+                        // Уничтожаем календарь
+                        if (datePicker) {
+                            datePicker.destroy();
+                            datePicker = null;
+                        }
+                        
+                        // Создаём disabled календарь
+                        initializeEmptyDatePicker();
+                    }
+                });
+            } else {
+                console.error('❌ Элемент master-select не найден!');
+            }
         });
     </script>
     {% endblock %}
