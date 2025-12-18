@@ -732,13 +732,20 @@
         function updatePrice() {
             const durationSelect = document.getElementById('duration-select');
             const quantitySelect = document.getElementById('quantity-select');
+            const quantityDisplay = document.getElementById('quantity-display');
             const priceDisplay = document.getElementById('price-display');
             const optionSelect = document.getElementById('option-select');
             
-            if (!durationSelect || !quantitySelect || !priceDisplay) return;
+            if (!durationSelect || !priceDisplay) return;
             
             const duration = durationSelect.value;
-            const quantity = quantitySelect.value;
+            // Получаем quantity из select или из hidden input (если показывается input disabled)
+            let quantity = '';
+            if (quantitySelect && quantitySelect.type !== 'hidden') {
+                quantity = quantitySelect.value;
+            } else if (quantitySelect && quantitySelect.type === 'hidden') {
+                quantity = quantitySelect.value;
+            }
             
             if (duration && quantity) {
                 const option = getOptionByDurationAndQuantity(parseInt(duration), parseInt(quantity));
@@ -763,8 +770,60 @@
             }
         }
         
+        // Функция замены select на input disabled (когда только 1 вариант количества)
+        function replaceQuantitySelectWithInput(quantity, unitTypeDisplay) {
+            const quantitySelect = document.getElementById('quantity-select');
+            if (!quantitySelect) return;
+            
+            // Если это уже input, не делаем ничего
+            if (quantitySelect.tagName === 'INPUT' && quantitySelect.type === 'text') {
+                return;
+            }
+            
+            const parent = quantitySelect.parentElement;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'text-def';
+            input.value = `${quantity} ${getQuantityLabel(quantity, unitTypeDisplay)}`;
+            input.disabled = true;
+            input.id = 'quantity-display';
+            
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.id = 'quantity-select';
+            hiddenInput.value = quantity;
+            
+            parent.replaceChild(input, quantitySelect);
+            parent.appendChild(hiddenInput);
+        }
+        
+        // Функция замены input disabled на select (когда несколько вариантов)
+        function replaceQuantityInputWithSelect() {
+            const quantityDisplay = document.getElementById('quantity-display');
+            const quantitySelect = document.getElementById('quantity-select');
+            
+            if (!quantityDisplay) return;
+            
+            const parent = quantityDisplay.parentElement;
+            const select = document.createElement('select');
+            select.id = 'quantity-select';
+            select.className = 'form-select';
+            select.required = true;
+            
+            parent.replaceChild(select, quantityDisplay);
+            if (quantitySelect && quantitySelect.type === 'hidden') {
+                parent.removeChild(quantitySelect);
+            }
+        }
+        
         // Функция обновления select количества на основе выбранной длительности
         function updateQuantitySelect(duration) {
+            // Сначала проверяем, есть ли уже input disabled
+            const quantityDisplay = document.getElementById('quantity-display');
+            if (quantityDisplay) {
+                replaceQuantityInputWithSelect();
+            }
+            
             const quantitySelect = document.getElementById('quantity-select');
             if (!quantitySelect) return;
             
@@ -785,7 +844,15 @@
                 return;
             }
             
-            // Показываем select если он был скрыт
+            // Если только одно количество - показываем input disabled
+            if (quantities.length === 1) {
+                const option = optionsMap[durationInt][quantities[0]];
+                replaceQuantitySelectWithInput(quantities[0], option.unitTypeDisplay);
+                updatePrice();
+                return;
+            }
+            
+            // Если несколько вариантов - показываем select
             quantitySelect.classList.add('visible');
             quantitySelect.required = true;
             
@@ -804,14 +871,8 @@
                 quantitySelect.appendChild(optionElem);
             });
             
-            // Если только одно количество - автоматически выбираем его
-            if (quantities.length === 1) {
-                quantitySelect.value = quantities[0];
-                updatePrice();
-            } else {
-                quantitySelect.value = '';
-                updatePrice();
-            }
+            quantitySelect.value = '';
+            updatePrice();
         }
         
         // Функция склонения единиц измерения
@@ -1289,25 +1350,43 @@
             // Если только одна длительность и одно количество - автоматически устанавливаем опцию
             const durationSelect = document.getElementById('duration-select');
             const quantitySelect = document.getElementById('quantity-select');
+            const quantityDisplay = document.getElementById('quantity-display');
             
-            if (durationSelect && quantitySelect) {
+            if (durationSelect) {
                 const duration = durationSelect.value;
-                const quantity = quantitySelect.value;
                 
-                // Если оба значения уже установлены (через hidden input) - обновляем цену и загружаем мастеров
-                if (duration && quantity) {
-                    // Устанавливаем опцию и обновляем цену
-                    const option = getOptionByDurationAndQuantity(parseInt(duration), parseInt(quantity));
-                    if (option) {
-                        const optionSelect = document.getElementById('option-select');
-                        if (optionSelect) {
-                            optionSelect.value = option.id;
+                // Если есть длительность
+                if (duration) {
+                    // Если уже есть input disabled (единственный вариант)
+                    if (quantityDisplay && quantitySelect && quantitySelect.type === 'hidden') {
+                        const quantity = quantitySelect.value;
+                        if (quantity) {
+                            const option = getOptionByDurationAndQuantity(parseInt(duration), parseInt(quantity));
+                            if (option) {
+                                const optionSelect = document.getElementById('option-select');
+                                if (optionSelect) {
+                                    optionSelect.value = option.id;
+                                }
+                                updatePrice();
+                            }
                         }
-                        updatePrice();
+                    } else if (quantitySelect && quantitySelect.tagName === 'SELECT') {
+                        // Если это select - обновляем его
+                        const quantity = quantitySelect.value;
+                        if (quantity) {
+                            const option = getOptionByDurationAndQuantity(parseInt(duration), parseInt(quantity));
+                            if (option) {
+                                const optionSelect = document.getElementById('option-select');
+                                if (optionSelect) {
+                                    optionSelect.value = option.id;
+                                }
+                                updatePrice();
+                            }
+                        } else {
+                            // Если нет выбранного количества - обновляем select
+                            updateQuantitySelect(duration);
+                        }
                     }
-                } else if (duration && !quantity) {
-                    // Если есть длительность, но нет количества - обновляем select количества
-                    updateQuantitySelect(duration);
                 }
             }
         });
@@ -1357,6 +1436,7 @@
             const optionSelect = document.getElementById('option-select');
             const durationSelect = document.getElementById('duration-select');
             const quantitySelect = document.getElementById('quantity-select');
+            const quantityDisplay = document.getElementById('quantity-display');
             const masterSelect = document.getElementById('master-select');
             const timeSelect = document.getElementById('time-zapis');
             
@@ -1369,7 +1449,15 @@
                 return;
             }
             
-            if (!quantitySelect || !quantitySelect.value) {
+            // Получаем quantity из select или из hidden input (если показывается input disabled)
+            let quantity = '';
+            if (quantitySelect && quantitySelect.type !== 'hidden') {
+                quantity = quantitySelect.value;
+            } else if (quantitySelect && quantitySelect.type === 'hidden') {
+                quantity = quantitySelect.value;
+            }
+            
+            if (!quantity) {
                 alert('Пожалуйста, выберите количество');
                 return;
             }
@@ -1381,8 +1469,8 @@
             
             // Получаем данные опции из объекта на клиенте
             const duration = parseInt(durationSelect.value);
-            const quantity = parseInt(quantitySelect.value);
-            const option = getOptionByDurationAndQuantity(duration, quantity);
+            const quantityInt = parseInt(quantity);
+            const option = getOptionByDurationAndQuantity(duration, quantityInt);
             
             if (!option) {
                 alert('Ошибка: не удалось найти выбранный вариант услуги');
