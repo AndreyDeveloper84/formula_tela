@@ -41,14 +41,33 @@ class ServiceOptionAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "short", "category", "is_active", "is_popular")
+    list_display = ("id", "name", "short", "category", "image_preview", "is_active", "is_popular")
     list_filter = ("category", "is_active", "is_popular")
     search_fields = ("name",)
     inlines = [ServiceOptionInline]
 
     change_list_template = "admin/services_app/service/change_list.html"
 
+    fieldsets = (
+        ("Основная информация", {
+            "fields": ("name", "short", "category", "description", "image")
+        }),
+        ("Статус", {
+            "fields": ("is_active", "is_popular")
+        }),
+        ("Устаревшие поля (только для чтения)", {
+            "fields": ("price", "price_from", "duration", "duration_min"),
+            "classes": ("collapse",)
+        }),
+    )
+
     readonly_fields = ("price", "price_from", "duration", "duration_min")
+    
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="max-height: 50px; max-width: 50px; object-fit: cover; border-radius: 4px;" />', obj.image.url)
+        return "—"
+    image_preview.short_description = "Изображение"
     
     def get_urls(self):
         urls = super().get_urls()

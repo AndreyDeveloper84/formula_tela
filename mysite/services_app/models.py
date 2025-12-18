@@ -14,6 +14,13 @@ class Service(models.Model):
     price = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="Цена", null=True, blank=True)
     duration_min = models.PositiveIntegerField(default=60, verbose_name="Длительность (мин)", null=True, blank=True)
     price_from = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="Цена от", null=True, blank=True)
+    image = models.ImageField(
+        upload_to="services/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение услуги",
+        help_text="Рекомендуемый размер: 800x600px"
+    )
     
     class Meta:
         verbose_name = "Услуга"
