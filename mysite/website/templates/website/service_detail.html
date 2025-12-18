@@ -454,7 +454,19 @@
                                     {% endif %}
                                     
                                     <!-- Выбор количества -->
-                                    {% if durations_count == 1 and quantities_count > 1 %}
+                                    {% if is_single_quantity_for_all_durations %}
+                                    <!-- Если для всех длительностей одинаковое количество - показываем input disabled -->
+                                    <input 
+                                        type="text" 
+                                        class="text-def" 
+                                        id="quantity-display"
+                                        value="{{ single_quantity_value }} {{ single_quantity_unit_type_display }}" 
+                                        disabled>
+                                    <input 
+                                        type="hidden" 
+                                        id="quantity-select" 
+                                        value="{{ single_quantity_value }}">
+                                    {% elif durations_count == 1 and quantities_count > 1 %}
                                     <!-- Если одна длительность, но несколько количеств -->
                                     <select 
                                         id="quantity-select" 
@@ -471,6 +483,7 @@
                                     <input 
                                         type="text" 
                                         class="text-def" 
+                                        id="quantity-display"
                                         value="{{ opt.units }} {{ opt.get_unit_type_display }}" 
                                         disabled>
                                     <input 
@@ -479,7 +492,7 @@
                                         value="{{ opt.units }}">
                                     {% endwith %}
                                     {% else %}
-                                    <!-- Если несколько длительностей - количество будет заполняться динамически -->
+                                    <!-- Если несколько длительностей и разные количества - количество будет заполняться динамически -->
                                     <select 
                                         id="quantity-select" 
                                         class="form-select" 
@@ -818,13 +831,32 @@
         
         // Функция обновления select количества на основе выбранной длительности
         function updateQuantitySelect(duration) {
-            // Сначала проверяем, есть ли уже input disabled
+            // Проверяем, если количество одинаковое для всех длительностей - не обновляем
             const quantityDisplay = document.getElementById('quantity-display');
+            const quantitySelect = document.getElementById('quantity-select');
+            
+            // Если уже есть input disabled и это скрытое поле quantity-select - значит это статичное значение
+            // Не обновляем его при изменении длительности
+            if (quantityDisplay && quantitySelect && quantitySelect.type === 'hidden') {
+                // Проверяем, что это действительно статичное значение (одинаковое для всех длительностей)
+                // Если для всех длительностей одинаковое количество, JavaScript не должен его менять
+                const allQuantities = new Set();
+                Object.values(optionsMap).forEach(durationMap => {
+                    Object.keys(durationMap).forEach(qty => allQuantities.add(qty));
+                });
+                
+                // Если только одно уникальное количество для всех длительностей - не обновляем
+                if (allQuantities.size === 1) {
+                    updatePrice();
+                    return;
+                }
+            }
+            
+            // Если есть input disabled, но количество разное для разных длительностей - заменяем на select
             if (quantityDisplay) {
                 replaceQuantityInputWithSelect();
             }
             
-            const quantitySelect = document.getElementById('quantity-select');
             if (!quantitySelect) return;
             
             if (!duration) {

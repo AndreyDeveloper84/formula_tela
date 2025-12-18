@@ -475,6 +475,29 @@ def service_detail(request, service_id):
         first_duration = durations[0]
         quantities_count = len([opt for opt in options if opt.duration_min == first_duration])
     
+    # Проверяем, одинаково ли количество для всех длительностей
+    # Если да - будем показывать input disabled сразу при рендеринге
+    is_single_quantity_for_all_durations = False
+    single_quantity_value = None
+    single_quantity_unit_type = None
+    single_quantity_unit_type_display = None
+    
+    if options and durations:
+        # Получаем все уникальные комбинации (duration, units, unit_type)
+        all_quantities = set()
+        for opt in options:
+            all_quantities.add((opt.units, opt.unit_type))
+        
+        # Если для всех длительностей только одна комбинация количества - показываем input disabled
+        if len(all_quantities) == 1:
+            is_single_quantity_for_all_durations = True
+            # Берем первую опцию для получения unit_type_display
+            first_opt = options[0]
+            single_quantity_value = first_opt.units
+            single_quantity_unit_type = first_opt.unit_type
+            single_quantity_unit_type_display = first_opt.get_unit_type_display()
+            logger.info(f"✅ Для всех длительностей одинаковое количество: {single_quantity_value} {single_quantity_unit_type_display}")
+    
     # 4. Другие услуги (из той же категории + популярные)
     other_services = _get_other_services(service, limit=8)
     
@@ -491,6 +514,9 @@ def service_detail(request, service_id):
         'quantities_count': quantities_count,
         'has_yclients_options': has_yclients,
         'other_services': other_services,
+        'is_single_quantity_for_all_durations': is_single_quantity_for_all_durations,
+        'single_quantity_value': single_quantity_value,
+        'single_quantity_unit_type_display': single_quantity_unit_type_display,
     })
 
 
