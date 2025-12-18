@@ -224,60 +224,7 @@
                         {% if service.description %}
                             <p class="wow fadeInUp" data-wow-delay=".3s">{{ service.description|linebreaks }}</p>
                         {% endif %}
-                        <!-- ==================== DEBUG: Содержимое объекта service ==================== -->
-                    <div style="background: #fffbe6; border: 2px solid #faad14; border-radius: 8px; padding: 20px; margin: 20px 0; font-family: monospace; font-size: 13px;">
-                        <h4 style="margin: 0 0 15px; color: #d48806;">🔍 DEBUG: Объект service</h4>
                         
-                        <p><strong>service.id:</strong> {{ service.id }}</p>
-                        <p><strong>service.name:</strong> {{ service.name }}</p>
-                        <p><strong>service.short:</strong> {{ service.short|default:"—" }}</p>
-                        <p><strong>service.description:</strong> {{ service.description|truncatewords:20|default:"—" }}</p>
-                        <p><strong>service.is_active:</strong> {{ service.is_active }}</p>
-                        <p><strong>service.is_popular:</strong> {{ service.is_popular }}</p>
-                        <p><strong>service.category:</strong> {{ service.category|default:"—" }}</p>
-                        <p><strong>service.category.id:</strong> {{ service.category.id|default:"—" }}</p>
-                        
-                        <hr style="margin: 15px 0; border-color: #faad14;">
-                        <h5 style="color: #d48806;">📦 Опции (options):</h5>
-                        <p><strong>options_count:</strong> {{ options_count|default:"НЕ ОПРЕДЕЛЕНО" }}</p>
-                        <p><strong>has_yclients_options:</strong> {{ has_yclients_options|default:"НЕ ОПРЕДЕЛЕНО" }}</p>
-                        
-                        {% if options %}
-                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-                                <tr style="background: #fff1b8;">
-                                    <th style="border: 1px solid #faad14; padding: 5px;">ID</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">name</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">duration_min</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">units</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">unit_type</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">price</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">yclients_service_id</th>
-                                    <th style="border: 1px solid #faad14; padding: 5px;">is_active</th>
-                                </tr>
-                                {% for opt in options %}
-                                <tr>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.id }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.name|default:"—" }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.duration_min }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.units }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.unit_type }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.price }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.yclients_service_id|default:"❌ НЕТ" }}</td>
-                                    <td style="border: 1px solid #faad14; padding: 5px;">{{ opt.is_active }}</td>
-                                </tr>
-                                {% endfor %}
-                            </table>
-                        {% else %}
-                            <p style="color: red;">❌ options ПУСТО или не определено</p>
-                        {% endif %}
-                        
-                        <hr style="margin: 15px 0; border-color: #faad14;">
-                        <h5 style="color: #d48806;">📊 Контекст из view:</h5>
-                        <p><strong>durations:</strong> {{ durations|default:"—" }}</p>
-                        <p><strong>durations_count:</strong> {{ durations_count|default:"НЕ ОПРЕДЕЛЕНО" }}</p>
-                        <p><strong>quantities_count:</strong> {{ quantities_count|default:"НЕ ОПРЕДЕЛЕНО" }}</p>
-                    </div>
-                    <!-- ==================== END DEBUG ==================== -->
                         <!-- ФОРМА БРОНИРОВАНИЯ -->
                         <form id="booking-form" class="mt-40">
                             <div class="in-form">
