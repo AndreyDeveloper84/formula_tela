@@ -558,14 +558,18 @@ p.text-banner {font-size:20px;line-height:1.5;max-width:623px;}
 }
 .item {overflow:hidden;border-radius:56px;margin-bottom:20px;}
 .serv2 .item {border-radius:24px;position:relative;color:#fff;}
-.serv2 .item img {width:100%;height:auto;display:block;object-fit:cover;}
+.serv2 .item img {width:100%;height:auto;object-fit:cover;}
 .serv2 .item span {position:absolute;left:0;top:0;right:0;bottom:0;text-align: center;z-index:1;}
 
 /* Базовые правила для .mn и .mobb - по умолчанию показываем desktop версию */
-/* Используем более специфичные селекторы для гарантии применения */
+/* Используем максимально специфичные селекторы с учетом класса responsive */
+.serv2 .item img.responsive.mn,
 .serv2 .item img.mn,
+img.responsive.mn,
 img.mn {display:block !important;}
+.serv2 .item img.responsive.mobb,
 .serv2 .item img.mobb,
+img.responsive.mobb,
 img.mobb {display:none !important;}
 
 @media (min-width:768px) {
@@ -701,16 +705,24 @@ input[type='time']::-webkit-calendar-picker-indicator  {
 }
 
 @media (min-width: 1200px) {
+	.serv2 .item img.responsive.mobb,
 	.serv2 .item img.mobb,
+	img.responsive.mobb,
 	img.mobb {display:none !important;}
+	.serv2 .item img.responsive.mn,
 	.serv2 .item img.mn,
+	img.responsive.mn,
 	img.mn {display:block !important;}
 }
 	
 @media (max-width: 1199px) {
+	.serv2 .item img.responsive.mn,
 	.serv2 .item img.mn,
+	img.responsive.mn,
 	img.mn {display:none !important;}
+	.serv2 .item img.responsive.mobb,
 	.serv2 .item img.mobb,
+	img.responsive.mobb,
 	img.mobb {display:block !important;}
     
     
