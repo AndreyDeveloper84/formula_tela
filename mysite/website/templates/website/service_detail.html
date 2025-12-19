@@ -319,15 +319,23 @@
                                 
                                 <!-- Выбор даты -->
                                 <input 
+                                    type="text" 
+                                    id="date-zapis-disabled" 
+                                    class="text-def" 
+                                    value="Сначала выберите мастера"
+                                    disabled
+                                    style="display: block;">
+                                <input 
                                     type="date" 
                                     id="date-zapis" 
                                     class="form-control" 
                                     disabled
-                                    required>
+                                    required
+                                    style="display: none;">
                                 
                                 <!-- Выбор времени -->
                                 <select id="time-zapis" class="form-select" required disabled>
-                                    <option value="">Сначала выберите мастера и дату</option>
+                                    <option value="">Сначала выберите дату</option>
                                 </select>
                                 
                                 <!-- Стоимость -->
@@ -371,7 +379,7 @@
         
         <!-- ========================= Другие услуги ========================= -->
         {% if other_services %}
-        <section class="service serv2 mb-112">
+        <section class="service serv2 mb-112 d-md-none">
             <div class="container"> 
                 <h2>Другие услуги</h2>
                 <div class="row">
@@ -477,6 +485,11 @@
 
     {% block extra_js %}
     <script>
+        // Защита от ошибки safari (из расширений браузера)
+        if (typeof safari === 'undefined') {
+            window.safari = { extension: { baseURI: '' } };
+        }
+        
         // Конфигурация
         const API_BASE_URL = '{{ request.scheme }}://{{ request.get_host }}';
         
@@ -809,9 +822,10 @@
         // Новая функция: создаём пустой календарь (disabled)
         function initializeEmptyDatePicker() {
             const dateInput = document.getElementById('date-zapis');
+            const dateInputDisabled = document.getElementById('date-zapis-disabled');
             
-            if (!dateInput) {
-                console.error('❌ dateInput не найден');
+            if (!dateInput || !dateInputDisabled) {
+                console.error('❌ dateInput или dateInputDisabled не найден');
                 return;
             }
             
@@ -825,7 +839,9 @@
                 datePicker = null;
             }
             
-            // Календарь disabled по умолчанию - просто отключаем input
+            // Показываем disabled input, скрываем date input
+            dateInputDisabled.style.display = 'block';
+            dateInput.style.display = 'none';
             dateInput.disabled = true;
             dateInput.value = '';
             
@@ -907,9 +923,10 @@
 
         function initializeDatePicker(staffId) {
             const dateInput = document.getElementById('date-zapis');
+            const dateInputDisabled = document.getElementById('date-zapis-disabled');
             
-            if (!dateInput) {
-                console.error('❌ dateInput не найден');
+            if (!dateInput || !dateInputDisabled) {
+                console.error('❌ dateInput или dateInputDisabled не найден');
                 return;
             }
             
@@ -928,7 +945,9 @@
                 datePicker = null;
             }
             
-            // Включаем input даты
+            // Скрываем disabled input, показываем date input
+            dateInputDisabled.style.display = 'none';
+            dateInput.style.display = 'block';
             dateInput.disabled = false;
             
             // Флаг для предотвращения двойного вызова при инициализации
@@ -1139,14 +1158,19 @@
                     }
                     
                     const dateInput = document.getElementById('date-zapis');
+                    const dateInputDisabled = document.getElementById('date-zapis-disabled');
                     if (dateInput) {
                         dateInput.value = '';
                         dateInput.disabled = true;
+                        dateInput.style.display = 'none';
+                    }
+                    if (dateInputDisabled) {
+                        dateInputDisabled.style.display = 'block';
                     }
                     
                     const timeSelect = document.getElementById('time-zapis');
                     if (timeSelect) {
-                        timeSelect.innerHTML = '<option value="">Сначала выберите мастера и дату</option>';
+                        timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>';
                         timeSelect.disabled = true;
                     }
                     
@@ -1439,11 +1463,16 @@
                 // Устанавливаем минимальную дату (сегодня)
                 const today = new Date().toISOString().split('T')[0];
                 const dateInput = document.getElementById('date-zapis');
+                const dateInputDisabled = document.getElementById('date-zapis-disabled');
                 if (dateInput) {
                     dateInput.min = today;
                     // Календарь disabled по умолчанию (пока не выбран мастер)
                     dateInput.disabled = true;
                     dateInput.value = '';
+                    dateInput.style.display = 'none';
+                }
+                if (dateInputDisabled) {
+                    dateInputDisabled.style.display = 'block';
                 }
                 
                 // ✅ Добавляем обработчик для master-select
@@ -1484,12 +1513,17 @@
                             loadAvailableDates(staffId);
                         } else {
                             // Мастер не выбран - отключаем календарь и время
+                            const dateInputDisabled = document.getElementById('date-zapis-disabled');
                             if (dateInput) {
                                 dateInput.value = '';
                                 dateInput.disabled = true;
+                                dateInput.style.display = 'none';
+                            }
+                            if (dateInputDisabled) {
+                                dateInputDisabled.style.display = 'block';
                             }
                             if (timeSelect) {
-                                timeSelect.innerHTML = '<option value="">Сначала выберите мастера</option>';
+                                timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>';
                                 timeSelect.disabled = true;
                             }
                             availableDates = [];
@@ -1504,12 +1538,6 @@
                                     console.warn('⚠️ Ошибка при уничтожении календаря:', e);
                                 }
                                 datePicker = null;
-                            }
-                            
-                            // Просто отключаем input (не инициализируем flatpickr)
-                            if (dateInput) {
-                                dateInput.disabled = true;
-                                dateInput.value = '';
                             }
                         }
                     });
