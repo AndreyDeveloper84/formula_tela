@@ -302,3 +302,34 @@ class Promotion(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+class Review(models.Model):
+    """Модель отзывов клиентов"""
+    author_name = models.CharField(max_length=100, verbose_name="Имя автора")
+    text = models.TextField(verbose_name="Текст отзыва")
+    rating = models.PositiveSmallIntegerField(
+        default=5,
+        choices=[(i, i) for i in range(1, 6)],
+        verbose_name="Рейтинг (1-5)"
+    )
+    date = models.DateField(verbose_name="Дата отзыва")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок показа")
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+    
+    class Meta:
+        verbose_name = "Отзыв"
+        verbose_name_plural = "Отзывы"
+        ordering = ["order", "-date", "-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "order"]),
+        ]
+    
+    def __str__(self):
+        return f"{self.author_name} - {self.date}"
+    
+    def get_initial_letter(self):
+        """Возвращает первую букву имени для аватара"""
+        return self.author_name[0].upper() if self.author_name else "?"

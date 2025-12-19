@@ -8,7 +8,7 @@ from services_app.yclients_api import get_yclients_api, YClientsAPIError
 import logging
 import json
 
-from services_app.models import SiteSettings, ServiceCategory, Service, Master, FAQ, ServiceOption, Promotion, Bundle, BundleItem
+from services_app.models import SiteSettings, ServiceCategory, Service, Master, FAQ, ServiceOption, Promotion, Bundle, BundleItem, Review
 
 def _settings():
     return SiteSettings.objects.first()
@@ -55,6 +55,9 @@ def home(request):
         [:3]
     )
 
+    # Отзывы для секции "Отзывы"
+    reviews = Review.objects.filter(is_active=True).order_by("order", "-date", "-created_at")[:3]
+    
     ctx = {
         "settings": _settings(),
         "top_items": top_items,
@@ -63,6 +66,7 @@ def home(request):
         "faq": FAQ.objects.filter(is_active=True).order_by("order", "id")[:6],
         "promotions": promos,
         "popular_bundles": popular_bundles,
+        "reviews": reviews,
     }
     return render(request, "website/home.html", ctx)
 

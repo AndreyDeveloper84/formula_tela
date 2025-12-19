@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 import csv, io
 
 
-from .models import Service, Master, ServicePackage, ServiceCategory, Bundle, BundleItem, FAQ, SiteSettings, ServiceOption, Promotion
+from .models import Service, Master, ServicePackage, ServiceCategory, Bundle, BundleItem, FAQ, SiteSettings, ServiceOption, Promotion, Review
 from .forms import ServiceCSVImportForm
 
 @admin.register(ServiceCategory)
@@ -247,3 +247,19 @@ class PromotionAdmin(admin.ModelAdmin):
     search_fields = ("title", "subtitle", "description")
     filter_horizontal = ("options",)
     ordering = ("order", "-starts_at", "title")
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ("id", "order", "author_name", "rating", "date", "is_active")
+    list_editable = ("order", "is_active")
+    list_filter = ("is_active", "rating")
+    search_fields = ("author_name", "text")
+    ordering = ("order", "-date", "-created_at")
+    fieldsets = (
+        ("Основная информация", {
+            "fields": ("author_name", "text", "rating", "date")
+        }),
+        ("Настройки", {
+            "fields": ("is_active", "order")
+        }),
+    )
