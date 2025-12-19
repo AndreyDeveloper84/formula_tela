@@ -561,6 +561,10 @@ p.text-banner {font-size:20px;line-height:1.5;max-width:623px;}
 .serv2 .item img {width:100%;height:auto;display:block;object-fit:cover;}
 .serv2 .item span {position:absolute;left:0;top:0;right:0;bottom:0;text-align: center;z-index:1;}
 
+/* Базовые правила для .mn и .mobb - по умолчанию показываем desktop версию */
+.mn {display:block;}
+.mobb {display:none;}
+
 @media (min-width:768px) {
 .item img { transition: transform 0.6s; }  
 .item:hover img { transform: scale(1.1); }  
