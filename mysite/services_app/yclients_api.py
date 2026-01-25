@@ -506,25 +506,56 @@ class YClientsAPI:
             logger.error(traceback.format_exc())
             return []
 
+    """
+ИСПРАВЛЕНИЕ get_available_times для YClients API
+
+ПРОБЛЕМА:
+YClients API ожидает service_ids[] (массив), а не service_id
+
+РЕШЕНИЕ:
+Передавать service_ids[] как массив
+"""
+
     def get_available_times(
         self,
         staff_id: int,
         date: str,  # "2025-12-15"
-        service_id: Optional[int] = None
+        service_id: Optional[int] = None,
+        service_ids: Optional[List[int]] = None  # ← Добавляем поддержку массива
     ) -> List[str]:
         """
         Получить свободные временные слоты для записи
+        
+        Args:
+            staff_id: ID сотрудника
+            date: Дата в формате YYYY-MM-DD
+            service_id: ID услуги (для обратной совместимости)
+            service_ids: Массив ID услуг (правильный формат для API)
+        
+        Returns:
+            Список доступных слотов в формате "HH:MM"
         """
         endpoint = f"/book_times/{self.company_id}/{staff_id}/{date}"
         
+        # ✅ ПРАВИЛЬНАЯ ПЕРЕДАЧА service_ids
         params = {}
-        if service_id:
-            params['service_id'] = service_id
+        
+        # Формируем массив service_ids
+        if service_ids:
+            # Если передан массив - используем его
+            for sid in service_ids:
+                # YClients ожидает: service_ids[]=123&service_ids[]=234
+                if 'service_ids[]' not in params:
+                    params['service_ids[]'] = []
+                params['service_ids[]'].append(sid)
+        elif service_id:
+            # Если передан один ID - делаем массив из него
+            params['service_ids[]'] = [service_id]
         
         try:
             logger.info(
                 f"🔍 Запрос свободного времени: staff={staff_id}, "
-                f"date={date}, service_id={service_id}"
+                f"date={date}, service_ids={params.get('service_ids[]', [])}"
             )
             
             response = self._request('GET', endpoint, params=params)
@@ -539,151 +570,112 @@ class YClientsAPI:
             # Извлекаем data
             data = response.get('data', [])
             
-            logger.debug(f"Raw API response data type: {type(data)}")
-            logger.debug(f"Raw API response data: {data}")
+            logger.debug(f"📦 Raw API response data type: {type(data)}")
+            logger.debug(f"📦 Raw API response data length: {len(data) if isinstance(data, list) else 'N/A'}")
             
-            # Обрабатываем разные форматы
+            # Обрабатываем ответ
             times = []
             
             if isinstance(data, list):
-                # Если список строк ['09:00', '10:00', ...]
-                if data and isinstance(data[0], str):
-                    times = data
-                # Если список словарей [{'time': '09:00'}, ...]
-                elif data and isinstance(data[0], dict):
-                    for item in data:
-                        if 'time' in item:
-                            times.append(item['time'])
-                        elif 'datetime' in item:
-                            # Извлекаем только время из datetime
-                            dt = item['datetime']
-                            if isinstance(dt, str) and 'T' in dt:
-                                times.append(dt.split('T')[1][:5])  # "HH:MM"
-                            else:
-                                times.append(str(dt))
-                        elif 'seance_date' in item:
-                            times.append(item['seance_date'])
-            elif isinstance(data, dict):
-                # Если словарь с ключом 'times' или 'slots' или 'seances'
-                times = data.get('times', data.get('slots', data.get('seances', [])))
-                
-                # Если это список словарей, извлекаем time
-                if times and isinstance(times[0], dict):
-                    times = [
-                        t.get('time', t.get('datetime', str(t)))
-                        for t in times
-                    ]
+                for item in data:
+                    if isinstance(item, str):
+                        # Простая строка "17:30"
+                        times.append(item)
+                    elif isinstance(item, dict):
+                        # Объект со свойствами
+                        # Приоритет: time > datetime > seance_date
+                        time_str = item.get('time')
+                        
+                        if not time_str:
+                            # Извлекаем из datetime
+                            dt = item.get('datetime')
+                            if dt:
+                                # ISO формат: "2025-09-30T17:30:00"
+                                if 'T' in str(dt):
+                                    time_str = str(dt).split('T')[1][:5]  # "17:30"
+                                else:
+                                    time_str = str(dt)
+                        
+                        if not time_str:
+                            time_str = item.get('seance_date')
+                        
+                        if time_str:
+                            times.append(time_str)
+                            
+                            # ✅ ЛОГИРУЕМ seance_length для отладки
+                            seance_length_sec = item.get('seance_length')
+                            if seance_length_sec:
+                                seance_length_min = seance_length_sec // 60
+                                logger.debug(
+                                    f"   Слот {time_str}: длительность {seance_length_min} мин"
+                                )
             
             logger.info(
                 f"✅ Свободных слотов для мастера {staff_id} "
                 f"на {date}: {len(times)}"
             )
             
+            if times:
+                logger.debug(f"   Первые 5 слотов: {times[:5]}")
+            
             return times
             
         except YClientsAPIError as e:
             logger.error(
                 f"❌ Ошибка получения времени для staff_id={staff_id}, "
-                f"date={date}, service_id={service_id}: {e}"
+                f"date={date}: {e}"
             )
             return []
-    
 
+
+# ============================================================================
+# АЛЬТЕРНАТИВА: Если requests не поддерживает массивы в params
+# ============================================================================
+
+    def get_available_times_alternative(
+        self,
+        staff_id: int,
+        date: str,
+        service_id: Optional[int] = None
+    ) -> List[str]:
         """
-        Создать запись клиента в YClients
-        
-        Args:
-            staff_id: ID мастера
-            services: Список ID услуг [123, 456]
-            datetime: Дата и время в формате "2025-12-15T10:00:00"
-            client: Данные клиента
-                {
-                    "name": "Иван Петров",
-                    "phone": "79001234567",
-                    "email": "ivan@example.com"
-                }
-            comment: Комментарий к записи
-            notify_by_sms: За сколько часов отправить SMS (0 = не отправлять)
-            notify_by_email: За сколько часов отправить Email (0 = не отправлять)
-        
-        Returns:
-            {
-                'id': 1,  # Наш ID
-                'record_id': 123456,  # ID в YClients
-                'record_hash': 'abc123...'  # Hash записи
-            }
-        
-        Example:
-            >>> api = get_yclients_api()
-            >>> result = api.create_booking(
-            ...     staff_id=4416525,
-            ...     services=[10461107, 10461108],  # ID услуг из YClients
-            ...     datetime="2025-12-15T10:00:00",
-            ...     client={
-            ...         "name": "Тест Тестов",
-            ...         "phone": "79001234567",
-            ...         "email": "test@example.com"
-            ...     },
-            ...     comment="Тестовая запись"
-            ... )
-            >>> print(result['record_id'])
-            123456
+        Альтернативная версия с ручным формированием URL
         """
-        endpoint = f"/book_record/{self.company_id}"
+        endpoint = f"/book_times/{self.company_id}/{staff_id}/{date}"
         
-        # Формируем данные запроса согласно документации
-        data = {
-            "phone": client.get("phone"),
-            "fullname": client.get("name"),
-            "email": client.get("email", ""),
-            "appointments": [
-                {
-                    "id": 1,  # ID для обратной связи (можем использовать любое число)
-                    "services": services,  # Массив ID услуг
-                    "staff_id": staff_id,
-                    "datetime": datetime
-                }
-            ],
-            "notify_by_sms": notify_by_sms,
-            "notify_by_email": notify_by_email
-        }
-        
-        if comment:
-            data["comment"] = comment
-        
-        logger.info(
-            f"🔖 Создание записи: staff={staff_id}, "
-            f"datetime={datetime}, client={client.get('name')}, "
-            f"services={services}"
-        )
-        
+        # Формируем URL вручную с массивом
+        params = None
+        if service_id:
+            # Добавляем service_ids[] к endpoint вручную (как query string)
+            endpoint += f"?service_ids[]={service_id}"
+
         try:
-            response = self._request('POST', endpoint, data=data)
+            # Передаём params=None, т.к. параметры уже в URL
+            response = self._request('GET', endpoint, params=params)
             
-            # Проверяем success
+            # Обработка ответа
             if not response.get('success', False):
-                error_msg = response.get('meta', {}).get('message', 'Unknown error')
-                raise YClientsAPIError(f"Failed to create booking: {error_msg}")
+                logger.warning(f"⚠️ API вернул success=false: {response}")
+                return []
             
-            # Извлекаем данные первой (и единственной) записи
-            bookings = response.get('data', [])
+            data = response.get('data', [])
+            times = []
             
-            if not bookings:
-                raise YClientsAPIError("No booking data returned")
+            if isinstance(data, list):
+                for slot in data:
+                    if isinstance(slot, dict):
+                        time_str = slot.get('time')
+                        if time_str:
+                            times.append(time_str)
+                    elif isinstance(slot, str):
+                        times.append(slot)
             
-            booking_data = bookings[0]  # Берём первую запись
+            return times
             
-            logger.info(
-                f"✅ Запись создана! "
-                f"Record ID: {booking_data.get('record_id')}, "
-                f"Hash: {booking_data.get('record_hash')}"
-            )
-            
-            return booking_data
-            
-        except YClientsAPIError as e:
-            logger.error(f"❌ Ошибка создания записи: {e}")
-            raise
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении времени: {e}")
+            return []
+
     
     def create_booking(
         self,

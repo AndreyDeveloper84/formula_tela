@@ -197,54 +197,196 @@ def bundles(request):
 
 logger = logging.getLogger(__name__)
 
+"""
+ОБНОВЛЁННАЯ функция api_available_times с фильтрацией по seance_length
+
+ИЗМЕНЕНИЯ:
+1. Добавлен параметр service_option_id (для получения длительности процедуры)
+2. Фильтрация слотов по seance_length
+3. Детальное логирование для отладки
+"""
+
+from django.views.decorators.http import require_GET
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @require_GET
 @csrf_exempt
 def api_available_times(request):
     """
-    API: получить список доступных времён для записи.
+    API: получить список доступных времён для записи с фильтрацией по длительности
+    
+    GET параметры:
+        - staff_id: ID мастера (обязательно)
+        - date: Дата в формате YYYY-MM-DD (обязательно)
+        - service_option_id: ID варианта услуги (опционально, для фильтрации)
+    
+    Возвращает:
+        {
+            "success": true,
+            "data": {
+                "times": ["15:00", "16:00"],
+                "count": 2,
+                "date": "2026-01-08",
+                "staff_id": "4354560",
+                "filtered": true,  // Была ли применена фильтрация
+                "duration_minutes": 60  // Длительность процедуры
+            }
+        }
     """
     try:
         from services_app.yclients_api import get_yclients_api, YClientsAPIError
-        import logging
+        from services_app.models import ServiceOption
         
-        logger = logging.getLogger(__name__)
-        
+        # Получаем параметры
         staff_id = request.GET.get('staff_id')
         date = request.GET.get('date')
+        service_option_id = request.GET.get('service_option_id')  # ← НОВОЕ!
         
+        # Валидация обязательных параметров
         if not staff_id or not date:
             return JsonResponse({
                 'success': False,
                 'error': 'staff_id and date are required'
             }, status=400)
         
-        logger.info(f"⏰ Запрос доступных времён: мастер={staff_id}, дата={date}")
+        logger.info(
+            f"⏰ Запрос доступных времён: мастер={staff_id}, дата={date}, "
+            f"service_option_id={service_option_id}"
+        )
         
+        # Получаем длительность процедуры (если указан service_option_id)
+        duration_minutes = None
+        yclients_service_id = None
+        
+        if service_option_id:
+            try:
+                option = ServiceOption.objects.get(
+                    id=service_option_id,
+                    is_active=True
+                )
+                duration_minutes = option.duration_min
+                yclients_service_id = option.yclients_service_id
+                
+                logger.info(
+                    f"📋 Процедура: {option.service.name} "
+                    f"(длительность: {duration_minutes} мин, "
+                    f"YClients ID: {yclients_service_id})"
+                )
+                
+            except ServiceOption.DoesNotExist:
+                logger.warning(f"⚠️ ServiceOption {service_option_id} не найден")
+        
+        # Запрос к YClients API
         api = get_yclients_api()
         
         try:
-            times = api.get_available_times(
-                staff_id=int(staff_id),
-                date=date
+            # Вызываем _request напрямую чтобы получить полный ответ с seance_length
+            endpoint = f"/book_times/{api.company_id}/{staff_id}/{date}"
+            
+            params = {}
+            if yclients_service_id:
+                params['service_id'] = yclients_service_id
+            
+            logger.info(f"📡 Запрос к YClients: {endpoint}")
+            logger.debug(f"   Параметры: {params}")
+            
+            response = api._request('GET', endpoint, params=params)
+            
+            if not response.get('success', False):
+                logger.warning(f"⚠️ API вернул success=false: {response}")
+                return JsonResponse({
+                    'success': True,
+                    'data': {
+                        'times': [],
+                        'count': 0,
+                        'date': date,
+                        'staff_id': staff_id,
+                        'warning': 'YClients API вернул success=false'
+                    }
+                })
+            
+            # Получаем данные
+            data = response.get('data', [])
+            
+            logger.info(f"📦 YClients вернул: {len(data)} слотов")
+            
+            # ✅ ФИЛЬТРАЦИЯ ПО seance_length
+            all_times = []
+            filtered_times = []
+            
+            if isinstance(data, list):
+                for slot in data:
+                    if isinstance(slot, dict):
+                        time_str = slot.get('time')
+                        seance_length = slot.get('seance_length', 0)
+                        
+                        if time_str:
+                            all_times.append(time_str)
+                            
+                            # Если указана длительность - фильтруем
+                            if duration_minutes:
+                                required_seconds = duration_minutes * 60
+                                
+                                if seance_length >= required_seconds:
+                                    filtered_times.append(time_str)
+                                    logger.debug(
+                                        f"   ✅ {time_str}: доступно {seance_length//60} мин >= {duration_minutes} мин"
+                                    )
+                                else:
+                                    logger.debug(
+                                        f"   ❌ {time_str}: доступно {seance_length//60} мин < {duration_minutes} мин"
+                                    )
+                            else:
+                                # Без фильтрации - добавляем все
+                                filtered_times.append(time_str)
+                    
+                    elif isinstance(slot, str):
+                        # Старый формат - просто строки
+                        all_times.append(slot)
+                        filtered_times.append(slot)
+            
+            # Определяем какой список возвращать
+            result_times = filtered_times if duration_minutes else all_times
+            was_filtered = duration_minutes is not None
+            
+            logger.info(
+                f"✅ Результат: {len(result_times)} слотов "
+                f"({'после фильтрации' if was_filtered else 'без фильтрации'})"
             )
             
-            logger.info(f"✅ Найдено свободных слотов: {len(times)}")
+            if was_filtered and len(all_times) > len(result_times):
+                logger.info(
+                    f"   Убрано слотов: {len(all_times) - len(result_times)} "
+                    f"(не хватает времени для процедуры)"
+                )
             
-            # ВСЕГДА возвращаем success=true, даже если слотов 0
+            # Формируем ответ
+            response_data = {
+                'times': result_times,
+                'count': len(result_times),
+                'date': date,
+                'staff_id': staff_id,
+                'filtered': was_filtered
+            }
+            
+            # Добавляем доп. информацию если была фильтрация
+            if was_filtered:
+                response_data['duration_minutes'] = duration_minutes
+                response_data['original_count'] = len(all_times)
+                response_data['removed_count'] = len(all_times) - len(result_times)
+            
             return JsonResponse({
                 'success': True,
-                'data': {
-                    'times': times,
-                    'count': len(times),
-                    'date': date,
-                    'staff_id': staff_id
-                }
+                'data': response_data
             })
             
         except YClientsAPIError as e:
             logger.error(f"❌ YClients API error: {e}")
-            # Возвращаем пустой массив вместо ошибки
             return JsonResponse({
                 'success': True,
                 'data': {
@@ -252,7 +394,7 @@ def api_available_times(request):
                     'count': 0,
                     'date': date,
                     'staff_id': staff_id,
-                    'warning': 'Нет доступных слотов на эту дату'
+                    'warning': f'Ошибка YClients API: {str(e)}'
                 }
             })
             
@@ -266,6 +408,72 @@ def api_available_times(request):
             'error': 'Internal server error'
         }, status=500)
 
+
+# ============================================================================
+# АЛЬТЕРНАТИВА: Если хочешь сохранить старую функцию get_available_times
+# ============================================================================
+
+def api_available_times_simple(request):
+    """
+    Упрощённая версия - использует существующий метод get_available_times
+    и фильтрует результат отдельной функцией
+    """
+    try:
+        from services_app.yclients_api import get_yclients_api, YClientsAPIError
+        from services_app.models import ServiceOption
+        
+        staff_id = request.GET.get('staff_id')
+        date = request.GET.get('date')
+        service_option_id = request.GET.get('service_option_id')
+        
+        if not staff_id or not date:
+            return JsonResponse({
+                'success': False,
+                'error': 'staff_id and date are required'
+            }, status=400)
+        
+        logger.info(f"⏰ Запрос доступных времён: {staff_id}, {date}")
+        
+        api = get_yclients_api()
+        
+        # Получаем ВСЕ доступные слоты
+        times = api.get_available_times(
+            staff_id=int(staff_id),
+            date=date
+        )
+        
+        # Если нужна фильтрация - делаем её здесь
+        if service_option_id:
+            try:
+                option = ServiceOption.objects.get(id=service_option_id, is_active=True)
+                
+                # ⚠️ ПРОБЛЕМА: у нас нет seance_length в простом списке строк!
+                # Нужно либо менять get_available_times, либо делать второй запрос
+                
+                logger.warning(
+                    "⚠️ Фильтрация по длительности недоступна в упрощённой версии. "
+                    "Используйте полную версию api_available_times выше."
+                )
+                
+            except ServiceOption.DoesNotExist:
+                pass
+        
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'times': times,
+                'count': len(times),
+                'date': date,
+                'staff_id': staff_id
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Internal server error'
+        }, status=500)
 @csrf_exempt
 @require_POST
 def api_create_booking(request):
