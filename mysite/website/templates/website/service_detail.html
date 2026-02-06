@@ -1033,21 +1033,8 @@
 
         // ========== ЗАГРУЗКА ДОСТУПНЫХ ВРЕМЁН ==========
         async function loadAvailableTimes(staffId, date) {
-            // Получаем service_option_id из формы
-            const optionSelect = document.getElementById('option-select');
-            let serviceOptionId = null;
-            
-            if (optionSelect) {
-                if (optionSelect.tagName === 'SELECT') {
-                    serviceOptionId = optionSelect.value;
-                } else {
-                    // Скрытый input для единственной услуги
-                    serviceOptionId = optionSelect.value;
-                }
-            }
-            
             // Защита от повторных запросов с теми же параметрами
-            const requestKey = `${staffId}_${date}_${serviceOptionId || ''}`;
+            const requestKey = `${staffId}_${date}`;
             if (isLoadingTimes) {
                 console.log('⏸️ Загрузка времени уже выполняется, пропускаем запрос');
                 return;
@@ -1065,11 +1052,28 @@
             timeSelect.disabled = true;
             
             try {
+                // ✅ ПОЛУЧАЕМ service_option_id для фильтрации
+                const optionSelect = document.getElementById('option-select');
+                let serviceOptionId = null;
+                
+                if (optionSelect) {
+                    if (optionSelect.tagName === 'INPUT') {
+                        // Скрытый input с единственным вариантом
+                        serviceOptionId = optionSelect.value;
+                    } else if (optionSelect.tagName === 'SELECT') {
+                        // Select с несколькими вариантами
+                        serviceOptionId = optionSelect.value;
+                    }
+                }
+                
                 // Формируем URL с service_option_id для фильтрации по длительности
                 let url = `${API_BASE_URL}/api/booking/available_times/?staff_id=${staffId}&date=${date}`;
+                
                 if (serviceOptionId) {
                     url += `&service_option_id=${serviceOptionId}`;
+                    console.log('📏 Запрос с фильтрацией по service_option_id:', serviceOptionId);
                 }
+                
                 console.log('🔍 Загрузка времени:', url);
                 
                 const response = await fetch(url);
@@ -1083,10 +1087,20 @@
                 const data = await response.json();
                 console.log('📦 Ответ от API:', data);
                 
+                // ✅ ЛОГИРУЕМ ИНФОРМАЦИЮ О ФИЛЬТРАЦИИ
+                if (data.data && data.data.filtered) {
+                    console.log(`📊 Фильтрация применена:`);
+                    console.log(`   Длительность процедуры: ${data.data.duration_minutes} мин`);
+                    console.log(`   Всего слотов от YClients: ${data.data.original_count}`);
+                    console.log(`   После фильтрации: ${data.data.count}`);
+                    
+                    if (data.data.removed_count > 0) {
+                        console.log(`   ❌ Убрано слотов: ${data.data.removed_count} (недостаточно времени)`);
+                    }
+                }
+                
                 if (data.success && data.data && data.data.times) {
                     const times = data.data.times;
-                    const wasFiltered = data.data.filtered || false;
-                    const durationMinutes = data.data.duration_minutes;
                     
                     if (times.length > 0) {
                         // Группируем время по периодам
@@ -1112,39 +1126,32 @@
                             }
                         }
                         
-                        // Обновляем badge с информацией о фильтрации
-                        const timeBadge = document.getElementById('time-badge');
-                        if (timeBadge) {
-                            let badgeText = `${times.length} ${getSlotWord(times.length)}`;
-                            if (wasFiltered && durationMinutes) {
-                                badgeText += ` (отфильтровано по ${durationMinutes} мин)`;
-                            }
-                            timeBadge.textContent = badgeText;
-                            timeBadge.style.display = 'inline-block';
-                        }
+                        console.log('✅ Доступно слотов:', times.length);
                         
-                        console.log(`✅ Доступно слотов: ${times.length}${wasFiltered ? ` (отфильтровано по длительности ${durationMinutes} мин)` : ''}`);
+                        // Показываем предупреждение если слоты были отфильтрованы
+                        if (data.data.filtered && data.data.removed_count > 0) {
+                            console.log(
+                                `ℹ️ Некоторые слоты скрыты (недостаточно времени для процедуры ${data.data.duration_minutes} мин)`
+                            );
+                        }
                     } else {
                         // Нет доступных слотов
-                        const timeBadge = document.getElementById('time-badge');
-                        if (timeBadge) {
-                            timeBadge.style.display = 'none';
-                        }
+                        console.log('⚠️ Нет свободных слотов на эту дату');
                         
-                        if (wasFiltered && durationMinutes) {
-                            console.log(`⚠️ Нет свободных слотов на эту дату с достаточным временем (требуется ${durationMinutes} мин)`);
-                            timeSelect.innerHTML = `<option value="">Нет слотов с достаточным временем (требуется ${durationMinutes} мин)</option>`;
+                        // Проверяем причину
+                        if (data.data.filtered && data.data.original_count > 0) {
+                            // Слоты были, но все отфильтрованы
+                            console.log(
+                                `ℹ️ Слоты есть, но все слишком короткие для процедуры ${data.data.duration_minutes} мин`
+                            );
+                            timeSelect.innerHTML = `<option value="">Нет слотов для процедуры ${data.data.duration_minutes} мин</option>`;
                         } else {
-                            console.log('⚠️ Нет свободных слотов на эту дату');
+                            // Слотов вообще нет
                             timeSelect.innerHTML = '<option value="">На эту дату все занято</option>';
                         }
                     }
                 } else {
                     // Некорректный ответ от API
-                    const timeBadge = document.getElementById('time-badge');
-                    if (timeBadge) {
-                        timeBadge.style.display = 'none';
-                    }
                     console.warn('⚠️ Некорректный ответ:', data);
                     timeSelect.innerHTML = '<option value="">Нет свободного времени</option>';
                 }
@@ -1178,13 +1185,6 @@
             });
             
             return periods;
-        }
-        
-        // Функция склонения слова "слот"
-        function getSlotWord(count) {
-            const cases = [2, 0, 1, 1, 1, 2];
-            const words = ['слот', 'слота', 'слотов'];
-            return words[(count % 100 > 4 && count % 100 < 20) ? 2 : cases[Math.min(count % 10, 5)]];
         }
 
             
