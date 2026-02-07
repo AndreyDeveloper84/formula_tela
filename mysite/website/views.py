@@ -672,9 +672,19 @@ def service_detail(request, service_id):
     # 5. ✅ ИСПРАВЛЕНО: Другие КАТЕГОРИИ (не услуги!)
     other_categories = ServiceCategory.objects.exclude(
         pk=service.category_id
+    ).exclude(
+        image__isnull=True
+    ).exclude(
+        image_mobile__isnull=True
+    ).exclude(
+        slug__isnull=True
+    ).exclude(
+        slug=''
+    ).exclude(
+        image=''
     ).order_by('order')
 
-    logger.info(f"📋 Других категорий: {other_categories.count()}")
+    logger.info(f"📋 Других категорий с фото: {other_categories.count()}")
     
     context = {
         'service': service,
@@ -691,6 +701,58 @@ def service_detail(request, service_id):
     }
     
     return render(request, 'website/service_detail.html', context)
+    
+@require_GET
+def api_service_options(request):
+    """
+    API: Получить опции (варианты) конкретной услуги.
+    GET /api/booking/service_options/?service_id=123
+    
+    Возвращает список опций с длительностью, количеством, ценой.
+    Используется модалкой бронирования на странице «Услуги».
+    """
+    service_id = request.GET.get('service_id')
+    
+    if not service_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'service_id обязателен'
+        }, status=400)
+    
+    try:
+        service = Service.objects.get(id=service_id, is_active=True)
+    except Service.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Услуга не найдена'
+        }, status=404)
+    
+    options = ServiceOption.objects.filter(
+        service=service,
+        is_active=True
+    ).order_by('order', 'duration_min', 'unit_type', 'units')
+    
+    data = []
+    for opt in options:
+        data.append({
+            'id': opt.id,
+            'duration': opt.duration_min,
+            'quantity': opt.units,
+            'unit_type': opt.unit_type,
+            'unit_type_display': opt.get_unit_type_display(),
+            'price': float(opt.price),
+            'yclients_id': opt.yclients_service_id or '',
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'data': data,
+        'service_name': service.name,
+    })
+
+
+# Добавить в website/urls.py (в urlpatterns):
+# path('api/booking/service_options/', views.api_service_options, name='api_service_options'),
 
 """  
 def _get_other_services(service, limit=8):
