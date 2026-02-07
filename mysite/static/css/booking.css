@@ -1,0 +1,142 @@
+/* ============================================
+   BOOKING.CSS
+   Стили формы бронирования (service_detail)
+   Только то, чего нет в main.css дизайнера
+   ============================================ */
+
+
+/* ---- Сводка бронирования (модальное окно) ---- */
+
+.booking-summary {
+    background: #f5f5f5;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.booking-summary-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.booking-summary-item:last-child {
+    margin-bottom: 0;
+}
+
+
+/* ---- Контактная форма в модалке ---- */
+
+#contactModal .in-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#contactModal .form-control {
+    border-radius: 12px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+    height: 40px;
+    padding: 0 15px;
+}
+
+#contactModal textarea.form-control {
+    height: auto;
+    padding: 12px 15px;
+}
+
+#contactModal .form-control:focus {
+    outline: none;
+    border-color: #000;
+    box-shadow: none;
+}
+
+#contactModal .btn-black {
+    margin-top: 15px;
+}
+
+
+/* ---- Алерты в модальном окне ---- */
+
+#modal-alert .alert {
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    font-size: 14px;
+}
+
+
+/* ---- Кнопка в состоянии загрузки ---- */
+
+.btn-loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+
+/* ============================================
+   КАСТОМИЗАЦИЯ FLATPICKR
+   Цвет — чёрный, как основной цвет сайта
+   ============================================ */
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
+.flatpickr-day.endRange:hover {
+    background: #000 !important;
+    border-color: #000 !important;
+    color: #fff !important;
+}
+
+.flatpickr-day:hover {
+    background: #f0f0f0 !important;
+    border-color: #ddd !important;
+}
+
+.flatpickr-day.today {
+    border-color: #000 !important;
+}
+
+.flatpickr-day.today:hover {
+    background: #000 !important;
+    color: #fff !important;
+}
+
+/* Недоступные даты */
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+    color: #d1d5db !important;
+    background: transparent !important;
+    cursor: not-allowed !important;
+}
+
+/* Стрелки навигации */
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg {
+    fill: #000 !important;
+}
+
+/* Текущий месяц/год */
+.flatpickr-current-month .flatpickr-monthDropdown-months:hover,
+.flatpickr-current-month input.cur-year:focus {
+    color: #000;
+}
+
+
+/* ============================================
+   АДАПТИВНОСТЬ FLATPICKR
+   ============================================ */
+
+@media (max-width: 768px) {
+    .flatpickr-calendar {
+        font-size: 16px !important;
+    }
+
+    .flatpickr-day {
+        height: 42px !important;
+        line-height: 42px !important;
+    }
+}

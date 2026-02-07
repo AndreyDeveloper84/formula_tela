@@ -21,6 +21,14 @@ class Service(models.Model):
         verbose_name="Изображение услуги",
         help_text="Рекомендуемый размер: 800x600px"
     )
+
+    image_mobile = models.ImageField(
+        upload_to="services/mobile/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение (мобильное)",
+        help_text="Для экранов <768px. Если не загружено — используется основное изображение."
+    )
     
     class Meta:
         verbose_name = "Услуга"
@@ -108,6 +116,27 @@ class ServiceCategory(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="Название категории")
     description = models.TextField(blank=True, verbose_name="Описание категории")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+    
+
+    image = models.ImageField(
+        upload_to="categories/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение категории (десктоп)"
+    )
+    image_mobile = models.ImageField(
+        upload_to="categories/mobile/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение категории (мобильное)"
+    )
+    slug = models.SlugField(
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name="URL-slug",
+        help_text="Для ЧПУ-ссылок, например: ruchnye-massazhi"
+    )
     
     class Meta:
         ordering = ["order", "name"]

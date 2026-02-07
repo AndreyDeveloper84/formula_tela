@@ -290,7 +290,9 @@ def api_available_times(request):
             
             params = {}
             if yclients_service_id:
-                params['service_id'] = yclients_service_id
+                # ✅ ИСПРАВЛЕНИЕ: YClients API ожидает service_ids (массив)
+                params['service_ids'] = [yclients_service_id]
+                logger.info(f"📋 Фильтрация по услуге YClients ID: {yclients_service_id}")
             
             logger.info(f"📡 Запрос к YClients: {endpoint}")
             logger.debug(f"   Параметры: {params}")
@@ -634,109 +636,65 @@ def api_create_booking(request):
 def service_detail(request, service_id):
     """
     Страница конкретной услуги с формой бронирования.
-    
-    Контекст:
-        - service: объект Service
-        - options: список активных ServiceOption с yclients_service_id
-        - options_count: количество вариантов
-        - durations: список уникальных длительностей [60, 90, 120]
-        - durations_count: количество уникальных длительностей
-        - quantities_count: количество вариантов для первой длительности
-        - other_services: другие услуги категории (до 8)
-        - has_yclients_options: есть ли варианты с YClients ID
+    Соответствует uslugi3.html (фикс.) и uslugi4.html (с выбором).
     """
-    logger = logging.getLogger(__name__)
     
-    # 1. Получаем услугу (404 если не найдена или неактивна)
+    # 1. Получаем услугу
     service = get_object_or_404(
         Service.objects.select_related('category'),
         pk=service_id,
         is_active=True
     )
     
-    logger.info(f"✅ Услуга: {service.name} (ID: {service_id})")
+    # 2. Варианты услуги (только с yclients_service_id)
+    options = service.options.filter(
+        is_active=True
+    ).exclude(
+        yclients_service_id__isnull=True
+    ).exclude(
+        yclients_service_id=''
+    ).order_by('order', 'duration_min', 'units')
     
-    # 2. Получаем активные варианты с YClients ID
-    options = list(
-        service.options
-        .filter(is_active=True)
-        .exclude(yclients_service_id__isnull=True)
-        .exclude(yclients_service_id='')
-        .order_by('order', 'duration_min', 'units')
-    )
+    options_list = list(options)
     
-    has_yclients = len(options) > 0
+    # 3. Уникальные длительности и количества
+    durations = sorted(set(opt.duration_min for opt in options_list))
+    quantities = set(opt.units for opt in options_list)
     
-    # Fallback: если нет вариантов с YClients — берём все активные (для отладки)
-    if not has_yclients:
-        options = list(
-            service.options
-            .filter(is_active=True)
-            .order_by('order', 'duration_min', 'units')
-        )
-        logger.warning(f"⚠️ Нет вариантов с YClients ID, fallback на все активные: {len(options)}")
+    # 4. Проверяем: одинаковое ли количество для ВСЕХ длительностей
+    all_qty_pairs = set((opt.units, opt.get_unit_type_display()) for opt in options_list)
+    is_single_quantity = len(all_qty_pairs) == 1
+    single_qty_value = None
+    single_qty_display = None
+    if is_single_quantity and all_qty_pairs:
+        single_qty_value, single_qty_display = all_qty_pairs.pop()
     
-    logger.info(f"📋 Вариантов: {len(options)}, has_yclients: {has_yclients}")
+    # 5. ✅ ИСПРАВЛЕНО: Другие КАТЕГОРИИ (не услуги!)
+    other_categories = ServiceCategory.objects.exclude(
+        pk=service.category_id
+    ).order_by('order')
+
+    logger.info(f"📋 Других категорий: {other_categories.count()}")
     
-    # 3. Вычисляем метаданные для шаблона
-    durations = sorted(set(opt.duration_min for opt in options)) if options else []
-    
-    # Количество вариантов для первой длительности (для определения select vs input)
-    quantities_count = 0
-    if durations:
-        first_duration = durations[0]
-        quantities_count = len([opt for opt in options if opt.duration_min == first_duration])
-    
-    # Проверяем, одинаково ли количество для всех длительностей
-    # Если да - будем показывать input disabled сразу при рендеринге
-    is_single_quantity_for_all_durations = False
-    single_quantity_value = None
-    single_quantity_unit_type = None
-    single_quantity_unit_type_display = None
-    
-    if options and durations:
-        # Получаем все уникальные комбинации (duration, units, unit_type)
-        all_quantities = set()
-        for opt in options:
-            all_quantities.add((opt.units, opt.unit_type))
-        
-        # Если для всех длительностей только одна комбинация количества - показываем input disabled
-        if len(all_quantities) == 1:
-            is_single_quantity_for_all_durations = True
-            # Берем первую опцию для получения unit_type_display
-            first_opt = options[0]
-            single_quantity_value = first_opt.units
-            single_quantity_unit_type = first_opt.unit_type
-            single_quantity_unit_type_display = first_opt.get_unit_type_display()
-            logger.info(f"✅ Для всех длительностей одинаковое количество: {single_quantity_value} {single_quantity_unit_type_display}")
-    
-    # 4. Другие услуги (из той же категории + популярные)
-    other_services = _get_other_services(service, limit=8)
-    
-    logger.info(f"📋 Других услуг: {len(other_services)}")
-    
-    # 5. Контекст
-    return render(request, 'website/service_detail.html', {
-        'settings': _settings(),
+    context = {
         'service': service,
-        'options': options,
-        'options_count': len(options),
+        'options': options_list,
+        'options_count': len(options_list),
         'durations': durations,
         'durations_count': len(durations),
-        'quantities_count': quantities_count,
-        'has_yclients_options': has_yclients,
-        'other_services': other_services,
-        'is_single_quantity_for_all_durations': is_single_quantity_for_all_durations,
-        'single_quantity_value': single_quantity_value,
-        'single_quantity_unit_type_display': single_quantity_unit_type_display,
-    })
+        'quantities_count': len(quantities),
+        'is_single_quantity_for_all_durations': is_single_quantity,
+        'single_quantity_value': single_qty_value,
+        'single_quantity_unit_type_display': single_qty_display,
+        'other_categories': other_categories,     # ← БЫЛО: other_services
+        'settings': SiteSettings.objects.first(),
+    }
+    
+    return render(request, 'website/service_detail.html', context)
 
-
+"""  
 def _get_other_services(service, limit=8):
-    """
-    Получает другие услуги для блока "Другие услуги".
-    Приоритет: из той же категории → популярные из других категорий.
-    """
+
     other = []
     
     if service.category:
@@ -770,6 +728,7 @@ def _get_other_services(service, limit=8):
         )
     
     return other
+"""
 
 @csrf_exempt
 def api_available_dates(request):
