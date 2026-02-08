@@ -416,9 +416,9 @@
         // Сброс при закрытии
         modalEl.addEventListener('hidden.bs.modal', resetModal);
         
-        // Клик по всему date-wrapper открывает календарь
+        // Клик по date-wrapper открывает календарь (только десктоп)
         document.getElementById('m-date-wrapper').addEventListener('click', function() {
-            if (datePicker && typeof datePicker.open === 'function') {
+            if (!isMobile && datePicker && typeof datePicker.open === 'function') {
                 datePicker.open();
             }
         });
@@ -736,12 +736,17 @@
     }
     
     // ========== КАЛЕНДАРЬ (Flatpickr) ==========
+    // ========== ОПРЕДЕЛЯЕМ МОБИЛЬНОЕ УСТРОЙСТВО ==========
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                     || window.innerWidth <= 768;
+    
+    // ========== КАЛЕНДАРЬ ==========
     function initializeDatePicker(staffId) {
         const dateInput = document.getElementById('m-date-zapis');
         const dateDisabled = document.getElementById('m-date-disabled');
         const dateWrapper = document.getElementById('m-date-wrapper');
         
-        // Уничтожаем старый
+        // Уничтожаем старый Flatpickr
         if (datePicker && typeof datePicker.destroy === 'function') {
             try { datePicker.destroy(); } catch(e) {}
             datePicker = null;
@@ -751,6 +756,77 @@
         dateWrapper.style.display = 'block';
         
         const firstDate = availableDates[0];
+        
+        if (isMobile) {
+            // === МОБИЛЬНЫЕ: нативный select вместо Flatpickr ===
+            initMobileDateSelect(staffId, firstDate);
+        } else {
+            // === ДЕСКТОП: Flatpickr ===
+            initDesktopDatePicker(staffId, firstDate);
+        }
+    }
+    
+    // --- Мобильный select с датами ---
+    function initMobileDateSelect(staffId, firstDate) {
+        const dateWrapper = document.getElementById('m-date-wrapper');
+        
+        // Создаём select вместо input
+        let select = document.getElementById('m-date-select');
+        if (!select) {
+            select = document.createElement('select');
+            select.id = 'm-date-select';
+            select.className = 'form-select';
+            select.required = true;
+            dateWrapper.innerHTML = '';
+            dateWrapper.appendChild(select);
+        }
+        
+        // Заполняем опциями
+        select.innerHTML = '';
+        availableDates.forEach(dateStr => {
+            const option = document.createElement('option');
+            option.value = dateStr;
+            const d = new Date(dateStr + 'T00:00:00');
+            option.textContent = d.toLocaleDateString('ru-RU', {
+                day: 'numeric', month: 'long', year: 'numeric', weekday: 'short'
+            });
+            select.appendChild(option);
+        });
+        
+        // Выбираем первую дату
+        select.value = firstDate;
+        
+        // Обработчик
+        select.addEventListener('change', function() {
+            const dateStr = this.value;
+            if (!dateStr) return;
+            
+            bookingData.date = dateStr;
+            const d = new Date(dateStr + 'T00:00:00');
+            bookingData.dateFormatted = d.toLocaleDateString('ru-RU', {
+                day: 'numeric', month: 'long', year: 'numeric'
+            });
+            
+            const timeSelect = document.getElementById('m-time-zapis');
+            if (timeSelect) timeSelect.disabled = false;
+            
+            loadAvailableTimes(staffId, dateStr);
+        });
+        
+        // Загружаем время для первой даты
+        bookingData.date = firstDate;
+        const d = new Date(firstDate + 'T00:00:00');
+        bookingData.dateFormatted = d.toLocaleDateString('ru-RU', {
+            day: 'numeric', month: 'long', year: 'numeric'
+        });
+        loadAvailableTimes(staffId, firstDate);
+        
+        console.log('✅ Мобильный select дат готов:', availableDates.length, 'дат');
+    }
+    
+    // --- Десктоп Flatpickr ---
+    function initDesktopDatePicker(staffId, firstDate) {
+        const dateInput = document.getElementById('m-date-zapis');
         
         datePicker = flatpickr(dateInput, {
             locale: 'ru',
@@ -780,8 +856,7 @@
             },
             
             onReady: function() {
-                console.log('✅ Календарь готов');
-                // Сразу загружаем время для первой даты
+                console.log('✅ Flatpickr календарь готов');
                 bookingData.date = firstDate;
                 const d = new Date(firstDate + 'T00:00:00');
                 bookingData.dateFormatted = d.toLocaleDateString('ru-RU', {
@@ -995,7 +1070,12 @@
         document.getElementById('m-master-select').innerHTML = '<option value="">Сначала выберите вариант услуги</option>';
         document.getElementById('m-date-disabled').style.display = 'block';
         document.getElementById('m-date-disabled').value = 'Сначала выберите мастера';
-        document.getElementById('m-date-wrapper').style.display = 'none';
+        const dateWrapper = document.getElementById('m-date-wrapper');
+        dateWrapper.style.display = 'none';
+        // Восстанавливаем input для десктопа (мог быть заменён на select)
+        if (isMobile) {
+            dateWrapper.innerHTML = `<input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required>`;
+        }
         document.getElementById('m-time-zapis').innerHTML = '<option value="">Сначала выберите дату</option>';
         document.getElementById('m-time-zapis').disabled = true;
         document.getElementById('m-price-display').value = 'Стоимость: — ₽';
