@@ -1,32 +1,263 @@
 {% extends "website/base.html" %}
 {% load static %}
 
-{% block title %}Мастера — {{ settings.salon_name }}{% endblock %}
+{% block title %}Мастера — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .flatpickr-calendar { z-index: 10060 !important; }
+    .date-wrapper { position: relative; cursor: pointer; width: 100%; }
+    .date-wrapper #m-date-zapis, .date-wrapper .flatpickr-input { width: 100% !important; cursor: pointer !important; }
+    .date-wrapper input[readonly], .date-wrapper .flatpickr-wrapper input {
+        background-color: #fff !important; color: #000 !important;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 16px 12px;
+        padding-right: 2.25rem; appearance: none; width: 100% !important; box-sizing: border-box;
+    }
+    #modal-booking-form input.flatpickr-input[readonly] { background-color: #fff !important; color: #000 !important; cursor: pointer !important; opacity: 1 !important; }
+    @media (max-width: 576px) { #bookingModal .modal-body { padding: 20px !important; } }
+    #bookingModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
+    #bookingModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
+    #bookingModal .modal-content { max-width: 500px; width: calc(100% - 30px); pointer-events: auto; max-height: 90vh; overflow-y: auto; }
+    #m-contact-form .form-group { margin-bottom: 15px; }
+    #m-contact-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+    #m-contact-form .form-group input, #m-contact-form .form-group textarea { width: 100%; box-sizing: border-box; padding: 10px 15px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px; font-family: inherit; }
+    #m-contact-form .form-group input:focus, #m-contact-form .form-group textarea:focus { outline: none; border-color: #000; }
+    .booking-summary { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
+    .booking-summary-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+    .booking-summary-item span { opacity: 0.6; }
+    .booking-summary-item strong { text-align: right; max-width: 60%; }
+</style>
+{% endblock %}
 
 {% block content %}
-  <h1>Наши мастера</h1>
-  <div class="grid grid-3">
+    {% if active_promotion %}
+    <section class="banner2"><div class="container"><div class="b2 d-flex flex-column" id="parallax">
+        <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ active_promotion.title }}</h2>
+        <p class="text-banner wow fadeInUp" data-wow-delay=".4s">{{ active_promotion.subtitle|safe }}</p>
+        <div class="d-flex justify-content-between align-items-center"><a href="{% url 'website:services' %}" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s">Записаться</a></div>
+    </div></div></section>
+    {% endif %}
+
+    <section class="master mb-72">
+        <div class="container">
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">Наши мастера</h2>
+            <div class="row">
+                {% for m in masters %}
+                <div class="col-md-3 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% else %}1{% endif %}s">
+                    <a class="item" href="#master-{{ m.id }}" onclick="toggleMasterAccordion({{ m.id }}); return false;">
+                        {% if m.photo %}<img src="{{ m.photo.url }}" class="responsive mn7" alt="{{ m.name }}, {{ m.specialization }}" loading="lazy">
+                        {% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ m.name }}" loading="lazy">{% endif %}
+                        {% if m.photo_mobile %}<img src="{{ m.photo_mobile.url }}" class="responsive mobb7" alt="{{ m.name }}" loading="lazy">
+                        {% elif m.photo %}<img src="{{ m.photo.url }}" class="responsive mobb7" alt="{{ m.name }}" loading="lazy">
+                        {% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ m.name }}" loading="lazy">{% endif %}
+                    </a>
+                    <a class="text-center mb-40" href="#master-{{ m.id }}" onclick="toggleMasterAccordion({{ m.id }}); return false;">
+                        <span class="semi f20 mb-15">{{ m.name }}</span>
+                        {% if m.specialization %}<span class="op50">{{ m.specialization }}</span>{% endif %}
+                    </a>
+                </div>
+                {% empty %}<div class="col-12"><p class="text-center op50">Пока нет мастеров</p></div>{% endfor %}
+            </div>
+        </div>
+    </section>
+
     {% for m in masters %}
-      <div class="card">
-        {% if m.photo %}<img src="{{ m.photo.url }}" alt="{{ m.name }}" style="width:100%;border-radius:10px;margin-bottom:8px">{% endif %}
-        <div style="font-weight:600">{{ m.name }}</div>
-        {% if m.bio %}
-          <p style="margin:12px 0 8px 0;white-space:pre-wrap">{{ m.bio }}</p>
-        {% endif %}
-        {% if m.specialization %}<div class="muted">{{ m.specialization }}</div>{% endif %}
-        {% if m.experience %}<div class="muted">{{ m.experience }}</div>{% endif %}
-        {% if m.services.all %}
-          <div class="muted" style="margin-top:8px">Услуги:</div>
-          <ul style="margin:6px 0 0 18px">
-            {% for s in m.services.all|slice:":3" %}
-              <li>{{ s.name }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-        <p><a class="btn" href="#book">Записаться</a></p>
-      </div>
-    {% empty %}
-      <p class="muted">Пока нет мастеров</p>
+    <section class="master1 mb-112" id="master-{{ m.id }}" style="display: none;">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-4"><div class="photo-master"><div class="item">{% if m.photo %}<img src="{{ m.photo.url }}" class="responsive" alt="{{ m.name }}" loading="lazy">{% endif %}</div></div></div>
+                <div class="col-lg-8"><div class="info-master">
+                    <h2 class="mb-5x">{{ m.name }}</h2>
+                    {% if m.specialization %}<p class="op50">{{ m.specialization }}</p>{% endif %}
+                    {% if m.education or m.work_experience or m.approach or m.reviews_text %}
+                    <div class="accordion" id="ac-{{ m.id }}">
+                        {% if m.education %}<div class="accordion-item"><div class="accordion-header semi" id="pan-edu-h-{{ m.id }}"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-edu-{{ m.id }}">Образование и квалификация</button></div><div id="pan-edu-{{ m.id }}" class="accordion-collapse collapse" data-bs-parent="#ac-{{ m.id }}"><div class="accordion-body">{{ m.education|safe }}</div></div></div>{% endif %}
+                        {% if m.work_experience %}<div class="accordion-item"><div class="accordion-header semi" id="pan-exp-h-{{ m.id }}"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-exp-{{ m.id }}">Опыт работы</button></div><div id="pan-exp-{{ m.id }}" class="accordion-collapse collapse" data-bs-parent="#ac-{{ m.id }}"><div class="accordion-body">{{ m.work_experience|safe }}</div></div></div>{% endif %}
+                        {% if m.approach %}<div class="accordion-item"><div class="accordion-header semi" id="pan-app-h-{{ m.id }}"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-app-{{ m.id }}">Подход к работе</button></div><div id="pan-app-{{ m.id }}" class="accordion-collapse collapse" data-bs-parent="#ac-{{ m.id }}"><div class="accordion-body">{{ m.approach|safe }}</div></div></div>{% endif %}
+                        {% if m.reviews_text %}<div class="accordion-item"><div class="accordion-header semi" id="pan-rev-h-{{ m.id }}"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-rev-{{ m.id }}">Отзывы и статистика</button></div><div id="pan-rev-{{ m.id }}" class="accordion-collapse collapse" data-bs-parent="#ac-{{ m.id }}"><div class="accordion-body">{{ m.reviews_text|safe }}</div></div></div>{% endif %}
+                    </div>
+                    {% endif %}
+                </div></div>
+            </div>
+            {% if m.services.all %}
+            <section class="service serv1 mt-56"><h3>Услуги</h3><div class="row">
+                {% for s in m.services.all %}{% if s.is_active %}
+                <div class="col-xl-3 col-lg-4 col-md-6 col-sm-6">
+                    <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
+                        {% if s.image %}<img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" loading="lazy">{% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ s.name }}" loading="lazy">{% endif %}
+                        {% if s.image_mobile %}<img src="{{ s.image_mobile.url }}" class="responsive mobb7" alt="{{ s.name }}" loading="lazy">{% elif s.image %}<img src="{{ s.image.url }}" class="responsive mobb7" alt="{{ s.name }}" loading="lazy">{% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ s.name }}" loading="lazy">{% endif %}
+                    </a>
+                    <a class="text-center mb-40" href="{% url 'website:service_detail' service_id=s.id %}">
+                        <span class="semi f20 mb-15">{{ s.name }}</span>
+                        {% with first_option=s.options.all|first %}{% if first_option %}<span class="op50">{{ first_option.duration_min }} мин — от {{ first_option.price|floatformat:0 }} ₽</span>{% elif s.price_from %}<span class="op50">от {{ s.price_from|floatformat:0 }} ₽</span>{% endif %}{% endwith %}
+                    </a>
+                    {% if s.options.all %}<a class="btn-black t-btn" href="#" onclick="openBookingModalWithMaster({{ s.id }}, '{{ s.name|escapejs }}', '{{ m.name|escapejs }}'); return false;" style="display:block;width:100%;text-align:center;">Записаться</a>{% endif %}
+                </div>
+                {% endif %}{% endfor %}
+            </div></section>
+            {% endif %}
+            <div class="text-center mt-4"><a href="#" class="btn-white2 t-btn" onclick="closeMasterAccordion({{ m.id }}); return false;">Свернуть</a></div>
+        </div>
+    </section>
     {% endfor %}
-  </div>
+
+    <div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
+        <div class="modal-dialog" id="bookingModalDialog"><div class="modal-content" style="border:none;border-radius:12px;">
+            <div id="booking-step-1">
+                <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi" id="bookingModalLabel">Записаться</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body" style="padding:30px;">
+                    <div class="mb-20" id="modal-service-title" style="font-size:18px;font-weight:600;"></div>
+                    <div id="modal-loading" style="text-align:center;padding:40px;display:none;"><div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p></div>
+                    <form id="modal-booking-form" style="display:none;"><div class="in-form">
+                        <select id="m-duration-select" class="form-select" required><option value="">Выберите длительность</option></select>
+                        <div id="m-quantity-container"><select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select></div>
+                        <input type="hidden" id="m-option-select" value="">
+                        <select id="m-master-select" class="form-select" required><option value="">Сначала выберите вариант услуги</option></select>
+                        <input type="text" id="m-date-disabled" class="text-def" value="Сначала выберите мастера" disabled style="display:block;">
+                        <div class="date-wrapper" id="m-date-wrapper" style="display:none;"><input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required></div>
+                        <select id="m-time-zapis" class="form-select" required disabled><option value="">Сначала выберите дату</option></select>
+                        <input type="text" id="m-price-display" class="text-def semi" value="Стоимость: — ₽" disabled>
+                    </div><button type="submit" id="m-submit-booking" class="btn-black t-btn submit" style="width:100%;margin-top:15px;">Записаться онлайн</button></form>
+                </div>
+            </div>
+            <div id="booking-step-2" style="display:none;">
+                <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi">Подтверждение записи</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body" style="padding:30px;">
+                    <div class="booking-summary"><div class="booking-summary-item"><span>Услуга:</span><strong id="m-summary-service"></strong></div><div class="booking-summary-item"><span>Мастер:</span><strong id="m-summary-master"></strong></div><div class="booking-summary-item"><span>Дата и время:</span><strong id="m-summary-datetime"></strong></div><div class="booking-summary-item"><span>Стоимость:</span><strong id="m-summary-price"></strong></div></div>
+                    <form id="m-contact-form">
+                        <div class="form-group"><label for="m-client-name">Ваше имя *</label><input type="text" id="m-client-name" placeholder="Иван Петров" required></div>
+                        <div class="form-group"><label for="m-client-phone">Телефон *</label><input type="tel" id="m-client-phone" placeholder="+7 (900) 123-45-67" required></div>
+                        <div class="form-group"><label for="m-client-email">Email</label><input type="email" id="m-client-email" placeholder="email@example.com"></div>
+                        <div class="form-group"><label for="m-client-comment">Комментарий</label><textarea id="m-client-comment" rows="3" placeholder="Дополнительные пожелания"></textarea></div>
+                        <div id="m-modal-alert"></div>
+                        <button type="submit" id="m-confirm-booking" class="btn-black t-btn" style="width:100%;margin-top:10px;">Подтвердить запись</button>
+                    </form>
+                </div>
+            </div>
+            <div id="booking-step-3" style="display:none;"><div class="modal-body" style="padding:50px 30px;text-align:center;">
+                <div style="font-size:48px;margin-bottom:15px;">✅</div><h4 class="semi" style="margin-bottom:10px;">Вы записаны!</h4>
+                <p id="m-success-message" style="opacity:0.7;"></p><button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top:20px;">Закрыть</button>
+            </div></div>
+        </div></div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+<script>
+(function() {
+    'use strict';
+    const API = '{{ request.scheme }}://{{ request.get_host }}';
+    const CSRF = '{{ csrf_token }}';
+    let curId=null,curName='',preMaster=null,opts=[],oMap={},uDurs=[],bData={},aDates=[],fp=null,ldD=false,ldT=false,bsM=null,curMasterId=null;
+    const mob=/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)||window.innerWidth<=768;
+
+    window.toggleMasterAccordion=function(id){const s=document.getElementById('master-'+id);if(!s)return;if(curMasterId===id){window.closeMasterAccordion(id);return;}if(curMasterId!==null){const p=document.getElementById('master-'+curMasterId);if(p)p.style.display='none';}s.style.display='block';curMasterId=id;setTimeout(()=>s.scrollIntoView({behavior:'smooth',block:'start'}),100);};
+    window.closeMasterAccordion=function(id){const s=document.getElementById('master-'+id);if(s)s.style.display='none';curMasterId=null;const ms=document.querySelector('.master');if(ms)ms.scrollIntoView({behavior:'smooth',block:'start'});};
+
+    document.addEventListener('DOMContentLoaded',function(){
+        const el=document.getElementById('bookingModal');if(!el)return;bsM=new bootstrap.Modal(el);
+        el.addEventListener('hidden.bs.modal',reset);
+        document.getElementById('m-date-wrapper').addEventListener('click',function(){if(!mob&&fp&&typeof fp.open==='function')fp.open();});
+        document.getElementById('modal-booking-form').addEventListener('change',function(e){
+            if(e.target.id==='m-duration-select')onDur(e.target.value);else if(e.target.id==='m-quantity-select')onQty();else if(e.target.id==='m-master-select')onMas(e.target.value);else if(e.target.id==='m-time-zapis')onTim(e.target.value);
+        });
+        document.getElementById('modal-booking-form').addEventListener('submit',function(e){e.preventDefault();step2();});
+        document.getElementById('m-contact-form').addEventListener('submit',function(e){e.preventDefault();submit();});
+    });
+
+    window.openBookingModalWithMaster=function(sId,sName,mName){preMaster=mName;window.openBookingModal(sId,sName);};
+    window.openBookingModal=function(sId,sName){
+        curId=sId;curName=sName;document.getElementById('modal-service-title').textContent=sName;
+        document.getElementById('bookingModalLabel').textContent='Записаться';
+        document.getElementById('modal-loading').style.display='block';document.getElementById('modal-booking-form').style.display='none';
+        document.getElementById('booking-step-1').style.display='block';document.getElementById('booking-step-2').style.display='none';document.getElementById('booking-step-3').style.display='none';
+        bsM.show();loadOpts(sId);console.log('=== МОДАЛКА ===\n Услуга:',sName,'ID:',sId);if(preMaster)console.log(' Предвыбор:',preMaster);
+    };
+
+    async function loadOpts(sId){try{const r=await fetch(`${API}/api/booking/service_options/?service_id=${sId}`),d=await r.json();if(d.success&&d.data){opts=d.data;oMap={};opts.forEach(o=>{if(!oMap[o.duration])oMap[o.duration]={};oMap[o.duration][o.quantity]=o;});uDurs=[...new Set(opts.map(o=>o.duration))].sort((a,b)=>a-b);initForm();}else{document.getElementById('modal-loading').innerHTML='<p style="color:red;">Ошибка загрузки</p>';}}catch(e){document.getElementById('modal-loading').innerHTML='<p style="color:red;">Ошибка подключения</p>';}}
+
+    function initForm(){
+        const ds=document.getElementById('m-duration-select'),pi=document.getElementById('m-price-display'),oi=document.getElementById('m-option-select');
+        if(uDurs.length===1){const d=uDurs[0];ds.style.display='none';const w=ds.parentElement,i=document.createElement('input');i.type='text';i.className='text-def';i.value=d+' минут';i.disabled=true;i.id='m-duration-display';w.insertBefore(i,ds);ds.innerHTML=`<option value="${d}" selected>${d} минут</option>`;ds.value=d;onDur(d);}
+        else{ds.style.display='';ds.innerHTML='<option value="">Выберите длительность</option>';uDurs.forEach(d=>{const o=document.createElement('option');o.value=d;o.textContent=d+' минут';ds.appendChild(o);});}
+        document.getElementById('modal-loading').style.display='none';document.getElementById('modal-booking-form').style.display='block';
+        if(opts.length===1){const o=opts[0];oi.value=o.id;pi.value='Стоимость: '+fmt(o.price)+' ₽';loadMas();}
+    }
+
+    function onDur(v){if(!v)return;const d=parseInt(v),qs=oMap[d]?Object.keys(oMap[d]).map(Number).sort((a,b)=>a-b):[],c=document.getElementById('m-quantity-container');
+        if(!qs.length){c.innerHTML='<input type="text" class="text-def" value="Нет вариантов" disabled>';return;}
+        if(qs.length===1){const o=oMap[d][qs[0]];c.innerHTML=`<input type="text" class="text-def" value="${qs[0]} ${o.unit_type_display}" disabled><input type="hidden" id="m-quantity-select" value="${qs[0]}">`;selOpt(d,qs[0]);}
+        else{let h='<select id="m-quantity-select" class="form-select" required><option value="">Выберите количество</option>';qs.forEach(q=>{const o=oMap[d][q];h+=`<option value="${q}">${q} ${o.unit_type_display}</option>`;});c.innerHTML=h+'</select>';}
+    }
+    function onQty(){const d=document.getElementById('m-duration-select'),q=document.getElementById('m-quantity-select');if(d&&q&&d.value&&q.value)selOpt(parseInt(d.value),parseInt(q.value));}
+    function selOpt(d,q){const o=oMap[d]&&oMap[d][q];if(!o)return;document.getElementById('m-option-select').value=o.id;document.getElementById('m-price-display').value='Стоимость: '+fmt(o.price)+' ₽';bData.price=o.price;bData.optionId=o.id;bData.yclientsId=o.yclients_id;loadMas();}
+    function onMas(id){if(!id)return;const s=document.getElementById('m-master-select'),o=s.options[s.selectedIndex];bData.staffId=id;bData.masterName=o.textContent;loadDates(id);}
+    function onTim(t){if(t)bData.time=t;}
+
+    async function loadMas(){
+        const oi=document.getElementById('m-option-select').value;if(!oi)return;
+        const sel=document.getElementById('m-master-select');sel.innerHTML='<option value="">Загрузка...</option>';sel.disabled=true;
+        try{const r=await fetch(`${API}/api/booking/get_staff/?service_option_id=${oi}`),d=await r.json();
+            if(d.success&&d.data){sel.innerHTML='<option value="">Выберите мастера</option>';if(!d.data.length){sel.innerHTML='<option value="">Нет мастеров</option>';sel.disabled=false;return;}
+                let mid=null;d.data.forEach(m=>{const o=document.createElement('option');o.value=m.id;let n=m.name||'';if(m.specialization)n+=` (${m.specialization})`;o.textContent=n;sel.appendChild(o);
+                    if(preMaster&&m.name&&m.name.toLowerCase().includes(preMaster.split(' ')[0].toLowerCase()))mid=m.id;});
+                if(mid){sel.value=mid;onMas(mid);console.log('🎯 Предвыбран:',preMaster);}else if(d.data.length===1){sel.value=d.data[0].id;onMas(d.data[0].id);}
+            }else{sel.innerHTML='<option value="">Ошибка</option>';}sel.disabled=false;
+        }catch(e){sel.innerHTML='<option value="">Ошибка</option>';sel.disabled=false;}
+    }
+
+    async function loadDates(sId){if(!sId||ldD)return;ldD=true;try{const r=await fetch(`${API}/api/booking/available_dates/?staff_id=${sId}`),d=await r.json();if(d.success&&d.data&&d.data.dates){aDates=d.data.dates;if(aDates.length>0)initDP(sId);else{document.getElementById('m-date-disabled').value='Нет свободных дат';document.getElementById('m-date-disabled').style.display='block';document.getElementById('m-date-wrapper').style.display='none';}}}catch(e){}finally{ldD=false;}}
+
+    function initDP(sId){const di=document.getElementById('m-date-zapis'),dd=document.getElementById('m-date-disabled'),dw=document.getElementById('m-date-wrapper');if(fp&&typeof fp.destroy==='function'){try{fp.destroy();}catch(e){}fp=null;}dd.style.display='none';dw.style.display='block';const fd=aDates[0];if(mob)initMobDate(sId,fd);else initDeskDate(sId,fd);}
+
+    function initMobDate(sId,fd){const dw=document.getElementById('m-date-wrapper');let s=document.getElementById('m-date-select');if(!s){s=document.createElement('select');s.id='m-date-select';s.className='form-select';s.required=true;dw.innerHTML='';dw.appendChild(s);}
+        s.innerHTML='';aDates.forEach(ds=>{const o=document.createElement('option');o.value=ds;const d=new Date(ds+'T00:00:00');o.textContent=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',weekday:'short'});s.appendChild(o);});
+        s.value=fd;s.addEventListener('change',function(){const ds=this.value;if(!ds)return;bData.date=ds;const d=new Date(ds+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});document.getElementById('m-time-zapis').disabled=false;loadTimes(sId,ds);});
+        bData.date=fd;const d=new Date(fd+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});loadTimes(sId,fd);
+    }
+
+    function initDeskDate(sId,fd){fp=flatpickr(document.getElementById('m-date-zapis'),{locale:'ru',dateFormat:'Y-m-d',altInput:true,altFormat:'j F Y (D)',minDate:aDates[0],maxDate:aDates[aDates.length-1],enable:aDates,defaultDate:fd,disableMobile:true,allowInput:false,clickOpens:true,
+        onChange(sel,ds){if(!ds||!sId)return;bData.date=ds;bData.dateFormatted=sel[0].toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});document.getElementById('m-time-zapis').disabled=false;loadTimes(sId,ds);},
+        onReady(){bData.date=fd;const d=new Date(fd+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});loadTimes(sId,fd);}});}
+
+    async function loadTimes(sId,date){if(ldT)return;ldT=true;const ts=document.getElementById('m-time-zapis');ts.disabled=true;ts.innerHTML='<option value="">Загрузка...</option>';
+        try{const oi=document.getElementById('m-option-select').value;let u=`${API}/api/booking/available_times/?staff_id=${sId}&date=${date}`;if(oi)u+=`&service_option_id=${oi}`;
+            const r=await fetch(u),d=await r.json();if(d.success&&d.data&&d.data.times){const t=d.data.times;if(t.length>0){const g=grp(t);ts.innerHTML='<option value="">Выберите время</option>';for(const[p,pt]of Object.entries(g)){if(pt.length>0){const og=document.createElement('optgroup');og.label=p;pt.forEach(tm=>{const o=document.createElement('option');o.value=tm;o.textContent=tm;og.appendChild(o);});ts.appendChild(og);}}}else{ts.innerHTML='<option value="">Нет времени</option>';}}ts.disabled=false;
+        }catch(e){ts.innerHTML='<option value="">Ошибка</option>';ts.disabled=false;}finally{ldT=false;}}
+
+    function step2(){const t=document.getElementById('m-time-zapis').value;if(!t){alert('Выберите время');return;}bData.time=t;
+        document.getElementById('m-summary-service').textContent=curName;document.getElementById('m-summary-master').textContent=bData.masterName||'—';
+        document.getElementById('m-summary-datetime').textContent=(bData.dateFormatted||bData.date)+', '+bData.time;document.getElementById('m-summary-price').textContent=fmt(bData.price)+' ₽';
+        document.getElementById('booking-step-1').style.display='none';document.getElementById('booking-step-2').style.display='block';}
+
+    async function submit(){const cb=document.getElementById('m-confirm-booking'),al=document.getElementById('m-modal-alert');cb.disabled=true;cb.textContent='Отправка...';al.innerHTML='';
+        const n=document.getElementById('m-client-name').value.trim(),p=document.getElementById('m-client-phone').value.trim(),e=document.getElementById('m-client-email').value.trim(),c=document.getElementById('m-client-comment').value.trim();
+        if(!n||!p){al.innerHTML='<div class="alert alert-danger">Заполните имя и телефон</div>';cb.disabled=false;cb.textContent='Подтвердить запись';return;}
+        try{const r=await fetch(`${API}/api/booking/create/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({staff_id:parseInt(bData.staffId),service_ids:[parseInt(bData.yclientsId)],date:bData.date,time:bData.time,client:{name:n,phone:p,email:e||undefined},comment:c})});
+            const d=await r.json();if(d.success){document.getElementById('booking-step-2').style.display='none';document.getElementById('booking-step-3').style.display='block';document.getElementById('m-success-message').textContent=`${curName}, ${bData.dateFormatted||bData.date} в ${bData.time}`;}
+            else{al.innerHTML=`<div class="alert alert-danger">${d.error||'Ошибка'}</div>`;}}catch(er){al.innerHTML='<div class="alert alert-danger">Ошибка подключения</div>';}
+        finally{cb.disabled=false;cb.textContent='Подтвердить запись';}}
+
+    function reset(){curId=null;curName='';preMaster=null;opts=[];oMap={};uDurs=[];bData={};aDates=[];ldD=false;ldT=false;
+        if(fp&&typeof fp.destroy==='function'){try{fp.destroy();}catch(e){}fp=null;}
+        document.getElementById('booking-step-1').style.display='block';document.getElementById('booking-step-2').style.display='none';document.getElementById('booking-step-3').style.display='none';
+        document.getElementById('modal-booking-form').style.display='none';document.getElementById('modal-loading').style.display='none';
+        document.getElementById('modal-loading').innerHTML='<div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p>';
+        const ds=document.getElementById('m-duration-select');ds.style.display='';ds.innerHTML='<option value="">Выберите длительность</option>';const dd=document.getElementById('m-duration-display');if(dd)dd.remove();
+        document.getElementById('m-quantity-container').innerHTML='<select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select>';
+        document.getElementById('m-option-select').value='';document.getElementById('m-master-select').innerHTML='<option value="">Сначала выберите вариант услуги</option>';
+        document.getElementById('m-date-disabled').style.display='block';document.getElementById('m-date-disabled').value='Сначала выберите мастера';
+        const dw=document.getElementById('m-date-wrapper');dw.style.display='none';if(mob){dw.innerHTML='<input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required>';}
+        document.getElementById('m-time-zapis').innerHTML='<option value="">Сначала выберите дату</option>';document.getElementById('m-time-zapis').disabled=true;
+        document.getElementById('m-price-display').value='Стоимость: — ₽';
+        document.getElementById('m-client-name').value='';document.getElementById('m-client-phone').value='';document.getElementById('m-client-email').value='';document.getElementById('m-client-comment').value='';document.getElementById('m-modal-alert').innerHTML='';}
+
+    function fmt(p){return new Intl.NumberFormat('ru-RU').format(p);}
+    function grp(t){const g={'Утро (до 12:00)':[],'День (12:00–17:00)':[],'Вечер (после 17:00)':[]};t.forEach(x=>{const h=parseInt(x.split(':')[0]);if(h<12)g['Утро (до 12:00)'].push(x);else if(h<17)g['День (12:00–17:00)'].push(x);else g['Вечер (после 17:00)'].push(x);});return g;}
+})();
+</script>
 {% endblock %}

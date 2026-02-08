@@ -103,7 +103,10 @@ def promotions(request):
 
 
 def masters(request):
-    items = Master.objects.filter(is_active=True).prefetch_related("services").all().order_by("name")
+    items = Master.objects.filter(is_active=True).prefetch_related(
+        "services",
+        "services__options",
+    ).all().order_by("order", "name")
     return render(request, "website/masters.html", {
         "settings": _settings(),
         "masters": items,
@@ -701,7 +704,7 @@ def service_detail(request, service_id):
     }
     
     return render(request, 'website/service_detail.html', context)
-    
+
 @require_GET
 def api_service_options(request):
     """

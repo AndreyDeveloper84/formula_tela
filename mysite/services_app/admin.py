@@ -11,9 +11,21 @@ from .forms import ServiceCSVImportForm
 
 @admin.register(ServiceCategory)
 class ServiceCategoryAdmin(admin.ModelAdmin):
-    list_display = ("id","name","description", "order")
+    list_display = ("id","name","description", "slug", "image_preview", "order")
     list_editable = ("name", "description", "order")
     search_fields = ("name",)
+    prepopulated_fields = {"slug": ("name",)}
+    fields = ("name", "slug", "description", "order", "image", "image_mobile")
+
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height:40px;max-width:60px;'
+                'object-fit:cover;border-radius:4px;" />',
+                obj.image.url
+            )
+        return "—"
+    image_preview.short_description = "Фото"
 
 class ServiceOptionInline(admin.TabularInline):
     model = ServiceOption
@@ -181,9 +193,53 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(Master)
 class MasterAdmin(admin.ModelAdmin):
-    list_display = ("id","name","bio", "is_active")
-    list_filter = ("is_active",)
-    search_fields = ("bio","name")
+    list_display = ["name", "specialization", "order", "is_active", "photo_preview"]
+    list_editable = ["order", "is_active"]
+    list_filter = ("is_active", "specialization")
+    search_fields = ("name", "specialization")
+    prepopulated_fields = {}
+    fieldsets = (
+         (None, {
+             "fields": ("name", "specialization", "experience", "is_active", "order")
+         }),
+         ("Фото", {
+             "fields": ("photo", "photo_mobile"),
+         }),
+         ("Контакты", {
+             "fields": ("phone", "email", "working_hours"),
+            "classes": ("collapse",),
+         }),
+         ("Accordion: Образование", {
+             "fields": ("education",),
+             "classes": ("collapse",),
+             "description": "HTML: используйте <h2> для подзаголовков, <ul><li> для списков"
+         }),
+         ("Accordion: Опыт работы", {
+             "fields": ("work_experience",),
+             "classes": ("collapse",),
+         }),
+         ("Accordion: Подход к работе", {
+             "fields": ("approach",),
+             "classes": ("collapse",),
+         }),
+         ("Accordion: Отзывы и статистика", {
+             "fields": ("reviews_text",),
+             "classes": ("collapse",),
+         }),
+         ("Описание (старое поле)", {
+             "fields": ("bio",),
+             "classes": ("collapse",),
+         }),
+         ("Услуги", {
+             "fields": ("services",),
+         }),
+     )
+    filter_horizontal = ["services"]
+    def photo_preview(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="height:40px; border-radius:4px;" />', obj.photo.url)
+        return "—"
+    photo_preview.short_description = "Фото"
 
 class BundleItemInline(admin.TabularInline):
     model = BundleItem

@@ -213,6 +213,12 @@ class Master(models.Model):
     email = models.EmailField(blank=True, null=True, verbose_name="Email")
     working_hours = models.CharField(max_length=255, blank=True, null=True, verbose_name="Часы работы")
     rating = models.DecimalField(max_digits=3, decimal_places=1, blank=True, null=True, verbose_name="Рейтинг")
+    photo_mobile = models.ImageField(upload_to="masters/", blank=True, null=True, verbose_name="Фото (мобильное)")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
+    education = models.TextField(blank=True, verbose_name="Образование и квалификация", help_text="HTML: <h2>, <ul>, <li>")
+    work_experience = models.TextField(blank=True, verbose_name="Опыт работы", help_text="HTML разрешён")
+    approach = models.TextField(blank=True, verbose_name="Подход к работе", help_text="HTML разрешён")
+    reviews_text = models.TextField(blank=True, verbose_name="Отзывы и статистика", help_text="HTML разрешён")
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
@@ -220,7 +226,7 @@ class Master(models.Model):
     class Meta:
         verbose_name = "Мастер"
         verbose_name_plural = "Мастера"
-        ordering = ["-created_at"]
+        ordering = ["order", "name"]
 
     def __str__(self):
         return self.name
