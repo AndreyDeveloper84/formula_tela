@@ -8,7 +8,7 @@
 <style>
     /* Flatpickr поверх Bootstrap модалки */
     .flatpickr-calendar {
-        z-index: 1060 !important;
+        z-index: 10060 !important;
     }
     /* Flatpickr altInput внутри модалки */
     #modal-booking-form input.flatpickr-input[readonly] {
@@ -24,8 +24,7 @@
         width: 100%;
     }
     .date-wrapper #m-date-zapis,
-    .date-wrapper .flatpickr-input,
-    .date-wrapper .flatpickr-wrapper {
+    .date-wrapper .flatpickr-input {
         width: 100% !important;
         cursor: pointer !important;
     }
@@ -114,6 +113,8 @@
         max-width: 500px;
         width: calc(100% - 30px);
         pointer-events: auto;
+        max-height: 90vh;
+        overflow-y: auto;
     }
 </style>
 {% endblock %}
@@ -763,7 +764,6 @@
             disableMobile: true,
             allowInput: false,
             clickOpens: true,
-            static: true,
             
             onChange: function(selectedDates, dateStr) {
                 if (!dateStr || !staffId) return;
