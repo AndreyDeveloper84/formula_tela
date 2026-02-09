@@ -7,6 +7,8 @@ from django.views.decorators.csrf import csrf_exempt
 from services_app.yclients_api import get_yclients_api, YClientsAPIError
 import logging
 import json
+import requests as http_requests
+from django.conf import settings as django_settings
 
 from services_app.models import SiteSettings, ServiceCategory, Service, Master, FAQ, ServiceOption, Promotion, Bundle, BundleItem, Review
 
@@ -131,8 +133,7 @@ def _min_option(service):
     """Возвращает самый «лёгкий» вариант (для стартового подсчёта)."""
     opts = list(service.options.all())
     return opts[0] if opts else None
-
-
+    
 def bundles(request):
 
     def _compute_min_totals(items):
@@ -951,3 +952,88 @@ def api_get_staff(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+@require_POST
+def api_bundle_request(request):
+    """API: Заявка на комплекс — сохранение + уведомление"""
+    import json
+    from services_app.models import Bundle, BundleRequest
+    from django.core.mail import send_mail
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+    name = data.get('name', '').strip()
+    phone = data.get('phone', '').strip()
+    email = data.get('email', '').strip()
+    comment = data.get('comment', '').strip()
+    bundle_id = data.get('bundle_id')
+    bundle_name = data.get('bundle_name', '')
+
+    if not name or not phone:
+        return JsonResponse({'success': False, 'error': 'Имя и телефон обязательны'}, status=400)
+
+    # Находим комплекс
+    bundle = None
+    if bundle_id:
+        try:
+            bundle = Bundle.objects.get(id=bundle_id)
+            bundle_name = bundle.name
+        except Bundle.DoesNotExist:
+            pass
+
+    # Сохраняем в БД
+    req = BundleRequest.objects.create(
+        bundle=bundle,
+        bundle_name=bundle_name,
+        client_name=name,
+        client_phone=phone,
+        client_email=email,
+        comment=comment,
+    )
+
+    # Уведомление в Telegram
+    tg_token = getattr(django_settings, 'TELEGRAM_BOT_TOKEN', '')
+    tg_chat = getattr(django_settings, 'TELEGRAM_CHAT_ID', '')
+    if tg_token and tg_chat:
+        try:
+            text = (
+                f"🔔 Новая заявка на комплекс!\n\n"
+                f"📦 {bundle_name}\n"
+                f"👤 {name}\n"
+                f"📱 {phone}\n"
+            )
+            if email:
+                text += f"📧 {email}\n"
+            if comment:
+                text += f"💬 {comment}\n"
+
+            http_requests.post(
+                f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                json={"chat_id": tg_chat, "text": text, "parse_mode": "HTML"},
+                timeout=5
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Telegram notification failed: {e}")
+
+    # Уведомление по Email
+    admin_email = getattr(django_settings, 'ADMIN_NOTIFICATION_EMAIL', '')
+    if admin_email:
+        try:
+            send_mail(
+                subject=f"Заявка на комплекс: {bundle_name}",
+                message=f"Имя: {name}\nТелефон: {phone}\nEmail: {email}\nКомментарий: {comment}",
+                from_email=None,
+                recipient_list=[admin_email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Заявка принята! Администратор свяжется с вами.'
+    })

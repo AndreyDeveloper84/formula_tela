@@ -253,6 +253,11 @@ class Bundle(models.Model):
     fixed_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     discount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0.00"))
 
+    description = models.TextField(blank=True, verbose_name="Описание комплекса")
+    image = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото")
+    image_mobile = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото (мобильное)")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
+
     # связь «многие-ко-многим» через промежуточную таблицу,
     # в которой хранится порядок услуг внутри комплекса
     options = models.ManyToManyField('ServiceOption', through='BundleItem', related_name='bundles')
@@ -302,6 +307,29 @@ class BundleItem(models.Model):
 
     class Meta:
         ordering = ['order']
+
+class BundleRequest(models.Model):
+    """Заявка на комплекс — сохраняется в БД + уведомление админу"""
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="requests", verbose_name="Комплекс"
+    )
+    bundle_name = models.CharField(max_length=200, verbose_name="Название комплекса")
+    client_name = models.CharField(max_length=150, verbose_name="Имя клиента")
+    client_phone = models.CharField(max_length=30, verbose_name="Телефон")
+    client_email = models.EmailField(blank=True, verbose_name="Email")
+    comment = models.TextField(blank=True, verbose_name="Комментарий")
+    is_processed = models.BooleanField(default=False, verbose_name="Обработана")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата заявки")
+
+    class Meta:
+        verbose_name = "Заявка на комплекс"
+        verbose_name_plural = "Заявки на комплексы"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.client_name} — {self.bundle_name} ({self.created_at:%d.%m.%Y %H:%M})"
+
 
 
 class Promotion(models.Model):

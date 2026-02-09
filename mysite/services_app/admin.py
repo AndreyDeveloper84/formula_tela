@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 import csv, io
 
 
-from .models import Service, Master, ServicePackage, ServiceCategory, Bundle, BundleItem, FAQ, SiteSettings, ServiceOption, Promotion, Review
+from .models import Service, Master, ServicePackage, ServiceCategory, Bundle, BundleItem, FAQ, SiteSettings, ServiceOption, Promotion, Review, BundleRequest
 from .forms import ServiceCSVImportForm
 
 @admin.register(ServiceCategory)
@@ -255,9 +255,15 @@ class BundleItemInline(admin.TabularInline):
 class BundleAdmin(admin.ModelAdmin):
     exclude = ("services",)
 
-    list_display = ("id","name","is_active", "is_popular")
+    list_display = ("id", "name", "is_active", "is_popular", "order")
+    list_editable = ("is_active", "is_popular", "order")
     list_filter = ("is_active", "is_popular")
     inlines = [BundleItemInline]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "image", "image_mobile")}),
+        ("Цена", {"fields": ("fixed_price", "discount")}),
+        ("Настройки", {"fields": ("is_active", "is_popular", "order")}),
+    )
 
 
 @admin.register(BundleItem)
@@ -273,6 +279,13 @@ class BundleItemAdmin(admin.ModelAdmin):
         return obj.option.name if obj.option_id else '-'
     option_name.short_description = 'Вариант'
 
+@admin.register(BundleRequest)
+class BundleRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "client_name", "client_phone", "bundle_name", "is_processed", "created_at")
+    list_filter = ("is_processed", "created_at")
+    list_editable = ("is_processed",)
+    search_fields = ("client_name", "client_phone", "bundle_name")
+    readonly_fields = ("bundle", "bundle_name", "client_name", "client_phone", "client_email", "comment", "created_at")
 
 @admin.register(FAQ)
 class FAQAdmin(admin.ModelAdmin):

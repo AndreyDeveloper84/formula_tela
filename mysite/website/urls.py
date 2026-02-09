@@ -18,5 +18,7 @@ urlpatterns = [
     path('api/booking/available_dates/', views.api_available_dates, name='api_available_dates'),  
     path('api/booking/available_times/', views.api_available_times, name='api_available_times'),
     path('api/booking/create/', views.api_create_booking, name='api_create_booking'),
-    path('api/booking/service_options/', views.api_service_options, name='api_service_options'),    
+    path('api/booking/service_options/', views.api_service_options, name='api_service_options'),
+    # API endpoints для комплексов
+    path('api/bundle/request/', views.api_bundle_request, name='api_bundle_request'),
 ]
