@@ -1,5 +1,5 @@
 {% extends "website/base.html" %}
-{% load static %}
+{% load static social_tags %}
 {% block title %}Главная — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 {% block body_class %}home{% endblock %}
 
@@ -45,16 +45,16 @@
             <div class="row">
                 {% for cat in categories %}
                     <div class="col-xl-3 col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% elif forloop.counter == 6 %}1.4{% elif forloop.counter == 7 %}1.6{% else %}1.8{% endif %}s">
-                        <a href="{% url 'website:services' %}" class="item">
+                        <a href="{% url 'website:services' %}#category-{{ cat.id }}" class="item">
                             {% if cat.image %}
                                 <img src="{{ cat.image.url }}" class="responsive" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                             {% else %}
                                 <img src="{% static 'images/cat1.jpg' %}" class="responsive" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                             {% endif %}
                         </a>
-                        <a class="d-flex justify-content-between" href="{% url 'website:services' %}">
+                        <a class="d-flex justify-content-between" href="{% url 'website:services' %}#category-{{ cat.id }}">    
                             <b>{{ cat.name }}</b>
-                            <span>{{ cat.services.count }} услуг</span>
+                            <span>{{ cat.services.count }} {{ cat.services.count|pluralize_ru:"услуга,услуги,услуг" }}</span>
                         </a>	
                     </div>
                 {% empty %}
