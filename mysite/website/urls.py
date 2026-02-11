@@ -21,4 +21,8 @@ urlpatterns = [
     path('api/booking/service_options/', views.api_service_options, name='api_service_options'),
     # API endpoints для комплексов
     path('api/bundle/request/', views.api_bundle_request, name='api_bundle_request'),
+    # API endpoints для визарда
+    path('api/wizard/categories/', views.api_wizard_categories, name='api_wizard_categories'),
+    path('api/wizard/categories/<int:category_id>/services/', views.api_wizard_services, name='api_wizard_services'),
+    path('api/wizard/booking/', views.api_wizard_booking, name='api_wizard_booking'),
 ]

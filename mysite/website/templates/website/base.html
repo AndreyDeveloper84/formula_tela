@@ -69,7 +69,7 @@
                             {{ settings.contact_phone|default:'8 (8412) 39-34-33' }}
                         </a>
                     </span>
-                    <a href="{% url 'website:services' %}" class="btn-black t-btn">Записаться онлайн</a>
+                    <a href="#" class="btn-black t-btn" data-bs-toggle="modal" data-bs-target="#bookingWizard">Записаться онлайн</a>
                 </div>
                 <div class="collapse navbar-collapse sub-menu-bar" id="navbarSupportedContent">
                     <ul id="nav" class="navbar-nav">
@@ -187,29 +187,238 @@
     </a>
 
     <!-- ============== Modal start =================== -->
-    <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="exampleModalLabel">Запись на сеанс</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <!-- ============== Booking Wizard Modal =================== -->
+<div class="modal fade" id="bookingWizard" tabindex="-1" aria-labelledby="bookingWizardLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bookingWizardLabel">Запись на процедуру</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Progress -->
+                <div class="booking-progress mb-30" style="display:flex;gap:4px;margin-bottom:20px;">
+                    <div class="bp-step active" data-step="1" style="flex:1;height:3px;background:#222;border-radius:2px;"></div>
+                    <div class="bp-step" data-step="2" style="flex:1;height:3px;background:#ddd;border-radius:2px;"></div>
+                    <div class="bp-step" data-step="3" style="flex:1;height:3px;background:#ddd;border-radius:2px;"></div>
                 </div>
-                <form action="#" method="post">
-                    <div class="modal-body">
-                        <p>Выберите услугу для записи</p>
-                        <div class="in-form mt-40">
-                            <p class="text-center">
-                                <a href="{% url 'website:services' %}" class="btn-black t-btn">Перейти к услугам</a>
-                            </p>
-                        </div>
+
+                <!-- Step 1: Categories -->
+                <div class="wizard-step" id="wizStep1">
+                    <p class="semi mb-15">Выберите категорию:</p>
+                    <div id="wizCategories" style="display:flex;flex-direction:column;gap:8px;">
+                        <!-- filled by JS -->
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn-white2 t-btn" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+
+                <!-- Step 2: Services -->
+                <div class="wizard-step" id="wizStep2" style="display:none;">
+                    <a href="#" onclick="wizardBack(1);return false;" style="text-decoration:none;color:#888;font-size:14px;">&larr; Назад к категориям</a>
+                    <p class="semi mb-15 mt-15" id="wizCatName"></p>
+                    <div id="wizServices" style="display:flex;flex-direction:column;gap:8px;">
+                        <!-- filled by JS -->
                     </div>
-                </form>
+                </div>
+
+                <!-- Step 3: Contact Form -->
+                <div class="wizard-step" id="wizStep3" style="display:none;">
+                    <a href="#" onclick="wizardBack(2);return false;" style="text-decoration:none;color:#888;font-size:14px;">&larr; Назад к услугам</a>
+                    <p class="semi mb-15 mt-15">Вы выбрали: <span id="wizSelectedService"></span></p>
+                    <p class="op50 mb-15" id="wizSelectedDetails"></p>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <input type="text" id="wizName" placeholder="Ваше имя *" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:16px;">
+                        <input type="tel" id="wizPhone" placeholder="Телефон *" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:16px;">
+                        <textarea id="wizComment" placeholder="Комментарий (необязательно)" rows="2" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:16px;resize:vertical;"></textarea>
+                        <button onclick="wizardSubmit()" class="btn-black t-btn" style="width:100%;border:none;cursor:pointer;" id="wizSubmitBtn">Записаться</button>
+                    </div>
+                    <p id="wizError" style="color:red;font-size:14px;margin-top:8px;display:none;"></p>
+                </div>
+
+                <!-- Step 4: Success -->
+                <div class="wizard-step" id="wizStep4" style="display:none;">
+                    <div style="text-align:center;padding:20px 0;">
+                        <div style="font-size:48px;margin-bottom:16px;">&#10003;</div>
+                        <p class="semi f20 mb-15">Заявка отправлена!</p>
+                        <p class="op50">Мы свяжемся с вами в ближайшее время для подтверждения записи.</p>
+                        <button onclick="document.getElementById('bookingWizard').querySelector('.btn-close').click();" class="btn-white2 t-btn" style="margin-top:20px;border:none;cursor:pointer;">Закрыть</button>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div id="wizLoading" style="display:none;text-align:center;padding:40px 0;">
+                    <p>Загрузка...</p>
+                </div>
             </div>
         </div>
-    </div> 
+    </div>
+</div>
+
+<script>
+// ===== Booking Wizard =====
+let wizardData = {
+    categoryId: null,
+    categoryName: '',
+    serviceId: null,
+    serviceName: '',
+    serviceDetails: '',
+    optionId: null
+};
+
+// Show/hide steps
+function wizardShowStep(n) {
+    document.querySelectorAll('.wizard-step').forEach(el => el.style.display = 'none');
+    document.getElementById('wizLoading').style.display = 'none';
+    document.getElementById('wizStep' + n).style.display = 'block';
+    // Update progress
+    document.querySelectorAll('.bp-step').forEach(el => {
+        let s = parseInt(el.dataset.step);
+        el.style.background = s <= n ? '#222' : '#ddd';
+    });
+}
+
+function wizardBack(step) {
+    wizardShowStep(step);
+}
+
+// Step 1: Load categories on modal open
+document.getElementById('bookingWizard').addEventListener('show.bs.modal', function() {
+    wizardShowStep(1);
+    wizardData = {categoryId:null, categoryName:'', serviceId:null, serviceName:'', serviceDetails:'', optionId:null};
+    loadCategories();
+});
+
+function loadCategories() {
+    let container = document.getElementById('wizCategories');
+    container.innerHTML = '<p style="color:#888;">Загрузка...</p>';
+    fetch('/api/wizard/categories/')
+        .then(r => r.json())
+        .then(data => {
+            container.innerHTML = '';
+            if (!data.categories || data.categories.length === 0) {
+                container.innerHTML = '<p>Категории не найдены</p>';
+                return;
+            }
+            data.categories.forEach(cat => {
+                let btn = document.createElement('button');
+                btn.className = 'btn-white2 t-btn';
+                btn.style.cssText = 'width:100%;text-align:left;border:1px solid #ddd;cursor:pointer;padding:12px 16px;';
+                btn.innerHTML = '<span class="semi">' + cat.name + '</span> <span class="op50" style="float:right;">' + cat.services_count + ' ' + pluralize(cat.services_count) + '</span>';
+                btn.onclick = function() { selectCategory(cat.id, cat.name); };
+                container.appendChild(btn);
+            });
+        })
+        .catch(() => { container.innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; });
+}
+
+function pluralize(n) {
+    n = Math.abs(n) % 100;
+    if (n >= 11 && n <= 19) return 'услуг';
+    let n1 = n % 10;
+    if (n1 === 1) return 'услуга';
+    if (n1 >= 2 && n1 <= 4) return 'услуги';
+    return 'услуг';
+}
+
+// Step 2: Load services for category
+function selectCategory(catId, catName) {
+    wizardData.categoryId = catId;
+    wizardData.categoryName = catName;
+    document.getElementById('wizCatName').textContent = catName;
+    wizardShowStep(2);
+
+    let container = document.getElementById('wizServices');
+    container.innerHTML = '<p style="color:#888;">Загрузка...</p>';
+    fetch('/api/wizard/categories/' + catId + '/services/')
+        .then(r => r.json())
+        .then(data => {
+            container.innerHTML = '';
+            if (!data.services || data.services.length === 0) {
+                container.innerHTML = '<p>Услуги не найдены</p>';
+                return;
+            }
+            data.services.forEach(svc => {
+                let btn = document.createElement('button');
+                btn.className = 'btn-white2 t-btn';
+                btn.style.cssText = 'width:100%;text-align:left;border:1px solid #ddd;cursor:pointer;padding:12px 16px;';
+                let details = '';
+                if (svc.duration && svc.price) {
+                    details = svc.duration + ' мин — от ' + svc.price + ' ₽';
+                }
+                btn.innerHTML = '<span class="semi">' + svc.name + '</span>' + (details ? '<br><span class="op50 f14">' + details + '</span>' : '');
+                btn.onclick = function() { selectService(svc.id, svc.name, details, svc.option_id); };
+                container.appendChild(btn);
+            });
+        })
+        .catch(() => { container.innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; });
+}
+
+// Step 3: Contact form
+function selectService(svcId, svcName, details, optionId) {
+    wizardData.serviceId = svcId;
+    wizardData.serviceName = svcName;
+    wizardData.serviceDetails = details;
+    wizardData.optionId = optionId;
+    document.getElementById('wizSelectedService').textContent = svcName;
+    document.getElementById('wizSelectedDetails').textContent = details;
+    document.getElementById('wizError').style.display = 'none';
+    wizardShowStep(3);
+}
+
+// Submit
+function wizardSubmit() {
+    let name = document.getElementById('wizName').value.trim();
+    let phone = document.getElementById('wizPhone').value.trim();
+    let comment = document.getElementById('wizComment').value.trim();
+    let errEl = document.getElementById('wizError');
+
+    if (!name) { errEl.textContent = 'Введите имя'; errEl.style.display = 'block'; return; }
+    if (!phone || phone.length < 7) { errEl.textContent = 'Введите корректный телефон'; errEl.style.display = 'block'; return; }
+
+    let btn = document.getElementById('wizSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Отправка...';
+
+    fetch('/api/wizard/booking/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCSRF()},
+        body: JSON.stringify({
+            category_id: wizardData.categoryId,
+            service_id: wizardData.serviceId,
+            option_id: wizardData.optionId,
+            client_name: name,
+            client_phone: phone,
+            comment: comment
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            wizardShowStep(4);
+            // Reset form
+            document.getElementById('wizName').value = '';
+            document.getElementById('wizPhone').value = '';
+            document.getElementById('wizComment').value = '';
+        } else {
+            errEl.textContent = data.error || 'Ошибка отправки';
+            errEl.style.display = 'block';
+        }
+        btn.disabled = false;
+        btn.textContent = 'Записаться';
+    })
+    .catch(() => {
+        errEl.textContent = 'Ошибка сети';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Записаться';
+    });
+}
+
+function getCSRF() {
+    let c = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+    return c ? c.split('=')[1] : '';
+}
+</script>
+<!-- ============== Booking Wizard End =================== -->
     <!-- ============== Modal end =================== -->
 
     <!-- ========================= JS here ========================= -->

@@ -396,3 +396,23 @@ class Review(models.Model):
     def get_initial_letter(self):
         """Возвращает первую букву имени для аватара"""
         return self.author_name[0].upper() if self.author_name else "?"
+
+
+class BookingRequest(models.Model):
+    """Заявка на запись через визард на сайте"""
+    category_name = models.CharField("Категория", max_length=200, blank=True, default="")
+    service_name = models.CharField("Услуга", max_length=200)
+    client_name = models.CharField("Имя клиента", max_length=100)
+    client_phone = models.CharField("Телефон", max_length=30)
+    comment = models.TextField("Комментарий", blank=True, default="")
+    is_processed = models.BooleanField("Обработана", default=False)
+    created_at = models.DateTimeField("Дата заявки", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Заявка на запись"
+        verbose_name_plural = "Заявки на запись"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.client_name} — {self.service_name} ({self.created_at:%d.%m.%Y %H:%M})"
+

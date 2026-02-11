@@ -1,0 +1,73 @@
+info:
+  description: OpenAPI спецификация для MVP сервиса BeautyGo
+  title: BeautyGo API
+  version: 1.0.0
+openapi: 3.0.0
+paths:
+  /api/auth/login/:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                email:
+                  format: email
+                  type: string
+                password:
+                  type: string
+              required:
+              - email
+              - password
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                properties:
+                  access:
+                    type: string
+                  refresh:
+                    type: string
+                type: object
+          description: Успешный вход
+        '401':
+          description: Неверные учетные данные
+      summary: Вход пользователя
+  /api/auth/register/:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                email:
+                  format: email
+                  type: string
+                password:
+                  type: string
+                phone:
+                  type: string
+                role:
+                  enum:
+                  - client
+                  - specialist
+                  type: string
+                username:
+                  type: string
+              required:
+              - username
+              - password
+              - email
+              - phone
+              - role
+              type: object
+        required: true
+      responses:
+        '201':
+          description: Успешная регистрация
+        '400':
+          description: Ошибка валидации
+      summary: Регистрация пользователя

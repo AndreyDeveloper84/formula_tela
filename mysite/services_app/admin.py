@@ -5,8 +5,22 @@ from django.db import transaction
 from decimal import Decimal, InvalidOperation
 import csv, io
 
+from .models import (
+    Service,
+    Master,
+    ServicePackage,
+    ServiceCategory,
+    Bundle,
+    BundleItem,
+    FAQ,
+    SiteSettings,
+    ServiceOption,
+    Promotion,
+    Review,
+    BundleRequest,
+    BookingRequest,
+)
 
-from .models import Service, Master, ServicePackage, ServiceCategory, Bundle, BundleItem, FAQ, SiteSettings, ServiceOption, Promotion, Review, BundleRequest
 from .forms import ServiceCSVImportForm
 
 @admin.register(ServiceCategory)
@@ -332,3 +346,11 @@ class ReviewAdmin(admin.ModelAdmin):
             "fields": ("is_active", "order")
         }),
     )
+
+@admin.register(BookingRequest)
+class BookingRequestAdmin(admin.ModelAdmin):
+    list_display = ("client_name", "client_phone", "service_name", "is_processed", "created_at")
+    list_filter = ("is_processed", "created_at")
+    list_editable = ("is_processed",)
+    search_fields = ("client_name", "client_phone", "service_name")
+    readonly_fields = ("created_at",)

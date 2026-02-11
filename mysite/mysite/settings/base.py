@@ -27,6 +27,11 @@ if not ALLOWED_HOSTS or ALLOWED_HOSTS == ["*"]:
 
 CSRF_TRUSTED_ORIGINS = [_scheme(o) for o in _csv("DJANGO_CSRF_TRUSTED_ORIGINS", "")]
 
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+ADMIN_NOTIFICATION_EMAIL = os.environ.get('ADMIN_NOTIFICATION_EMAIL', '')
+
 INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",

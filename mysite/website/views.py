@@ -10,7 +10,20 @@ import json
 import requests as http_requests
 from django.conf import settings as django_settings
 
-from services_app.models import SiteSettings, ServiceCategory, Service, Master, FAQ, ServiceOption, Promotion, Bundle, BundleItem, Review
+from services_app.models import (
+    SiteSettings,
+    ServiceCategory,
+    Service,
+    Master,
+    FAQ,
+    ServiceOption,
+    Promotion,
+    Bundle,
+    BundleItem,
+    Review,
+    BookingRequest,
+)
+
 
 def _settings():
     return SiteSettings.objects.first()
@@ -1037,3 +1050,109 @@ def api_bundle_request(request):
         'success': True,
         'message': 'Заявка принята! Администратор свяжется с вами.'
     })
+
+@require_GET
+def api_wizard_categories(request):
+    """Список категорий с количеством активных услуг"""
+    categories = ServiceCategory.objects.prefetch_related("services").order_by("order", "name")
+    result = []
+    for cat in categories:
+        active_count = cat.services.filter(is_active=True).count()
+        if active_count > 0:
+            result.append({
+                "id": cat.id,
+                "name": cat.name,
+                "services_count": active_count,
+            })
+    return JsonResponse({"categories": result})
+
+@require_GET
+def api_wizard_services(request, category_id):
+    """Услуги категории с первым вариантом (цена, длительность)"""
+    services = Service.objects.filter(
+        category_id=category_id, is_active=True
+    ).prefetch_related("options").order_by("name")
+
+    result = []
+    for svc in services:
+        first_opt = svc.options.filter(is_active=True).order_by("order", "price").first()
+        result.append({
+            "id": svc.id,
+            "name": svc.name,
+            "duration": first_opt.duration_min if first_opt else None,
+            "price": int(first_opt.price) if first_opt and first_opt.price else None,
+            "option_id": first_opt.id if first_opt else None,
+        })
+    return JsonResponse({"services": result})
+
+@csrf_exempt
+@require_POST
+def api_wizard_booking(request):
+    """Создание заявки на запись"""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Неверный формат данных"}, status=400)
+
+    client_name = data.get("client_name", "").strip()
+    client_phone = data.get("client_phone", "").strip()
+    comment = data.get("comment", "").strip()
+    service_id = data.get("service_id")
+
+    if not client_name or not client_phone:
+        return JsonResponse({"success": False, "error": "Укажите имя и телефон"}, status=400)
+
+    # Получаем названия
+    service_name = "Не указана"
+    category_name = ""
+    if service_id:
+        try:
+            svc = Service.objects.select_related("category").get(id=service_id)
+            service_name = svc.name
+            category_name = svc.category.name if svc.category else ""
+        except Service.DoesNotExist:
+            pass
+
+    # Сохраняем в БД
+    booking = BookingRequest.objects.create(
+        category_name=category_name,
+        service_name=service_name,
+        client_name=client_name,
+        client_phone=client_phone,
+        comment=comment,
+    )
+
+    # Telegram уведомление
+    _send_booking_telegram(booking)
+
+    return JsonResponse({"success": True, "id": booking.id})
+
+
+def _send_booking_telegram(booking):
+    """Отправка уведомления в Telegram"""
+    from django.conf import settings as django_settings
+    
+    token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
+    chat_id = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return
+
+    text = (
+        f"📋 Новая заявка с сайта!\n\n"
+        f"👤 {booking.client_name}\n"
+        f"📞 {booking.client_phone}\n"
+        f"💆 {booking.service_name}\n"
+    )
+    if booking.category_name:
+        text += f"📂 {booking.category_name}\n"
+    if booking.comment:
+        text += f"💬 {booking.comment}\n"
+
+    try:
+        http_requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=5,
+        )
+    except Exception as e:
+        logger.error(f"Telegram notification failed: {e}")

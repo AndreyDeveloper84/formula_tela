@@ -1,0 +1,45 @@
+Module;API Version;Endpoint;Access Roles
+Auth;v1;POST /auth/register;"Client; Specialist"
+Auth;v1;POST /auth/login;"Client; Specialist"
+Auth;v1;POST /auth/logout;"Client; Specialist"
+Auth;v1;POST /auth/verify-phone;"Client; Specialist"
+Auth;v1;POST /auth/verify-email;"Client; Specialist"
+Auth;v2;POST /auth/social-login;"Client; Specialist"
+Users;v1;GET /users/me;"Client; Specialist"
+Users;v1;PATCH /users/me;"Client; Specialist"
+Users;v1;GET /users/{id}/public;Client
+Specialists;v1;GET /specialists/;Client
+Specialists;v1;GET /specialists/{id};Client
+Specialists;v1;PATCH /specialists/me;Specialist
+Specialists;v1;GET /specialists/me/bookings;Specialist
+Services;v1;GET /services/;All
+Services;v1;POST /services/;Specialist
+Services;v1;PATCH /services/{id}/;Specialist
+Services;v1;DELETE /services/{id}/;Specialist
+Booking;v1;GET /specialists/{id}/available-slots;Client
+Booking;v1;POST /bookings/;Client
+Booking;v1;GET /bookings/me;"Client; Specialist"
+Booking;v1;PATCH /bookings/{id}/cancel;Client
+Booking;v1;PATCH /bookings/{id}/confirm;Specialist
+Reviews;v1;POST /reviews/;Client
+Reviews;v1;GET /specialists/{id}/reviews;Client
+Geolocation;v2;GET /specialists/map;Client
+Payments;v2;POST /payments/create-session;Client
+Payments;v2;POST /payments/webhook;System
+Payments;v2;GET /payments/history;Client
+Subscriptions;v2;GET /subscriptions/plans;Specialist
+Subscriptions;v2;POST /subscriptions/subscribe;Specialist
+Subscriptions;v2;GET /subscriptions/status;Specialist
+Chat;v2;GET /chat/dialogs;"Client; Specialist"
+Chat;v2;GET /chat/{dialog_id}/messages;"Client; Specialist"
+Chat;v2;POST /chat/{dialog_id}/messages;"Client; Specialist"
+CRM;v3;GET /crm/statistics;Specialist
+CRM;v3;GET /crm/clients;Specialist
+CRM;v3;GET /crm/clients/{id}/history;Specialist
+Marketplace;v3;GET /products/;All
+Marketplace;v3;POST /products/;Specialist
+Marketplace;v3;GET /products/{id};All
+Marketplace;v3;POST /cart/add;Client
+Marketplace;v3;POST /order/create;Client
+Notifications;v3;POST /notifications/send;Admin
+Notifications;v3;GET /notifications/me;"Client; Specialist"

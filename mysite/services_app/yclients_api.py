@@ -537,28 +537,41 @@ YClients API ожидает service_ids[] (массив), а не service_id
         """
         endpoint = f"/book_times/{self.company_id}/{staff_id}/{date}"
         
-        # ✅ ПРАВИЛЬНАЯ ПЕРЕДАЧА service_ids
+        # ✅ ИСПРАВЛЕНИЕ: Используем обычный ключ service_ids (без [])
         params = {}
         
         # Формируем массив service_ids
         if service_ids:
             # Если передан массив - используем его
-            for sid in service_ids:
-                # YClients ожидает: service_ids[]=123&service_ids[]=234
-                if 'service_ids[]' not in params:
-                    params['service_ids[]'] = []
-                params['service_ids[]'].append(sid)
+            params['service_ids'] = service_ids
+            logger.debug(f"   Фильтрация по услугам: {service_ids}")
         elif service_id:
             # Если передан один ID - делаем массив из него
-            params['service_ids[]'] = [service_id]
+            params['service_ids'] = [service_id]
+            logger.debug(f"   Фильтрация по услуге: {service_id}")
         
         try:
             logger.info(
                 f"🔍 Запрос свободного времени: staff={staff_id}, "
-                f"date={date}, service_ids={params.get('service_ids[]', [])}"
+                f"date={date}, service_ids={params.get('service_ids', [])}"
             )
             
             response = self._request('GET', endpoint, params=params)
+            
+            # ✅ ДОПОЛНИТЕЛЬНОЕ ЛОГИРОВАНИЕ для отладки
+            logger.info(f"📦 YClients вернул success: {response.get('success')}")
+            data = response.get('data', [])
+            logger.info(f"📦 Количество слотов в ответе: {len(data) if isinstance(data, list) else 'не список'}")
+            
+            # Логируем первые 3 слота с детальной информацией
+            if isinstance(data, list) and len(data) > 0:
+                logger.info("📋 Детали первых слотов:")
+                for i, slot in enumerate(data[:3]):
+                    if isinstance(slot, dict):
+                        time_val = slot.get('time', '?')
+                        seance_len = slot.get('seance_length', 0)
+                        seance_min = seance_len // 60 if seance_len else 0
+                        logger.info(f"   [{i+1}] {time_val}: seance_length={seance_len}s ({seance_min} мин)")
             
             # Проверяем success
             if not response.get('success', False):
