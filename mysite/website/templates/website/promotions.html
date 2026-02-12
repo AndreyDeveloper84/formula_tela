@@ -1,65 +1,87 @@
 {% extends "website/base.html" %}
+{% load static service_extras %}
+
 {% block title %}Акции — {{ settings.salon_name }}{% endblock %}
+
+{% block body_class %}page actions{% endblock %}
+
 {% block content %}
-  <section>
-    <h1>Акции</h1>
-    <div class="grid grid-2">
-      {% for p in promotions %}
-        <div class="card">
-          <div style="display:flex; gap:12px; align-items:flex-start">
-            {% if p.image %}
-              <img src="{{ p.image.url }}" alt="{{ p.title }}" style="max-width:120px; height:auto; border-radius:6px">
+<div class="after-head"></div>
+
+{% for p in promotions %}
+<section class="banner2 {% if forloop.last %}mb-112{% endif %}">
+    <div class="container">
+        <div class="b2 d-flex flex-column"
+             {% if p.image %}
+             style="background: #9BAE9E url('{{ p.image.url }}') no-repeat 10% 0 / cover;"
+             {% endif %}
+        >
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ p.title }}</h2>
+
+            {% if p.description %}
+            <p class="text-banner wow fadeInUp" data-wow-delay=".4s">{{ p.description|linebreaksbr }}</p>
             {% endif %}
-            <div>
-              <div style="font-weight:600">{{ p.title }}</div>
-              {% if p.subtitle %}<div class="muted">{{ p.subtitle }}</div>{% endif %}
-              {% if p.starts_at or p.ends_at %}
-                <div class="muted" style="margin-top:4px">
-                  {% if p.starts_at %}с {{ p.starts_at|date:"d.m.Y" }}{% endif %}
-                  {% if p.ends_at %} по {{ p.ends_at|date:"d.m.Y" }}{% endif %}
+
+            {% if p.subtitle %}
+            <p class="text-banner wow fadeInUp" data-wow-delay=".4s">{{ p.subtitle }}</p>
+            {% endif %}
+
+            {% if p.ends_at %}
+            <p class="mobb7"><span class="op80 f20">До {{ p.ends_at|date:"d E Y" }} года</span></p>
+            {% endif %}
+
+            <div class="d-flex justify-content-between align-items-center">
+
+                {% if p.options.all %}
+                {# Акция с привязкой к услугам — показываем селект #}
+                <div class="choose">
+                    <div class="d-flex">
+                        <select class="form-select me-3" aria-label="Выберите услугу" data-promo-id="{{ p.id }}">
+                            {% for o in p.options.all %}
+                            <option value="{{ o.id }}">
+                                {{ o.service.name }} / {{ o.duration_min }} мин
+                                {% if p.discount_percent %}
+                                    {{ o.price|floatformat:0 }} ₽
+                                    → {{ o.price|discount:p.discount_percent }} ₽
+                                {% else %}
+                                    {{ o.price|floatformat:0 }} ₽
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <a href="#" class="btn-white t-btn wow fadeInUp submit" data-wow-delay=".6s"
+                           data-bs-toggle="modal" data-bs-target="#bookingWizard">Записаться</a>
+                    </div>
                 </div>
-              {% endif %}
-              {% if p.discount_percent %}
-                <div style="margin-top:6px"><b>Скидка: {{ p.discount_percent }}%</b></div>
-              {% endif %}
-              {% if p.features %}
-                <ul class="muted" style="margin:8px 0 0 18px">
-                  {% for f in p.features %}
-                    <li>{{ f }}</li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            </div>
-          </div>
+                {% else %}
+                {# Общая акция — просто кнопка #}
+                <a href="#" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s"
+                   data-bs-toggle="modal" data-bs-target="#bookingWizard">Записаться</a>
+                {% endif %}
 
-          {% if p.options.all %}
-            <div style="margin-top:10px">
-              <form action="{% url 'website:book_service' %}" method="get">
-                <label class="muted">Вариант услуги по акции:</label>
-                <select name="service_option_id" style="display:block; width:100%; margin:6px 0 10px">
-                  {% for o in p.options.all %}
-                    <option value="{{ o.id }}">
-                      {{ o.service.name }} — {{ o.duration_min }} мин{% if o.units and o.units > 1 %} × {{ o.units }} {{ o.get_unit_type_display }}{% endif %} — {{ o.price|floatformat:0 }} ₽
-                    </option>
-                  {% endfor %}
-                </select>
-                <button type="submit" class="btn">Записаться</button>
-              </form>
-            </div>
-          {% endif %}
+                <div class="mn7">
+                    {% if p.promo_code %}
+                    <span class="f20 pe-3">Промокод: {{ p.promo_code }}</span>
+                    {% endif %}
+                    {% if p.ends_at %}
+                    <span class="op80 f20">До {{ p.ends_at|date:"d E Y" }} года</span>
+                    {% endif %}
+                </div>
 
-          {% if p.description %}
-            <p style="margin-top:10px">{{ p.description }}</p>
-          {% endif %}
-          {% if p.price_note %}
-            <div class="muted">{{ p.price_note }}</div>
-          {% endif %}
+            </div>
+
         </div>
-      {% empty %}
-        <p class="muted">Пока нет активных акций</p>
-      {% endfor %}
     </div>
-  </section>
+</section>
+{% empty %}
+<section class="banner2 mb-112">
+    <div class="container">
+        <div class="b2 d-flex flex-column">
+            <h2>Акции</h2>
+            <p class="text-banner">Пока нет активных акций. Следите за обновлениями!</p>
+        </div>
+    </div>
+</section>
+{% endfor %}
+
 {% endblock %}
-
-

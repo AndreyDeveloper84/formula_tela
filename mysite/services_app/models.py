@@ -338,6 +338,7 @@ class Promotion(models.Model):
     description = models.TextField(blank=True, verbose_name="Описание")
     features = models.JSONField(blank=True, null=True, verbose_name="Особенности/преимущества")
     image = models.ImageField(upload_to="promotions/", blank=True, null=True, verbose_name="Изображение")
+    
 
     # Привязка к конкретным вариантам услуг (может быть пусто — тогда акция общая)
     options = models.ManyToManyField(
@@ -346,6 +347,7 @@ class Promotion(models.Model):
 
     discount_percent = models.PositiveSmallIntegerField(default=0, verbose_name="Скидка, %")
     price_note = models.CharField(max_length=200, blank=True, verbose_name="Примечание по цене")
+    promo_code = models.CharField(max_length=50, blank=True, verbose_name="Промокод")
 
     starts_at = models.DateField(blank=True, null=True, verbose_name="Начало")
     ends_at = models.DateField(blank=True, null=True, verbose_name="Окончание")
