@@ -5,15 +5,41 @@ from django.db import transaction
 from decimal import Decimal, InvalidOperation
 import csv, io
 
+from .models import (
+    Service,
+    Master,
+    ServicePackage,
+    ServiceCategory,
+    Bundle,
+    BundleItem,
+    FAQ,
+    SiteSettings,
+    ServiceOption,
+    Promotion,
+    Review,
+    BundleRequest,
+    BookingRequest,
+)
 
-from .models import Service, Master, ServicePackage, ServiceCategory, Bundle, BundleItem, FAQ, SiteSettings, ServiceOption, Promotion
 from .forms import ServiceCSVImportForm
 
 @admin.register(ServiceCategory)
 class ServiceCategoryAdmin(admin.ModelAdmin):
-    list_display = ("id","name","description", "order")
+    list_display = ("id","name","description", "slug", "image_preview", "order")
     list_editable = ("name", "description", "order")
     search_fields = ("name",)
+    prepopulated_fields = {"slug": ("name",)}
+    fields = ("name", "slug", "description", "order", "image", "image_mobile")
+
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height:40px;max-width:60px;'
+                'object-fit:cover;border-radius:4px;" />',
+                obj.image.url
+            )
+        return "—"
+    image_preview.short_description = "Фото"
 
 class ServiceOptionInline(admin.TabularInline):
     model = ServiceOption
@@ -41,14 +67,33 @@ class ServiceOptionAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "short", "category", "is_active", "is_popular")
+    list_display = ("id", "name", "short", "category", "image_preview", "is_active", "is_popular")
     list_filter = ("category", "is_active", "is_popular")
     search_fields = ("name",)
     inlines = [ServiceOptionInline]
 
     change_list_template = "admin/services_app/service/change_list.html"
 
+    fieldsets = (
+        ("Основная информация", {
+            "fields": ("name", "short", "category", "description", "image")
+        }),
+        ("Статус", {
+            "fields": ("is_active", "is_popular")
+        }),
+        ("Устаревшие поля (только для чтения)", {
+            "fields": ("price", "price_from", "duration", "duration_min"),
+            "classes": ("collapse",)
+        }),
+    )
+
     readonly_fields = ("price", "price_from", "duration", "duration_min")
+    
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="max-height: 50px; max-width: 50px; object-fit: cover; border-radius: 4px;" />', obj.image.url)
+        return "—"
+    image_preview.short_description = "Изображение"
     
     def get_urls(self):
         urls = super().get_urls()
@@ -162,9 +207,53 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(Master)
 class MasterAdmin(admin.ModelAdmin):
-    list_display = ("id","name","bio", "is_active")
-    list_filter = ("is_active",)
-    search_fields = ("bio","name")
+    list_display = ["name", "specialization", "order", "is_active", "photo_preview"]
+    list_editable = ["order", "is_active"]
+    list_filter = ("is_active", "specialization")
+    search_fields = ("name", "specialization")
+    prepopulated_fields = {}
+    fieldsets = (
+         (None, {
+             "fields": ("name", "specialization", "experience", "is_active", "order")
+         }),
+         ("Фото", {
+             "fields": ("photo", "photo_mobile"),
+         }),
+         ("Контакты", {
+             "fields": ("phone", "email", "working_hours"),
+            "classes": ("collapse",),
+         }),
+         ("Accordion: Образование", {
+             "fields": ("education",),
+             "classes": ("collapse",),
+             "description": "HTML: используйте <h2> для подзаголовков, <ul><li> для списков"
+         }),
+         ("Accordion: Опыт работы", {
+             "fields": ("work_experience",),
+             "classes": ("collapse",),
+         }),
+         ("Accordion: Подход к работе", {
+             "fields": ("approach",),
+             "classes": ("collapse",),
+         }),
+         ("Accordion: Отзывы и статистика", {
+             "fields": ("reviews_text",),
+             "classes": ("collapse",),
+         }),
+         ("Описание (старое поле)", {
+             "fields": ("bio",),
+             "classes": ("collapse",),
+         }),
+         ("Услуги", {
+             "fields": ("services",),
+         }),
+     )
+    filter_horizontal = ["services"]
+    def photo_preview(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="height:40px; border-radius:4px;" />', obj.photo.url)
+        return "—"
+    photo_preview.short_description = "Фото"
 
 class BundleItemInline(admin.TabularInline):
     model = BundleItem
@@ -180,9 +269,15 @@ class BundleItemInline(admin.TabularInline):
 class BundleAdmin(admin.ModelAdmin):
     exclude = ("services",)
 
-    list_display = ("id","name","is_active", "is_popular")
+    list_display = ("id", "name", "is_active", "is_popular", "order")
+    list_editable = ("is_active", "is_popular", "order")
     list_filter = ("is_active", "is_popular")
     inlines = [BundleItemInline]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "image", "image_mobile")}),
+        ("Цена", {"fields": ("fixed_price", "discount")}),
+        ("Настройки", {"fields": ("is_active", "is_popular", "order")}),
+    )
 
 
 @admin.register(BundleItem)
@@ -198,6 +293,13 @@ class BundleItemAdmin(admin.ModelAdmin):
         return obj.option.name if obj.option_id else '-'
     option_name.short_description = 'Вариант'
 
+@admin.register(BundleRequest)
+class BundleRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "client_name", "client_phone", "bundle_name", "is_processed", "created_at")
+    list_filter = ("is_processed", "created_at")
+    list_editable = ("is_processed",)
+    search_fields = ("client_name", "client_phone", "bundle_name")
+    readonly_fields = ("bundle", "bundle_name", "client_name", "client_phone", "client_email", "comment", "created_at")
 
 @admin.register(FAQ)
 class FAQAdmin(admin.ModelAdmin):
@@ -228,3 +330,27 @@ class PromotionAdmin(admin.ModelAdmin):
     search_fields = ("title", "subtitle", "description")
     filter_horizontal = ("options",)
     ordering = ("order", "-starts_at", "title")
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ("id", "order", "author_name", "rating", "date", "is_active")
+    list_editable = ("order", "is_active")
+    list_filter = ("is_active", "rating")
+    search_fields = ("author_name", "text")
+    ordering = ("order", "-date", "-created_at")
+    fieldsets = (
+        ("Основная информация", {
+            "fields": ("author_name", "text", "rating", "date")
+        }),
+        ("Настройки", {
+            "fields": ("is_active", "order")
+        }),
+    )
+
+@admin.register(BookingRequest)
+class BookingRequestAdmin(admin.ModelAdmin):
+    list_display = ("client_name", "client_phone", "service_name", "is_processed", "created_at")
+    list_filter = ("is_processed", "created_at")
+    list_editable = ("is_processed",)
+    search_fields = ("client_name", "client_phone", "service_name")
+    readonly_fields = ("created_at",)

@@ -1,12 +1,23 @@
-# По умолчанию используем dev, если переменная не задана
+"""
+Автоматический выбор настроек на основе переменной окружения.
+
+Приоритет:
+1. DJANGO_SETTINGS_MODULE (если задана явно)
+2. Иначе смотрит на DJANGO_ENV
+3. Fallback на local (для безопасности)
+"""
 import os as _os
 
-_profile = _os.getenv("DJANGO_SETTINGS_MODULE_DEFAULT", "mysite.settings.dev")
+# Пробуем определить окружение
+env = _os.getenv("DJANGO_ENV", "local").lower()
 
-if _profile.endswith(".dev"):
-    from .dev import *     # noqa
-elif _profile.endswith(".production"):
+# Выбираем правильный файл настроек
+if env == "production" or env == "prod":
     from .production import *  # noqa
+    print("📦 Окружение: PRODUCTION")
+elif env == "staging" or env == "stg":
+    from .staging import *  # noqa
+    print("📦 Окружение: STAGING")
 else:
-    # fallback на dev
-    from .dev import *     # noqa
+    from .local import *  # noqa
+    print("📦 Окружение: LOCAL (localhost)")

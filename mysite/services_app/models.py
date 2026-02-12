@@ -14,6 +14,21 @@ class Service(models.Model):
     price = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="Цена", null=True, blank=True)
     duration_min = models.PositiveIntegerField(default=60, verbose_name="Длительность (мин)", null=True, blank=True)
     price_from = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="Цена от", null=True, blank=True)
+    image = models.ImageField(
+        upload_to="services/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение услуги",
+        help_text="Рекомендуемый размер: 800x600px"
+    )
+
+    image_mobile = models.ImageField(
+        upload_to="services/mobile/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение (мобильное)",
+        help_text="Для экранов <768px. Если не загружено — используется основное изображение."
+    )
     
     class Meta:
         verbose_name = "Услуга"
@@ -102,6 +117,27 @@ class ServiceCategory(models.Model):
     description = models.TextField(blank=True, verbose_name="Описание категории")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
     
+
+    image = models.ImageField(
+        upload_to="categories/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение категории (десктоп)"
+    )
+    image_mobile = models.ImageField(
+        upload_to="categories/mobile/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение категории (мобильное)"
+    )
+    slug = models.SlugField(
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name="URL-slug",
+        help_text="Для ЧПУ-ссылок, например: ruchnye-massazhi"
+    )
+    
     class Meta:
         ordering = ["order", "name"]
         verbose_name = "Категория услуг"
@@ -177,6 +213,12 @@ class Master(models.Model):
     email = models.EmailField(blank=True, null=True, verbose_name="Email")
     working_hours = models.CharField(max_length=255, blank=True, null=True, verbose_name="Часы работы")
     rating = models.DecimalField(max_digits=3, decimal_places=1, blank=True, null=True, verbose_name="Рейтинг")
+    photo_mobile = models.ImageField(upload_to="masters/", blank=True, null=True, verbose_name="Фото (мобильное)")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
+    education = models.TextField(blank=True, verbose_name="Образование и квалификация", help_text="HTML: <h2>, <ul>, <li>")
+    work_experience = models.TextField(blank=True, verbose_name="Опыт работы", help_text="HTML разрешён")
+    approach = models.TextField(blank=True, verbose_name="Подход к работе", help_text="HTML разрешён")
+    reviews_text = models.TextField(blank=True, verbose_name="Отзывы и статистика", help_text="HTML разрешён")
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
@@ -184,7 +226,7 @@ class Master(models.Model):
     class Meta:
         verbose_name = "Мастер"
         verbose_name_plural = "Мастера"
-        ordering = ["-created_at"]
+        ordering = ["order", "name"]
 
     def __str__(self):
         return self.name
@@ -210,6 +252,11 @@ class Bundle(models.Model):
     # простая логика цены: либо фиксированная, либо сумма услуг минус скидка
     fixed_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     discount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0.00"))
+
+    description = models.TextField(blank=True, verbose_name="Описание комплекса")
+    image = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото")
+    image_mobile = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото (мобильное)")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
 
     # связь «многие-ко-многим» через промежуточную таблицу,
     # в которой хранится порядок услуг внутри комплекса
@@ -261,6 +308,29 @@ class BundleItem(models.Model):
     class Meta:
         ordering = ['order']
 
+class BundleRequest(models.Model):
+    """Заявка на комплекс — сохраняется в БД + уведомление админу"""
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="requests", verbose_name="Комплекс"
+    )
+    bundle_name = models.CharField(max_length=200, verbose_name="Название комплекса")
+    client_name = models.CharField(max_length=150, verbose_name="Имя клиента")
+    client_phone = models.CharField(max_length=30, verbose_name="Телефон")
+    client_email = models.EmailField(blank=True, verbose_name="Email")
+    comment = models.TextField(blank=True, verbose_name="Комментарий")
+    is_processed = models.BooleanField(default=False, verbose_name="Обработана")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата заявки")
+
+    class Meta:
+        verbose_name = "Заявка на комплекс"
+        verbose_name_plural = "Заявки на комплексы"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.client_name} — {self.bundle_name} ({self.created_at:%d.%m.%Y %H:%M})"
+
+
 
 class Promotion(models.Model):
     title = models.CharField(max_length=200, verbose_name="Название акции")
@@ -268,6 +338,7 @@ class Promotion(models.Model):
     description = models.TextField(blank=True, verbose_name="Описание")
     features = models.JSONField(blank=True, null=True, verbose_name="Особенности/преимущества")
     image = models.ImageField(upload_to="promotions/", blank=True, null=True, verbose_name="Изображение")
+    
 
     # Привязка к конкретным вариантам услуг (может быть пусто — тогда акция общая)
     options = models.ManyToManyField(
@@ -276,6 +347,7 @@ class Promotion(models.Model):
 
     discount_percent = models.PositiveSmallIntegerField(default=0, verbose_name="Скидка, %")
     price_note = models.CharField(max_length=200, blank=True, verbose_name="Примечание по цене")
+    promo_code = models.CharField(max_length=50, blank=True, verbose_name="Промокод")
 
     starts_at = models.DateField(blank=True, null=True, verbose_name="Начало")
     ends_at = models.DateField(blank=True, null=True, verbose_name="Окончание")
@@ -295,3 +367,54 @@ class Promotion(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+class Review(models.Model):
+    """Модель отзывов клиентов"""
+    author_name = models.CharField(max_length=100, verbose_name="Имя автора")
+    text = models.TextField(verbose_name="Текст отзыва")
+    rating = models.PositiveSmallIntegerField(
+        default=5,
+        choices=[(i, i) for i in range(1, 6)],
+        verbose_name="Рейтинг (1-5)"
+    )
+    date = models.DateField(verbose_name="Дата отзыва")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок показа")
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+    
+    class Meta:
+        verbose_name = "Отзыв"
+        verbose_name_plural = "Отзывы"
+        ordering = ["order", "-date", "-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "order"]),
+        ]
+    
+    def __str__(self):
+        return f"{self.author_name} - {self.date}"
+    
+    def get_initial_letter(self):
+        """Возвращает первую букву имени для аватара"""
+        return self.author_name[0].upper() if self.author_name else "?"
+
+
+class BookingRequest(models.Model):
+    """Заявка на запись через визард на сайте"""
+    category_name = models.CharField("Категория", max_length=200, blank=True, default="")
+    service_name = models.CharField("Услуга", max_length=200)
+    client_name = models.CharField("Имя клиента", max_length=100)
+    client_phone = models.CharField("Телефон", max_length=30)
+    comment = models.TextField("Комментарий", blank=True, default="")
+    is_processed = models.BooleanField("Обработана", default=False)
+    created_at = models.DateTimeField("Дата заявки", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Заявка на запись"
+        verbose_name_plural = "Заявки на запись"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.client_name} — {self.service_name} ({self.created_at:%d.%m.%Y %H:%M})"
+

@@ -57,3 +57,17 @@ def option_label(opt):
         per_unit_part = f" ({_rub(per)} за {_plural_ru(1, forms)})"
 
     return f"{base}{units_part} — {price_part}{per_unit_part}"
+
+@register.filter
+def discount(price, percent):
+    """Вычисляет цену со скидкой.
+    Использование: {{ option.price|discount:promo.discount_percent }}
+    Пример: 2500|discount:50 → 1 250
+    """
+    try:
+        price = Decimal(str(price))
+        percent = Decimal(str(percent))
+        result = price * (100 - percent) / 100
+        return intcomma(result.quantize(Decimal("1")))
+    except (TypeError, ValueError, ArithmeticError):
+        return price

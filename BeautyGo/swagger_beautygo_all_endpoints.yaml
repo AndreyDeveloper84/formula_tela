@@ -1,0 +1,18 @@
+openapi: 3.0.0
+info:
+  title: BeautyGO API
+  version: 1.0.0
+servers:
+- url: https://api.beautygo.ru/api/v1
+  description: Production Server
+- url: http://localhost:8000/api/v1
+  description: Local Development Server
+security:
+- bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+paths: {}

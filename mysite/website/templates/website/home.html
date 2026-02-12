@@ -1,107 +1,261 @@
 {% extends "website/base.html" %}
-{% block title %}Главная — {{ settings.salon_name }}{% endblock %}
+{% load static social_tags %}
+{% block title %}Главная — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+{% block body_class %}home{% endblock %}
+{% block extra_css %}
+<style>
+    .master .item {
+        display: block;
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        overflow: hidden;
+        border-radius: 60px;
+    }
+    .master .item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+    }
+    
+    .reviews iframe {
+        width: 100%;
+        max-width: 600px;
+        height: 600px;
+        border: 1px solid #e6e6e6;
+        border-radius: 8px;
+        box-sizing: border-box;
+        display: block;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
 {% block content %}
-  <section class="card">
-    <h1 style="margin:0 0 6px">Красота и здоровье — рядом</h1>
-    <p class="muted">Массаж, уход за телом и лицом. Опытные мастера, удобная запись.</p>
-    <p><a class="btn" href="#book">Записаться</a></p>
-  </section>
-
-  <section style="margin-top:24px">
-    <h2>Популярные услуги</h2>
-    <div class="grid grid-3">
-      {% for item in top_items %}
-        {% with s=item.service opts=item.options %}
-        <div class="card">
-          <div style="font-weight:600">{{ s.name }}</div>
-          {% if opts %}
-            <form action="{% url 'website:book_service' %}" method="get" style="margin-top:8px">
-              <label for="opt-{{ s.id }}" class="muted">Выберите вариант:</label>
-              <select id="opt-{{ s.id }}" name="service_option_id" style="display:block; width:100%; margin:6px 0 10px">
-                {% for o in opts %}
-                  <option value="{{ o.id }}">
-                    {{ o.duration_min }} мин{% if o.units and o.units > 1 %} × {{ o.units }} {{ o.get_unit_type_display }}{% endif %} — {{ o.price|floatformat:0 }} ₽
-                  </option>
-                {% endfor %}
-              </select>
-              <button type="submit" class="btn">Записаться</button>
-            </form>
-          {% else %}
-            <div class="muted">Нет активных вариантов</div>
-            <p><a class="btn" href="{% url 'website:services' %}">Подробнее</a></p>
-          {% endif %}
-        </div>
-        {% endwith %}
-      {% empty %}
-        <p class="muted">Пока нет услуг</p>
-      {% endfor %}
-    </div>
-  </section>
-
-  {% if promotions %}
-  <section style="margin-top:24px">
-    <h2>Акции</h2>
-    <div class="grid grid-3">
-      {% for p in promotions %}
-        <div class="card">
-          <div style="font-weight:600">{{ p.title }}</div>
-          {% if p.subtitle %}<div class="muted">{{ p.subtitle }}</div>{% endif %}
-          {% if p.discount_percent %}
-            <div style="margin-top:6px"><b>Скидка: {{ p.discount_percent }}%</b></div>
-          {% endif %}
-          {% if p.starts_at or p.ends_at %}
-            <div class="muted" style="margin-top:4px">
-              {% if p.starts_at %}с {{ p.starts_at|date:"d.m.Y" }}{% endif %}
-              {% if p.ends_at %} по {{ p.ends_at|date:"d.m.Y" }}{% endif %}
+    <!-- ========================= banner start ========================= -->
+    <section class="banner d-flex align-items-start">
+        <video width="100%" height="" class="video-pk mn7" autoplay loop muted>
+            <source src="{% static 'video/video-pk.mp4' %}" type="video/mp4">
+            <source src="{% static 'video/video-pk.webm' %}" type="video/webm">
+            Your browser does not support the video tag.
+        </video>
+        <video width="100%" height="" class="video-mob mobb7" autoplay loop muted>
+            <source src="{% static 'video/video-mob.mp4' %}" type="video/mp4">
+            <source src="{% static 'video/video-mob.webm' %}" type="video/webm">
+            Your browser does not support the video tag.
+        </video>
+        <div class="black-bg"></div>
+        
+        <div class="container"> 
+            <div class="row">
+                <div class="col-xl-10 wow fadeInUp" data-wow-delay=".2s">
+                    <div class="heading">
+                        <h1>ФОРМУЛА ТЕЛА</h1>
+                        <p class="text-banner">{{ settings.description|default:"Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день." }}</p>
+                        <a href="{% url 'website:services' %}" class="btn-white t-btn">Записаться на процедуры</a>  
+                        <a href="{% url 'website:bundles' %}" class="t-btn"><i>Подарочные</i> сертификаты и абонементы</a>
+                    </div>	
+                </div>
             </div>
-          {% endif %}
-          <p style="margin-top:8px"><a class="btn" href="{% url 'website:promotions' %}">Подробнее</a></p>
+            
+            <div class="d-flex justify-content-between upcs wow fadeInUp" data-wow-delay=".4s">
+                <span class="mn">Центр эстетики и восстановления</span>
+                <span>Тело. Здоровье. Результат</span>
+            </div>
         </div>
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
-
-  {% if popular_bundles %}
-  <section style="margin-top:24px">
-    <h2>Популярные комплексы</h2>
-    <div class="grid grid-3">
-      {% for b in popular_bundles %}
-        <div class="card">
-          <div style="font-weight:600">{{ b.name|default:"Комплекс" }}</div>
-          <div class="muted">Длительность: {{ b.total_duration_min }} мин</div>
-          <div style="margin-top:8px"><b>{{ b.total_price|floatformat:0 }} ₽</b></div>
-          {% if b.items.all %}
-            <ul class="muted" style="margin:8px 0 0 18px">
-              {% for it in b.items.all|slice:':3' %}
-                <li>
-                  {% if it.option %}
-                    {{ it.option.service.name }} — {{ it.option.duration_min }} мин{% if it.option.units and it.option.units > 1 %} × {{ it.option.units }} {{ it.option.get_unit_type_display }}{% endif %}{% if it.quantity and it.quantity > 1 %} × {{ it.quantity }}{% endif %}
-                  {% else %}
-                    Элемент без варианта
-                  {% endif %}
-                </li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-          <p style="margin-top:8px"><a class="btn" href="{% url 'website:bundles' %}">Подробнее</a></p>
+    </section>
+    <!-- ========================= banner end ========================= -->
+    
+    <!-- ========================= Услуги салона ========================= -->
+    <section class="service">
+        <div class="container"> 
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">Услуги салона</h2>
+            <div class="row">
+                {% for cat in categories %}
+                    <div class="col-xl-3 col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% elif forloop.counter == 6 %}1.4{% elif forloop.counter == 7 %}1.6{% else %}1.8{% endif %}s">
+                        <a href="{% url 'website:services' %}#category-{{ cat.id }}" class="item">
+                            {% if cat.image %}
+                                <img src="{{ cat.image.url }}" class="responsive" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/cat1.jpg' %}" class="responsive" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% endif %}
+                        </a>
+                        <a class="d-flex justify-content-between" href="{% url 'website:services' %}#category-{{ cat.id }}">    
+                            <b>{{ cat.name }}</b>
+                            <span>{{ cat.services.count }} {{ cat.services.count|pluralize_ru:"услуга,услуги,услуг" }}</span>
+                        </a>	
+                    </div>
+                {% empty %}
+                    <div class="col-12">
+                        <p class="text-center">Категории услуг пока не добавлены</p>
+                    </div>
+                {% endfor %}
+            </div>
         </div>
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
-
-  {% if faq %}
-  <section style="margin-top:24px">
-    <h2>Частые вопросы</h2>
-    <div class="grid">
-      {% for f in faq %}
-        <div class="card">
-          <div style="font-weight:600">{{ f.question }}</div>
-          <div class="muted">{{ f.answer }}</div>
+    </section>
+    
+    <!-- ========================= Промо-баннер ========================= -->
+    {% if promotions %}
+    <section class="banner2">
+        <div class="container"> 
+            <div class="b2 d-flex flex-column" id="parallax">
+                {% with promo=promotions.0 %}
+                    <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ promo.title|default:"Знакомство с мастером" }}</h2>
+                    <p class="text-banner wow fadeInUp" data-wow-delay=".4s">
+                        {{ promo.subtitle|default:"Массаж задней поверхности<br>60 минут за 1 500 рублей"|safe }}
+                    </p>
+                    {% if promo.price_note %}
+                        <span class="op80 f14 mb-30 mobb7">{{ promo.price_note }}</span>
+                    {% endif %}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{% url 'website:promotions' %}" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s" data-bs-toggle="modal" data-bs-target="#exampleModal">Записаться</a>
+                        {% if promo.price_note %}
+                            <span class="op80 f20 mn7">{{ promo.price_note }}</span>
+                        {% endif %}
+                    </div>
+                {% endwith %}
+            </div>
         </div>
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
+    </section>
+    {% endif %}
+    
+    <!-- ========================= Наши мастера ========================= -->
+    {% if masters %}
+    <section class="master mb-72">
+        <div class="container"> 
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">Наши мастера</h2>
+            <div class="row">
+                {% for master in masters %}
+                    <div class="col-md-3 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% else %}1{% endif %}s">
+                        <a class="item" href="{% url 'website:masters' %}">
+                            {% if master.photo %}
+                                <img src="{{ master.photo.url }}" class="responsive mn7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" title="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" loading="lazy">
+                                <img src="{{ master.photo.url }}" class="responsive mobb7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" title="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/inna.jpg' %}" class="responsive mn7" alt="{{ master.name }}" title="{{ master.name }}" loading="lazy">
+                                <img src="{% static 'images/inna1.jpg' %}" class="responsive mobb7" alt="{{ master.name }}" title="{{ master.name }}" loading="lazy">
+                            {% endif %}
+                        </a>	
+                        <a class="text-center mb-40" href="{% url 'website:masters' %}">
+                            <span class="semi f20 mb-15">{{ master.name }}</span>
+                            {% if master.specialization %}
+                                <span class="op50">{{ master.specialization }}</span>
+                            {% endif %}
+                        </a>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>	
+    </section>
+    {% endif %}
+    
+    <!-- ========================= Отзывы (Desktop) ========================= -->
+    <!-- ========================= Отзывы (Яндекс.Карты) ========================= -->
+    <section class="reviews mb-72">
+        <div class="container">
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">Отзывы</h2>
+            <div class="wow fadeInUp" data-wow-delay=".4s" style="max-width:100%;overflow:hidden;position:relative;">
+                <iframe src="https://yandex.ru/maps-reviews-widget/75376996737?comments"></iframe>
+                <a href="https://yandex.ru/maps/org/formula_tela/75376996737/" target="_blank" style="box-sizing:border-box;text-decoration:none;color:#b3b3b3;font-size:10px;font-family:YS Text,sans-serif;padding:0 16px;position:absolute;bottom:8px;width:100%;text-align:center;left:0;overflow:hidden;text-overflow:ellipsis;display:block;max-height:14px;white-space:nowrap">Формула тела на карте Пензы — Яндекс Карты</a>
+            </div>
+        </div>
+    </section>
+    {% if reviews %}
+    <section class="reviews mb-72 mn">
+        <div class="container"> 
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">Отзывы</h2>
+            <div class="row">
+                {% for review in reviews %}
+                    <div class="col-lg-3 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% else %}0.8{% endif %}s">
+                        <div class="item1 d-flex align-items-center">
+                            <b class="semi f24"><span class="op50">{{ review.get_initial_letter }}</span></b>
+                            <div class="sec">
+                                <span class="semi">{{ review.author_name }}</span>
+                                <div class="rate">
+                                    {% for i in "12345" %}
+                                        {% if forloop.counter <= review.rating %}
+                                            <img src="{% static 'images/star1.png' %}" alt="{{ forloop.counter }}" title="{{ forloop.counter }}">
+                                        {% else %}
+                                            <img src="{% static 'images/star2.png' %}" alt="{{ forloop.counter }}" title="{{ forloop.counter }}">
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                <div class="op50 f14">
+                                    {{ review.date|date:"d E Y" }}
+                                </div>
+                            </div>
+                        </div>
+                        <p class="f14">{{ review.text }}</p>
+                    </div>
+                {% endfor %}
+                
+                <div class="col-lg-3 d-flex align-items-end justify-content-end">
+                    <a href="#" class="more semi wow fadeInUp" data-wow-delay="1s">Все отзывы</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- ========================= Отзывы (Mobile) ========================= -->
+    <section class="reviews mb-72 mobb">
+        <div class="container"> 
+            <h2 class="wow fadeInUp" data-wow-delay=".2s">Отзывы</h2>
+            <div class="row o-carousel owl-carousel owl-theme">
+                {% for review in reviews %}
+                    <div class="col-md-12">
+                        <div class="item1 d-flex align-items-center">
+                            <b class="semi f24"><span class="op50">{{ review.get_initial_letter }}</span></b>
+                            <div class="sec">
+                                <span class="semi">{{ review.author_name }}</span>
+                                <div class="rate">
+                                    {% for i in "12345" %}
+                                        {% if forloop.counter <= review.rating %}
+                                            <img src="{% static 'images/star1.png' %}" alt="{{ forloop.counter }}" title="{{ forloop.counter }}">
+                                        {% else %}
+                                            <img src="{% static 'images/star2.png' %}" alt="{{ forloop.counter }}" title="{{ forloop.counter }}">
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                <div class="op50 f14">
+                                    {{ review.date|date:"d E Y" }}
+                                </div>
+                            </div>
+                        </div>
+                        <p class="f14">{{ review.text }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+            <a href="#" class="more semi wow fadeInUp" data-wow-delay="1s">Все отзывы</a>
+        </div>
+    </section>
+    {% endif %}
+    
+    <!-- ========================= FAQ ========================= -->
+    {% if faq %}
+    <section class="faq mb-112">
+        <div class="container"> 
+            <div class="row">
+                <div class="col-md-12">
+                    <h2 class="wow fadeInUp" data-wow-delay=".2s">Ответы на частые вопросы</h2>
+                    
+                    <div class="accordion" id="ac1">
+                        {% for item in faq %}
+                            <div class="accordion-item wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% else %}1.4{% endif %}s">
+                                <div class="accordion-header semi" id="pan{{ forloop.counter }}h">
+                                    <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#pan{{ forloop.counter }}" aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}" aria-controls="pan{{ forloop.counter }}">
+                                        {{ item.question }}
+                                    </button>
+                                </div>
+                                <div id="pan{{ forloop.counter }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" aria-labelledby="pan{{ forloop.counter }}h" data-bs-parent="#ac1">
+                                    <div class="accordion-body">
+                                        <p>{{ item.answer|linebreaks }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>			
+        </div>
+    </section>
+    {% endif %}
 {% endblock %}

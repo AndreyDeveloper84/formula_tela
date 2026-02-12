@@ -27,6 +27,11 @@ if not ALLOWED_HOSTS or ALLOWED_HOSTS == ["*"]:
 
 CSRF_TRUSTED_ORIGINS = [_scheme(o) for o in _csv("DJANGO_CSRF_TRUSTED_ORIGINS", "")]
 
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+ADMIN_NOTIFICATION_EMAIL = os.environ.get('ADMIN_NOTIFICATION_EMAIL', '')
+
 INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
@@ -67,6 +72,7 @@ TEMPLATES = [{
         "django.template.context_processors.request",
         "django.contrib.auth.context_processors.auth",
         "django.contrib.messages.context_processors.messages",
+        "website.context_processors.settings",
     ]},
 }]
 
@@ -92,6 +98,9 @@ USE_TZ   = True
 
 STATIC_URL  = "/static/"
 STATIC_ROOT = os.getenv("STATIC_ROOT", str(BASE_DIR / "staticfiles"))
+STATICFILES_DIRS = [
+    BASE_DIR / "static",  # Глобальная папка static в корне проекта
+]
 MEDIA_URL   = "/media/"
 MEDIA_ROOT  = os.getenv("MEDIA_ROOT", str(BASE_DIR / "media"))
 
@@ -102,4 +111,16 @@ LOGGING = {
     "formatters": {"simple": {"format": "[{levelname}] {asctime} {name}: {message}", "style": "{"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
     "root": {"handlers": ["console"], "level": "INFO" if not DEBUG else "DEBUG"},
+    "loggers": {
+        "services_app.yclients_api": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        }
+    }
 }
+
+# === YClients API Configuration ===
+YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
+YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
+YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")

@@ -1,0 +1,78 @@
+# Скрипт замены footer в base.html
+# Запускай из папки mysite/mysite/
+
+$file = "website/templates/website/base.html"
+$content = Get-Content $file -Raw -Encoding UTF8
+
+# Новый footer
+$newFooter = @'
+    <!-- ========================= footer start ========================= -->
+    {% load social_tags %}
+    <footer class="footer">
+        <div class="container mb-112">
+            <div class="row">
+                <h3 class="wow fadeInUp" data-wow-delay=".2s">Контакты</h3>
+                <div class="d-flex">
+                    <div class="map wow fadeInUp" data-wow-delay=".6s">
+                        <img src="{% static 'i/map-mob.jpg' %}" class="responsive mobb" alt="Адрес: {{ settings.address|default:'г. Пенза, ул. Пушкина, 45' }}" title="Адрес: {{ settings.address|default:'г. Пенза, ул. Пушкина, 45' }}" loading="lazy">
+                        <img src="{% static 'i/map.jpg' %}" class="responsive mn" alt="Адрес: {{ settings.address|default:'г. Пенза, ул. Пушкина, 45' }}" title="Адрес: {{ settings.address|default:'г. Пенза, ул. Пушкина, 45' }}" loading="lazy">
+                    </div>
+                    <div class="in wow fadeInUp" data-wow-delay="1s">
+                        <div class="heading semi upcs mb-30">{{ settings.salon_name|default:"Студия эстетики Формула Тела" }}</div>
+                        <ul class="contacts f20 mb-30">
+                            <li>Адрес: {{ settings.address|default:"г. Пенза, ул. Пушкина, 45" }}</li>
+                            <li>{{ settings.working_hours|default:"Ежедневно: с 10:00-21:00" }}</li>
+                            <li><a href="tel:{{ settings.contact_phone|default:'8 (8412) 39-34-33' }}">{{ settings.contact_phone|default:"8 (8412) 39-34-33" }}</a></li>
+                        </ul>
+                        <div class="mx250">
+                            <a href="{% url 'website:services' %}" class="btn-black t-btn">Записаться на процедуры</a>
+                            {% if settings.yandex_maps_link %}
+                                <a href="{{ settings.yandex_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
+                            {% elif settings.google_maps_link %}
+                                <a href="{{ settings.google_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
+                            {% else %}
+                                <a href="https://yandex.ru/maps/?text={{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="container mb-56">
+            <div class="row mb-30">
+                <div class="col-xl-8 social wow fadeInUp" data-wow-delay="1.4s">
+                    {% with tg=settings.social_media|dictget:"telegram" vk=settings.social_media|dictget:"vk" mx=settings.social_media|dictget:"max" wa=settings.social_media|dictget:"whatsapp" ig=settings.social_media|dictget:"instagram" %}
+                    {% if tg %}<a href="{{ tg }}" class="btn-white2 t-btn" target="_blank">Telegram</a>{% endif %}
+                    {% if vk %}<a href="{{ vk }}" class="btn-white2 t-btn" target="_blank">Вконтакте</a>{% endif %}
+                    {% if mx %}<a href="{{ mx }}" class="btn-white2 t-btn" target="_blank">Max</a>{% endif %}
+                    {% if wa %}<a href="{{ wa }}" class="btn-white2 t-btn" target="_blank">WhatsApp</a>{% endif %}
+                    {% if ig %}<a href="{{ ig }}" class="btn-white2 t-btn" target="_blank">Instagram</a>{% endif %}
+                    {% endwith %}
+                </div>
+                <div class="col-xl-4 confid text-end wow fadeInUp" data-wow-delay="1.6s">
+                    <a href="#" class="btn-white2 t-btn">Политика конфиденциальности</a>
+                </div>
+            </div>
+            <div class="row wow fadeInUp" data-wow-delay="1.8s">
+                <div class="col-md-12 copyright-area text-center">
+                    <div class="row align-items-center">
+                        <div class="col-md-12">
+                            <p class="mb-40 f20">Цены, указанные на сайте и в социальных сетях приведены как справочная информация и не являются публичной офертой. Могут быть изменены в любое время без предупреждения. Для подробной информации о стоимости услуг обращайтесь к администраторам.</p>
+                            <div class="semi op50">{{ settings.copyright|default:"ФОРМУЛА ТЕЛА" }} {% now "Y" %}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <!-- ========================= footer end ========================= -->
+'@
+
+# Заменяем от "footer start" до "footer end"
+$pattern = '(?s)    <!-- =+ footer start =+ -->.*?<!-- =+ footer end =+ -->'
+$result = $content -replace $pattern, $newFooter
+
+# Сохраняем
+[System.IO.File]::WriteAllText((Resolve-Path $file), $result, [System.Text.Encoding]::UTF8)
+
+Write-Host "Footer replaced successfully!"

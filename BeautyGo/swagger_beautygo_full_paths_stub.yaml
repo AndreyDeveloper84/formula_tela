@@ -1,0 +1,43 @@
+openapi: 3.0.0
+info:
+  title: BeautyGO API
+  version: 1.0.0
+servers:
+- url: https://api.beautygo.ru/api/v1
+  description: Production Server
+- url: http://localhost:8000/api/v1
+  description: Local Development Server
+security:
+- bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+paths:
+  /auth/register/: {}
+  /auth/login/: {}
+  /auth/logout/: {}
+  /auth/verify-phone/: {}
+  /auth/verify-email/: {}
+  /auth/social-login/: {}
+  /users/me: {}
+  /users/{id}/public: {}
+  /specialists/: {}
+  /specialists/{id}: {}
+  /specialists/me: {}
+  /specialists/me/bookings: {}
+  /services/: {}
+  /services/{id}/: {}
+  /specialists/{id}/available-slots: {}
+  /bookings/: {}
+  /bookings/me: {}
+  /bookings/{id}/cancel: {}
+  /bookings/{id}/confirm: {}
+  /reviews/: {}
+  /specialists/{id}/reviews: {}
+  /specialists/map: {}
+  /payments/create-session: {}
+  /payments/webhook: {}
+  /payments/history: {}

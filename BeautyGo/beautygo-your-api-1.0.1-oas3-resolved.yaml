@@ -1,0 +1,1171 @@
+openapi: 3.0.0
+info:
+  title: BeautyGO API
+  version: 1.0.1-oas3
+servers:
+- url: https://api.beautygo.ru/api/v1
+  description: Production API v1
+- url: https://api.beautygo.ru/api/v2
+  description: Production API v2
+- url: https://api.beautygo.ru/api/v3
+  description: Production API v3
+security:
+- bearerAuth: []
+tags:
+- name: Auth v1
+  description: "Регистрация, логин, верификация"
+- name: Auth v2
+  description: Соцсети и расширенная авторизация
+- name: Users v1
+  description: Профиль пользователя
+- name: Specialists v1
+  description: Мастера и их профили
+- name: Services v1
+  description: Услуги и категории
+- name: Booking v1
+  description: Бронирования и слоты
+- name: Reviews v1
+  description: Отзывы клиентов
+- name: Geolocation v2
+  description: Поиск мастеров на карте
+- name: Payments v2
+  description: "Оплаты, сессии, история"
+paths:
+  /auth/register/:
+    post:
+      tags:
+      - Auth v1
+      summary: Регистрация пользователя
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/auth_register_body'
+        required: true
+      responses:
+        "201":
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_201'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              examples:
+                phone_exists:
+                  summary: Телефон уже зарегистрирован
+                  value:
+                    detail: Phone already registered
+                invalid_format:
+                  summary: Неверный формат телефона
+                  value:
+                    detail: Invalid phone format
+                weak_password:
+                  summary: Слишком простой пароль
+                  value:
+                    detail: Password too weak
+  /auth/login/:
+    post:
+      tags:
+      - Auth v1
+      summary: Авторизация пользователя
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/auth_login_body'
+        required: true
+      responses:
+        "200":
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200'
+        "400":
+          description: Ошибка авторизации или валидации
+          content:
+            application/json:
+              examples:
+                missing_phone:
+                  summary: Не указан номер телефона
+                  value:
+                    detail: "Missing required field: phone"
+                missing_password:
+                  summary: Не указан пароль
+                  value:
+                    detail: "Missing required field: password"
+                invalid_format:
+                  summary: Неверный формат телефона
+                  value:
+                    detail: Invalid phone format
+                invalid_credentials:
+                  summary: Неверные учетные данные
+                  value:
+                    detail: Invalid credentials
+  /auth/logout/:
+    post:
+      tags:
+      - Auth v1
+      summary: Выход из системы
+      description: Выход пользователя. Требуется JWT токен в заголовке Authorization.
+      responses:
+        "204":
+          description: Успешный выход пользователя
+        "401":
+          description: Пользователь не авторизован
+      security:
+      - bearerAuth: []
+  /auth/verify-phone/:
+    post:
+      tags:
+      - Auth v1
+      summary: Подтверждение номера телефона
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/auth_verifyphone_body'
+        required: true
+      responses:
+        "200":
+          description: Телефон успешно подтверждён
+        "400":
+          description: Неверный код или формат телефона
+          content:
+            application/json:
+              examples:
+                invalid_code:
+                  summary: Неверный код подтверждения
+                  value:
+                    detail: Invalid confirmation code
+  /auth/verify-email/:
+    post:
+      tags:
+      - Auth v1
+      summary: Подтверждение email
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/auth_verifyemail_body'
+        required: true
+      responses:
+        "200":
+          description: Email успешно подтверждён
+        "400":
+          description: Неверный код или email
+          content:
+            application/json:
+              examples:
+                invalid_code:
+                  summary: Неверный код подтверждения
+                  value:
+                    detail: Invalid confirmation cod
+  /auth/social-login/:
+    post:
+      tags:
+      - Auth v2
+      summary: Авторизация пользователя
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/auth_sociallogin_body'
+        required: true
+      responses:
+        "200":
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_1'
+  /users/me:
+    get:
+      tags:
+      - Users v1
+      summary: Получение информации о текущем пользователе
+      responses:
+        "200":
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_2'
+        "401":
+          description: Неавторизован
+      security:
+      - bearerAuth: []
+    patch:
+      tags:
+      - Users v1
+      summary: Обновление данных текущего пользователя
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/users_me_body'
+        required: true
+      responses:
+        "200":
+          description: Успешное обновление
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_3'
+        "400":
+          description: Неверный формат данных
+      security:
+      - bearerAuth: []
+  /users/{id}/public:
+    get:
+      tags:
+      - Users v1
+      summary: Публичный профиль пользователя по ID
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Публичный профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_4'
+        "404":
+          description: Пользователь не найден
+  /specialists/:
+    get:
+      tags:
+      - Specialists v1
+      summary: Получение списка специалистов
+      parameters:
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: rating_min
+        in: query
+        required: false
+        schema:
+          type: number
+      - name: city
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Список специалистов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_5'
+        "400":
+          description: Ошибка запроса
+  /specialists/{id}:
+    get:
+      tags:
+      - Specialists v1
+      summary: Получение профиля специалиста по ID
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Профиль специалиста
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_6'
+        "404":
+          description: Специалист не найден
+  /specialists/me:
+    patch:
+      tags:
+      - Specialists v1
+      summary: Обновление профиля специалиста
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/specialists_me_body'
+        required: true
+      responses:
+        "200":
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_7'
+        "400":
+          description: Ошибка валидации
+      security:
+      - bearerAuth: []
+  /specialists/me/bookings:
+    get:
+      tags:
+      - Specialists v1
+      summary: Получение записей к текущему специалисту
+      responses:
+        "200":
+          description: Список записей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_8'
+        "401":
+          description: Неавторизован
+      security:
+      - bearerAuth: []
+  /services/:
+    get:
+      tags:
+      - Services v1
+      summary: Получение списка всех услуг
+      parameters:
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: price_max
+        in: query
+        required: false
+        schema:
+          type: number
+      responses:
+        "200":
+          description: Список услуг
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_9'
+    post:
+      tags:
+      - Services v1
+      summary: Создание новой услуги
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/services_body'
+        required: true
+      responses:
+        "201":
+          description: Услуга создана
+        "400":
+          description: Ошибка валидации
+      security:
+      - bearerAuth: []
+  /services/{id}/:
+    delete:
+      tags:
+      - Services v1
+      summary: Удаление услуги по ID
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: Услуга удалена
+        "404":
+          description: Услуга не найдена
+      security:
+      - bearerAuth: []
+    patch:
+      tags:
+      - Services v1
+      summary: Обновление услуги по ID
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/services_id_body'
+        required: true
+      responses:
+        "200":
+          description: Услуга обновлена
+        "404":
+          description: Услуга не найдена
+      security:
+      - bearerAuth: []
+  /specialists/{id}/available-slots:
+    get:
+      tags:
+      - Booking v1
+      summary: Доступные слоты для записи у специалиста
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          description: Список свободных слотов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_10'
+        "404":
+          description: Специалист не найден
+  /bookings/:
+    post:
+      tags:
+      - Booking v1
+      summary: Создание записи к специалисту
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/bookings_body'
+        required: true
+      responses:
+        "201":
+          description: Запись создана
+        "400":
+          description: Ошибка валидации или времени
+      security:
+      - bearerAuth: []
+  /bookings/me:
+    get:
+      tags:
+      - Booking v1
+      summary: Получение записей текущего пользователя
+      responses:
+        "200":
+          description: Список записей (клиента или специалиста)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_11'
+      security:
+      - bearerAuth: []
+  /bookings/{id}/cancel:
+    patch:
+      tags:
+      - Booking v1
+      summary: Отмена записи
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Запись отменена
+        "400":
+          description: Отмена невозможна
+      security:
+      - bearerAuth: []
+  /bookings/{id}/confirm:
+    patch:
+      tags:
+      - Booking v1
+      summary: Подтверждение записи специалистом
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Запись подтверждена
+        "400":
+          description: Запись уже подтверждена
+      security:
+      - bearerAuth: []
+  /reviews/:
+    post:
+      tags:
+      - Reviews v1
+      summary: Добавление отзыва клиентом
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/reviews_body'
+        required: true
+      responses:
+        "201":
+          description: Отзыв успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_201_1'
+        "400":
+          description: Ошибка валидации или бизнес-логики
+      security:
+      - bearerAuth: []
+  /specialists/{id}/reviews:
+    get:
+      tags:
+      - Booking v1
+      summary: Получение отзывов по специалисту
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Список отзывов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_12'
+        "404":
+          description: Специалист не найден
+  /specialists/map:
+    get:
+      tags:
+      - Geolocation v2
+      summary: Геопоиск специалистов рядом
+      description: "Возвращает список специалистов в радиусе, отсортированный по расстоянию, фильтрам и рейтингу"
+      parameters:
+      - name: lat
+        in: query
+        description: Широта пользователя
+        required: true
+        schema:
+          type: number
+          example: 55.7558
+      - name: lng
+        in: query
+        description: Долгота пользователя
+        required: true
+        schema:
+          type: number
+          example: 37.6173
+      - name: radius
+        in: query
+        description: Радиус поиска (в км)
+        required: false
+        schema:
+          type: number
+          example: 5
+      - name: category
+        in: query
+        description: Фильтр по категории специалиста
+        required: false
+        schema:
+          type: string
+          example: массаж
+      - name: min_rating
+        in: query
+        description: Фильтр по минимальному рейтингу
+        required: false
+        schema:
+          type: number
+          example: 4
+      responses:
+        "200":
+          description: Список специалистов на карте
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_13'
+        "400":
+          description: Неверные или отсутствующие координаты
+  /payments/create-session:
+    post:
+      tags:
+      - Payments v2
+      summary: Создание платёжной сессии
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/payments_createsession_body'
+        required: true
+      responses:
+        "200":
+          description: Сессия успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_14'
+        "400":
+          description: Ошибка данных
+      security:
+      - bearerAuth: []
+  /payments/webhook:
+    post:
+      tags:
+      - Payments v2
+      summary: Webhook от платёжной системы
+      description: Внутренний endpoint для обработки уведомлений о статусе оплаты
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/payments_webhook_body'
+        required: true
+      responses:
+        "200":
+          description: Webhook получен
+        "400":
+          description: Неверные данные
+  /payments/history:
+    get:
+      tags:
+      - Payments v2
+      summary: История платежей текущего клиента
+      responses:
+        "200":
+          description: Список платежей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_15'
+        "401":
+          description: Неавторизован
+      security:
+      - bearerAuth: []
+components:
+  schemas:
+    inline_response_200_11:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+          enum:
+          - client
+          - specialist
+        status:
+          type: string
+          example: confirmed
+        specialist:
+          $ref: '#/components/schemas/services_specialist'
+        service:
+          $ref: '#/components/schemas/services_specialist'
+        datetime:
+          type: string
+          format: date-time
+    inline_response_200_10:
+      type: object
+      properties:
+        date:
+          type: string
+          example: 2025-06-10
+        available_slots:
+          type: array
+          items:
+            type: string
+            example: 14:00
+    reviews_body:
+      required:
+      - rating
+      - specialist_id
+      type: object
+      properties:
+        specialist_id:
+          type: integer
+          example: 12
+        rating:
+          maximum: 5
+          minimum: 1
+          type: integer
+          example: 5
+        comment:
+          type: string
+          example: Очень понравилось!
+    inline_response_200_13:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 14
+        name:
+          type: string
+          example: Анна Мастер
+        lat:
+          type: number
+          example: 55.7555
+        lng:
+          type: number
+          example: 37.6156
+        category:
+          type: string
+          example: Массаж
+        rating:
+          type: number
+          example: 4.8
+        price_from:
+          type: number
+          example: 2500
+    inline_response_200_12:
+      type: object
+      properties:
+        id:
+          type: integer
+        rating:
+          type: integer
+        comment:
+          type: string
+        client_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    users_me_body:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Иван Петров
+        phone:
+          type: string
+          example: "79991230000"
+    payments_webhook_body:
+      required:
+      - amount
+      - booking_id
+      - event
+      - session_id
+      type: object
+      properties:
+        event:
+          type: string
+          example: payment_succeeded
+        session_id:
+          type: string
+        amount:
+          type: number
+        booking_id:
+          type: integer
+    inline_response_200_15:
+      type: object
+      properties:
+        id:
+          type: integer
+        booking_id:
+          type: integer
+        amount:
+          type: number
+        status:
+          type: string
+          enum:
+          - paid
+          - failed
+          - refunded
+        paid_at:
+          type: string
+          format: date-time
+    inline_response_200_14:
+      type: object
+      properties:
+        payment_url:
+          type: string
+          example: https://payment.provider.com/checkout/session/abc123
+        session_id:
+          type: string
+          example: abc123
+    inline_response_201:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Иван Иванов
+        phone:
+          type: string
+          example: +79991234567
+        role:
+          type: string
+          example: client
+        token:
+          type: string
+          example: JWT_TOKEN
+    auth_login_body:
+      required:
+      - password
+      - phone
+      type: object
+      properties:
+        phone:
+          type: string
+          description: |
+            Номер телефона пользователя в международном формате  Должен начинаться с +7 и содержать 11 цифр.
+          example: +79991234567
+        password:
+          type: string
+          description: |
+            Пароль, указанный при регистрации.   Минимум 8 символов. Допускаются буквы, цифры, спецсимволы.
+          example: securepassword
+    inline_response_200:
+      type: object
+      properties:
+        token:
+          type: string
+          example: JWT_TOKEN
+        user:
+          $ref: '#/components/schemas/inline_response_200_user'
+    inline_response_200_user:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Иван Иванов
+        role:
+          type: string
+          example: client
+    specialists_me_body:
+      type: object
+      properties:
+        about:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+    auth_verifyphone_body:
+      required:
+      - code
+      - phone
+      type: object
+      properties:
+        phone:
+          type: string
+          example: +79991234567
+        code:
+          type: string
+          example: "1234"
+    inline_response_200_9:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+        duration:
+          type: integer
+        category:
+          type: string
+        specialist:
+          $ref: '#/components/schemas/services_specialist'
+    bookings_body:
+      required:
+      - date
+      - service_id
+      - specialist_id
+      - time
+      type: object
+      properties:
+        specialist_id:
+          type: integer
+          example: 12
+        service_id:
+          type: integer
+          example: 45
+        date:
+          type: string
+          format: date
+          example: 2025-06-10
+        time:
+          type: string
+          example: 14:00
+    inline_response_200_5:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 15
+        name:
+          type: string
+          example: Анна Косметолог
+        category:
+          type: string
+          example: Косметология
+        rating:
+          type: number
+          example: 4.9
+        city:
+          type: string
+          example: Москва
+    inline_response_200_6:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 15
+        name:
+          type: string
+          example: Анна Косметолог
+        about:
+          type: string
+          example: Стаж 10 лет. Работаю с косметикой премиум-класса.
+        rating:
+          type: number
+          example: 4.9
+        category:
+          type: string
+          example: Косметология
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/inline_response_200_6_services'
+    inline_response_200_7:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        about:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+    services_body:
+      required:
+      - category
+      - duration
+      - name
+      - price
+      type: object
+      properties:
+        name:
+          type: string
+          example: Массаж спины
+        price:
+          type: number
+          example: 3000
+        duration:
+          type: integer
+          example: 45
+        category:
+          type: string
+          example: Массаж
+    inline_response_200_8:
+      type: object
+      properties:
+        id:
+          type: integer
+        client_name:
+          type: string
+        service:
+          type: string
+        date:
+          type: string
+          format: date-time
+    payments_createsession_body:
+      required:
+      - amount
+      - booking_id
+      - cancel_url
+      - currency
+      - success_url
+      type: object
+      properties:
+        booking_id:
+          type: integer
+          example: 123
+        amount:
+          type: number
+          example: 2500
+        currency:
+          type: string
+          example: RUB
+        success_url:
+          type: string
+          format: uri
+        cancel_url:
+          type: string
+          format: uri
+    services_specialist:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    auth_sociallogin_body:
+      required:
+      - password
+      - phone
+      type: object
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+    services_id_body:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        duration:
+          type: integer
+        category:
+          type: string
+    auth_register_body:
+      required:
+      - name
+      - password
+      - phone
+      - role
+      type: object
+      properties:
+        name:
+          type: string
+          example: Иван Иванов
+        phone:
+          type: string
+          example: +79991234567
+        password:
+          type: string
+          example: securepassword
+        role:
+          type: string
+          example: client
+          enum:
+          - client
+          - specialist
+    inline_response_200_1:
+      type: object
+      properties:
+        token:
+          type: string
+    inline_response_200_2:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Иван Иванов
+        phone:
+          type: string
+          example: "79991234567"
+        role:
+          type: string
+          example: client
+    inline_response_201_1:
+      type: object
+      properties:
+        id:
+          type: integer
+        specialist_id:
+          type: integer
+        rating:
+          type: integer
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    inline_response_200_6_services:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+    inline_response_200_3:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Иван Петров
+        phone:
+          type: string
+          example: "79991230000"
+        role:
+          type: string
+          example: client
+    auth_verifyemail_body:
+      required:
+      - code
+      - email
+      type: object
+      properties:
+        email:
+          type: string
+          example: example@mail.ru
+        code:
+          type: string
+          example: "123456"
+    inline_response_200_4:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        name:
+          type: string
+          example: Анна Косметолог
+        rating:
+          type: number
+          example: 4.9
+        category:
+          type: string
+          example: Массаж
+        city:
+          type: string
+          example: Москва
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

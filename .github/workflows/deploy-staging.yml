@@ -81,10 +81,28 @@ jobs:
             source "$VENV/bin/activate"
             pip install -r requirements.txt
             
+            export DJANGO_SETTINGS_MODULE=mysite.settings.staging
             # Django рутины
             cd "$APP_DIR"
-            python manage.py migrate --noinput
-            python manage.py collectstatic --noinput
+            echo "🔄 Checking migration status..."
+            python manage.py showmigrations services_app | tail -20 || true
+            echo "🔄 Running migrations..."
+            python manage.py migrate --noinput --verbosity 2
+            echo "✅ Migrations completed"
+            echo "🔍 Verifying migration status..."
+            python manage.py showmigrations services_app | grep -E "\[X\]|\[ \]" | tail -5 || true
+            
+            echo "📦 Collecting static files..."
+            # Очищаем старые статические файлы перед сборкой (опционально, для чистоты)
+            # rm -rf staticfiles/* || true
+            
+            # Собираем статические файлы с подробным выводом
+            python manage.py collectstatic --noinput --verbosity 2
+            
+            echo "✅ Static files collected"
+            echo "📊 Checking static files..."
+            ls -lh staticfiles/css/main.css || echo "⚠️ main.css not found in staticfiles"
+            
             python manage.py check --deploy || true
             
             # Перезапускаем gunicorn

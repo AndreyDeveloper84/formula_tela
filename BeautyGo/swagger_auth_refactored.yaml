@@ -1,0 +1,152 @@
+openapi: 3.0.0
+info:
+  title: BeautyGO API
+  version: 1.0.0
+servers:
+- url: https://api.beautygo.ru/api/v1
+  description: Production API v1
+- url: https://api.beautygo.ru/api/v2
+  description: Production API v2
+- url: https://api.beautygo.ru/api/v3
+  description: Production API v3
+tags:
+- name: Auth v1
+  description: Регистрация, логин, верификация
+- name: Auth v2
+  description: Соцсети и расширенная авторизация
+security:
+- bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+paths:
+  /auth/register/:
+    post:
+      tags:
+      - Auth v1
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - phone
+              - password
+              - role
+              properties:
+                name:
+                  type: string
+                  example: Иван Иванов
+                phone:
+                  type: string
+                  example: '+79991234567'
+                password:
+                  type: string
+                  example: securepassword
+                role:
+                  type: string
+                  enum:
+                  - client
+                  - specialist
+                  example: client
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                  phone:
+                    type: string
+                  role:
+                    type: string
+                  token:
+                    type: string
+        '400':
+          description: Ошибка регистрации
+          content:
+            application/json:
+              examples:
+                phone_exists:
+                  summary: Телефон уже зарегистрирован
+                  value:
+                    detail: Phone already registered
+                invalid_format:
+                  summary: Неверный формат телефона
+                  value:
+                    detail: Invalid phone format
+                weak_password:
+                  summary: Слишком простой пароль
+                  value:
+                    detail: Password too weak
+  /auth/social-login/:
+    post:
+      tags:
+      - Auth v2
+      summary: Авторизация через социальные сети
+      description: Авторизация или регистрация нового пользователя с использованием
+        токена от социальной сети.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - provider
+              - access_token
+              properties:
+                provider:
+                  type: string
+                  enum:
+                  - google
+                  - vk
+                  - apple
+                  example: google
+                access_token:
+                  type: string
+                  example: ya29.a0AfH6SMA...
+      responses:
+        '200':
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      role:
+                        type: string
+        '400':
+          description: Ошибка валидации или авторизации
+          content:
+            application/json:
+              examples:
+                invalid_token:
+                  summary: Неверный токен соцсети
+                  value:
+                    detail: Invalid social token
+                unsupported_provider:
+                  summary: Неподдерживаемый провайдер
+                  value:
+                    detail: Unsupported social provider

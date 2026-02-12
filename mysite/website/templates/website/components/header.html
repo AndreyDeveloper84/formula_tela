@@ -1,0 +1,48 @@
+{% load static %}
+<header class="header navbar-area" id="re">
+    <div class="container d-flex justify-content-between">
+        <nav class="navbar navbar-expand-xl">
+            <a class="navbar-brand d-none d-md-block" href="{% url 'website:home' %}">
+                <img src="{% static 'i/logo/logo.svg' %}" alt="Студия эстетики Формула Тела логотип">
+            </a>
+            <button class="navbar-toggler d-xl-none" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                aria-expanded="false" aria-label="Toggle navigation">
+                <span class="toggler-icon"></span>
+                <span class="toggler-icon"></span>
+                <span class="toggler-icon"></span>
+            </button>
+            <div class="zapis d-flex align-items-center">
+                <span class="phone d-none d-xl-flex"><a href="tel:8 (8412) 39-34-33">8 (8412) 39-34-33</a></span>
+                <a href="#" class="btn-black t-btn" data-bs-toggle="modal" data-bs-target="#bookingWizard">!!!Записаться онлайн</a>
+            </div>
+            <div class="collapse navbar-collapse sub-menu-bar" id="navbarSupportedContent">
+                <ul id="nav" class="navbar-nav">
+                    <li class="nav-item">
+                        <a href="{% url 'website:home' %}" {% if request.resolver_match.url_name == 'home' %}class="active"{% endif %}>Главная</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'website:services' %}" {% if 'service' in request.resolver_match.url_name %}class="active2"{% endif %}>Услуги</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'website:masters' %}" {% if request.resolver_match.url_name == 'masters' %}class="active"{% endif %}>Мастера</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'website:promotions' %}" {% if request.resolver_match.url_name == 'promotions' %}class="active"{% endif %}>Акции</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'website:bundles' %}" {% if request.resolver_match.url_name == 'bundles' %}class="active"{% endif %}>Комплексы</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'website:contacts' %}" {% if request.resolver_match.url_name == 'contacts' %}class="active"{% endif %}>Контакты</a>
+                    </li>
+                </ul>
+                <div class="social d-xl-none">
+                    <a href="#" class="btn-white2 t-btn" target="_blank">Telegram</a>
+                    <a href="#" class="btn-white2 t-btn" target="_blank">Вконтакте</a>
+                    <a href="#" class="btn-white2 t-btn" target="_blank">WhatsApp</a>
+                </div>
+            </div>
+        </nav>
+    </div>
+</header>

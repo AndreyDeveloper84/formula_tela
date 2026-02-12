@@ -1,100 +1,461 @@
+{% load static social_tags %}
 <!doctype html>
-<html lang="ru">
+<html class="no-js" lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{% block title %}Эстетика тела{% endblock %}</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#222}
-    header,footer{padding:14px 20px;background:#0f172a;color:#fff}
-    header a,nav a{color:#fff;text-decoration:none;margin-right:14px}
-    .container{max-width:1040px;margin:0 auto;padding:20px}
-    .grid{display:grid;gap:16px}
-    .grid-3{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
-    .card{border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff}
-    .btn{display:inline-block;background:#2563eb;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none}
-    .muted{color:#6b7280;font-size:14px}
-  </style>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <title>{% block title %}Студия эстетики Формула Тела{% endblock %}</title>
+    <meta name="description" content="{% block description %}Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день.{% endblock %}">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.png' %}">
+
+    <!-- ========================= CSS here ========================= -->
+    <link rel="stylesheet" href="{% static 'css/bootstrap-5.0.0-beta1.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/owl.carousel.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    
+    {% block extra_css %}{% endblock %}
+    
+    <!-- Flatpickr CSS (для форм бронирования) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/themes/material_blue.css">
 </head>
-<body>
-<header>
-  <nav class="container">
-    <a href="{% url 'website:home' %}"><b>{{ settings.salon_name|default:'Салон' }}</b></a>
-    <a href="{% url 'website:services' %}">Услуги</a>
-    <a href="{% url 'website:masters' %}">Мастера</a>
-    <a href="{% url 'website:promotions' %}">Акции</a>
-    <a href="{% url 'website:bundles' %}">Комплексы</a>
-    <a href="{% url 'website:contacts' %}">Контакты</a>
-    <a class="btn" style="float:right" id="book-btn" data-booking href="#">Записаться</a>
-  </nav>
-</header>
+<body class="{% block body_class %}page{% endblock %}">
+    <!--[if lte IE 9]>
+        <p class="browserupgrade">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience and security.</p>
+    <![endif]-->
 
-<main class="container">
-  {% block content %}{% endblock %}
-</main>
+    <!-- ========================= preloader start ========================= -->
+    <div class="preloader">
+        <div class="loader">
+            <div class="spinner">
+                <div class="spinner-container">
+                    <div class="spinner-rotator">
+                        <div class="spinner-left">
+                            <div class="spinner-circle"></div>
+                        </div>
+                        <div class="spinner-right">
+                            <div class="spinner-circle"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- preloader end -->
 
-<footer>
-  <div class="container">
-    {{ settings.address }} · {{ settings.phone }}
-  </div>
-</footer>
+    <!-- ========================= header start ========================= -->
+    <header class="header navbar-area" id="re">
+        <div class="container d-flex justify-content-between">
+            <nav class="navbar navbar-expand-xl">
+                <a class="navbar-brand d-none d-md-block" href="{% url 'website:home' %}">
+                    {% if settings.logo %}
+                        <img src="{{ settings.logo.url }}" alt="{{ settings.salon_name|default:'Студия эстетики Формула Тела' }} логотип" title="{{ settings.salon_name|default:'Студия эстетики Формула Тела' }}">
+                    {% else %}
+                        <img src="{% static 'images/logo/logo.svg' %}" alt="{{ settings.salon_name|default:'Студия эстетики Формула Тела' }} логотип" title="{{ settings.salon_name|default:'Студия эстетики Формула Тела' }}">
+                    {% endif %}
+                </a>
+                <button class="navbar-toggler d-xl-none" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                    aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="toggler-icon"></span>
+                    <span class="toggler-icon"></span>
+                    <span class="toggler-icon"></span>
+                </button>
+                <div class="zapis d-flex align-items-center">
+                    <span class="phone d-none d-xl-flex">
+                        <a href="tel:{{ settings.contact_phone|default:'+78412393433'|cut:' '|cut:'('|cut:')'|cut:'-' }}">
+                            {{ settings.contact_phone|default:'8 (8412) 39-34-33' }}
+                        </a>
+                    </span>
+                    <a href="#" class="btn-black t-btn" data-bs-toggle="modal" data-bs-target="#bookingWizard">Записаться онлайн</a>
+                </div>
+                <div class="collapse navbar-collapse sub-menu-bar" id="navbarSupportedContent">
+                    <ul id="nav" class="navbar-nav">
+                        <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}" href="{% url 'website:home' %}">Главная</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'services' or request.resolver_match.url_name == 'service_detail' %}active2{% endif %}" href="{% url 'website:services' %}">Услуги</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'masters' %}active{% endif %}" href="{% url 'website:masters' %}">Мастера</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'promotions' %}active{% endif %}" href="{% url 'website:promotions' %}">Акции</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'bundles' %}active{% endif %}" href="{% url 'website:bundles' %}">Комплексы</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'contacts' %}active{% endif %}" href="{% url 'website:contacts' %}">Контакты</a>
+                        </li>
+                    </ul>
+                    
+                    <div class="social d-xl-none">
+                        {% if settings.social_media %}
+                            {% if settings.social_media.telegram %}
+                                <a href="{{ settings.social_media.telegram }}" class="btn-white2 t-btn" target="_blank">Telegram</a>
+                            {% endif %}
+                            {% if settings.social_media.vk %}
+                                <a href="{{ settings.social_media.vk }}" class="btn-white2 t-btn" target="_blank">Вконтакте</a>
+                            {% endif %}
+                            {% if settings.social_media.whatsapp %}
+                                <a href="{{ settings.social_media.whatsapp }}" class="btn-white2 t-btn" target="_blank">WhatsApp</a>
+                            {% endif %}
+                        {% else %}
+                            <a href="#" class="btn-white2 t-btn" target="_blank">Telegram</a>
+                            <a href="#" class="btn-white2 t-btn" target="_blank">Вконтакте</a>
+                            <a href="#" class="btn-white2 t-btn" target="_blank">WhatsApp</a>
+                        {% endif %}
+                    </div>
+                </div> <!-- navbar collapse -->
+            </nav>
+        </div> <!-- container -->
+    </header>
+    <!-- ========================= header end ========================= -->
 
-{# Заглушка под виджет YCLIENTS. Позже подставим реальный скрипт и companyId #}
-{% if settings.yclients_company_id %}
+    <main>
+        <div class="after-head"></div>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- ========================= footer start ========================= -->
+    <footer class="footer">
+        <div class="container mb-112">
+            <div class="row">
+                <h3 class="wow fadeInUp" data-wow-delay=".2s">Контакты</h3>
+                <div class="d-flex">
+                    <div class="map wow fadeInUp" data-wow-delay=".6s">
+                        <img src="{% static 'images/map-mob.jpg' %}" class="responsive mobb" alt="Адрес" loading="lazy">
+                        <img src="{% static 'images/map.jpg' %}" class="responsive mn" alt="Адрес" loading="lazy">
+                    </div>
+                    <div class="in wow fadeInUp" data-wow-delay="1s">
+                        <div class="heading semi upcs mb-30">{{ settings.salon_name|default:"Студия эстетики Формула Тела" }}</div>
+                        <ul class="contacts f20 mb-30">
+                            <li>Адрес: {{ settings.address|default:"г. Пенза, ул. Пушкина, 45" }}</li>
+                            <li>{{ settings.working_hours|default:"Ежедневно: с 10:00-21:00" }}</li>
+                            <li><a href="tel:{{ settings.contact_phone|default:'8 (8412) 39-34-33' }}">{{ settings.contact_phone|default:"8 (8412) 39-34-33" }}</a></li>
+                        </ul>
+                        <div class="mx250">
+                            <a href="{% url 'website:services' %}" class="btn-black t-btn">Записаться на процедуры</a>
+                            {% if settings.yandex_maps_link %}
+                                <a href="{{ settings.yandex_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
+                            {% elif settings.google_maps_link %}
+                                <a href="{{ settings.google_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
+                            {% else %}
+                                <a href="#" class="btn-white2 t-btn">Построить маршрут</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="container mb-56">
+            <div class="row mb-30">
+                <div class="col-xl-8 social wow fadeInUp" data-wow-delay="1.4s">
+                    {% with tg=settings.social_media|dictget:"telegram" vk=settings.social_media|dictget:"vk" mx=settings.social_media|dictget:"max" wa=settings.social_media|dictget:"whatsapp" ig=settings.social_media|dictget:"instagram" %}
+                    {% if tg %}<a href="{{ tg }}" class="btn-white2 t-btn" target="_blank">Telegram</a>{% endif %}
+                    {% if vk %}<a href="{{ vk }}" class="btn-white2 t-btn" target="_blank">Вконтакте</a>{% endif %}
+                    {% if mx %}<a href="{{ mx }}" class="btn-white2 t-btn" target="_blank">Max</a>{% endif %}
+                    {% if wa %}<a href="{{ wa }}" class="btn-white2 t-btn" target="_blank">WhatsApp</a>{% endif %}
+                    {% if ig %}<a href="{{ ig }}" class="btn-white2 t-btn" target="_blank">Instagram</a>{% endif %}
+                    {% endwith %}
+                </div>
+                <div class="col-xl-4 confid text-end wow fadeInUp" data-wow-delay="1.6s">
+                    <a href="#" class="btn-white2 t-btn">Политика конфиденциальности</a>
+                </div>
+            </div>
+            <div class="row wow fadeInUp" data-wow-delay="1.8s">
+                <div class="col-md-12 copyright-area text-center">
+                    <div class="row align-items-center">
+                        <div class="col-md-12">
+                            <p class="mb-40 f20">Цены, указанные на сайте и в социальных сетях приведены как справочная информация и не являются публичной офертой. Могут быть изменены в любое время без предупреждения. Для подробной информации о стоимости услуг обращайтесь к администраторам.</p>
+                            <div class="semi op50">{{ settings.copyright|default:"ФОРМУЛА ТЕЛА" }} {% now "Y" %}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <!-- ========================= footer end ========================= -->
+
+    <!-- ========================= scroll-top ========================= -->
+    <a href="#" class="scroll-top">
+        <i class="lni lni-arrow-up">Наверх</i>
+    </a>
+
+    <!-- ============== Modal start =================== -->
+    <!-- ============== Booking Wizard Modal =================== -->
+<div class="modal fade" id="bookingWizard" tabindex="-1" aria-labelledby="bookingWizardLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bookingWizardLabel">Запись на процедуру</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Progress -->
+                <div class="booking-progress mb-30" style="display:flex;gap:4px;margin-bottom:20px;">
+                    <div class="bp-step active" data-step="1" style="flex:1;height:3px;background:#222;border-radius:2px;"></div>
+                    <div class="bp-step" data-step="2" style="flex:1;height:3px;background:#ddd;border-radius:2px;"></div>
+                    <div class="bp-step" data-step="3" style="flex:1;height:3px;background:#ddd;border-radius:2px;"></div>
+                </div>
+
+                <!-- Step 1: Categories -->
+                <div class="wizard-step" id="wizStep1">
+                    <p class="semi mb-15">Выберите категорию:</p>
+                    <div id="wizCategories" style="display:flex;flex-direction:column;gap:8px;">
+                        <!-- filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Step 2: Services -->
+                <div class="wizard-step" id="wizStep2" style="display:none;">
+                    <a href="#" onclick="wizardBack(1);return false;" style="text-decoration:none;color:#888;font-size:14px;">&larr; Назад к категориям</a>
+                    <p class="semi mb-15 mt-15" id="wizCatName"></p>
+                    <div id="wizServices" style="display:flex;flex-direction:column;gap:8px;">
+                        <!-- filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Step 3: Contact Form -->
+                <div class="wizard-step" id="wizStep3" style="display:none;">
+                    <a href="#" onclick="wizardBack(2);return false;" style="text-decoration:none;color:#888;font-size:14px;">&larr; Назад к услугам</a>
+                    <p class="semi mb-15 mt-15">Вы выбрали: <span id="wizSelectedService"></span></p>
+                    <p class="op50 mb-15" id="wizSelectedDetails"></p>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <input type="text" id="wizName" placeholder="Ваше имя *" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:16px;">
+                        <input type="tel" id="wizPhone" placeholder="Телефон *" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:16px;">
+                        <textarea id="wizComment" placeholder="Комментарий (необязательно)" rows="2" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:16px;resize:vertical;"></textarea>
+                        <button onclick="wizardSubmit()" class="btn-black t-btn" style="width:100%;border:none;cursor:pointer;" id="wizSubmitBtn">Записаться</button>
+                    </div>
+                    <p id="wizError" style="color:red;font-size:14px;margin-top:8px;display:none;"></p>
+                </div>
+
+                <!-- Step 4: Success -->
+                <div class="wizard-step" id="wizStep4" style="display:none;">
+                    <div style="text-align:center;padding:20px 0;">
+                        <div style="font-size:48px;margin-bottom:16px;">&#10003;</div>
+                        <p class="semi f20 mb-15">Заявка отправлена!</p>
+                        <p class="op50">Мы свяжемся с вами в ближайшее время для подтверждения записи.</p>
+                        <button onclick="document.getElementById('bookingWizard').querySelector('.btn-close').click();" class="btn-white2 t-btn" style="margin-top:20px;border:none;cursor:pointer;">Закрыть</button>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div id="wizLoading" style="display:none;text-align:center;padding:40px 0;">
+                    <p>Загрузка...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-  (function () {
-    var COMPANY_ID = "{{ settings.yclients_company_id|escapejs }}";
+// ===== Booking Wizard =====
+let wizardData = {
+    categoryId: null,
+    categoryName: '',
+    serviceId: null,
+    serviceName: '',
+    serviceDetails: '',
+    optionId: null
+};
 
-    // 1) Подключаем JS виджета YCLIENTS
-    var s = document.createElement("script");
-    s.async = true;
-    s.src = "https://w951024.yclients.com/widgetJS"; // замените w135 на ваш поддомен из кабинета YCLIENTS
-    s.onload = function () {
-      // 2) Вешаем обработчики на все элементы с data-booking
-      var btns = document.querySelectorAll("[data-booking]");
-      btns.forEach(function (btn) {
-        btn.addEventListener("click", function (e) {
-          e.preventDefault();
-          
-          if (!(window.YC && YC.init && YC.open)) {
-            alert("Виджет YCLIENTS не загрузился. Проверьте companyId и домен скрипта.");
-            return;
-          }
+// Show/hide steps
+function wizardShowStep(n) {
+    document.querySelectorAll('.wizard-step').forEach(el => el.style.display = 'none');
+    document.getElementById('wizLoading').style.display = 'none';
+    document.getElementById('wizStep' + n).style.display = 'block';
+    // Update progress
+    document.querySelectorAll('.bp-step').forEach(el => {
+        let s = parseInt(el.dataset.step);
+        el.style.background = s <= n ? '#222' : '#ddd';
+    });
+}
 
-          // Инициализация виджета
-          YC.init({ companyId: COMPANY_ID });
+function wizardBack(step) {
+    wizardShowStep(step);
+}
 
-          // Собираем опции (если передали service_id, staff_id и т.п.)
-          var opts = {};
-          var serviceId = btn.getAttribute("data-service-id");
-          var staffId = btn.getAttribute("data-staff-id");
-          var bundleId = btn.getAttribute("data-bundle-id");
+// Step 1: Load categories on modal open
+document.getElementById('bookingWizard').addEventListener('show.bs.modal', function() {
+    wizardShowStep(1);
+    wizardData = {categoryId:null, categoryName:'', serviceId:null, serviceName:'', serviceDetails:'', optionId:null};
+    loadCategories();
+});
 
-          if (serviceId)  opts.service_id = parseInt(serviceId, 10);
-          if (staffId)    opts.staff_id   = parseInt(staffId, 10);
-          // Если у вас в YCLIENTS есть сущность комплексной услуги и они принимают её id:
-          if (bundleId)   opts.bundle_id  = parseInt(bundleId, 10);
+function loadCategories() {
+    let container = document.getElementById('wizCategories');
+    container.innerHTML = '<p style="color:#888;">Загрузка...</p>';
+    fetch('/api/wizard/categories/')
+        .then(r => r.json())
+        .then(data => {
+            container.innerHTML = '';
+            if (!data.categories || data.categories.length === 0) {
+                container.innerHTML = '<p>Категории не найдены</p>';
+                return;
+            }
+            data.categories.forEach(cat => {
+                let btn = document.createElement('button');
+                btn.className = 'btn-white2 t-btn';
+                btn.style.cssText = 'width:100%;text-align:left;border:1px solid #ddd;cursor:pointer;padding:12px 16px;';
+                btn.innerHTML = '<span class="semi">' + cat.name + '</span> <span class="op50" style="float:right;">' + cat.services_count + ' ' + pluralize(cat.services_count) + '</span>';
+                btn.onclick = function() { selectCategory(cat.id, cat.name); };
+                container.appendChild(btn);
+            });
+        })
+        .catch(() => { container.innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; });
+}
 
-          // 3) Открываем виджет
-          // если опций нет — откроется общий виджет компании
-          YC.open(opts);
+function pluralize(n) {
+    n = Math.abs(n) % 100;
+    if (n >= 11 && n <= 19) return 'услуг';
+    let n1 = n % 10;
+    if (n1 === 1) return 'услуга';
+    if (n1 >= 2 && n1 <= 4) return 'услуги';
+    return 'услуг';
+}
+
+// Step 2: Load services for category
+function selectCategory(catId, catName) {
+    wizardData.categoryId = catId;
+    wizardData.categoryName = catName;
+    document.getElementById('wizCatName').textContent = catName;
+    wizardShowStep(2);
+
+    let container = document.getElementById('wizServices');
+    container.innerHTML = '<p style="color:#888;">Загрузка...</p>';
+    fetch('/api/wizard/categories/' + catId + '/services/')
+        .then(r => r.json())
+        .then(data => {
+            container.innerHTML = '';
+            if (!data.services || data.services.length === 0) {
+                container.innerHTML = '<p>Услуги не найдены</p>';
+                return;
+            }
+            data.services.forEach(svc => {
+                let btn = document.createElement('button');
+                btn.className = 'btn-white2 t-btn';
+                btn.style.cssText = 'width:100%;text-align:left;border:1px solid #ddd;cursor:pointer;padding:12px 16px;';
+                let details = '';
+                if (svc.duration && svc.price) {
+                    details = svc.duration + ' мин — от ' + svc.price + ' ₽';
+                }
+                btn.innerHTML = '<span class="semi">' + svc.name + '</span>' + (details ? '<br><span class="op50 f14">' + details + '</span>' : '');
+                btn.onclick = function() { selectService(svc.id, svc.name, details, svc.option_id); };
+                container.appendChild(btn);
+            });
+        })
+        .catch(() => { container.innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; });
+}
+
+// Step 3: Contact form
+function selectService(svcId, svcName, details, optionId) {
+    wizardData.serviceId = svcId;
+    wizardData.serviceName = svcName;
+    wizardData.serviceDetails = details;
+    wizardData.optionId = optionId;
+    document.getElementById('wizSelectedService').textContent = svcName;
+    document.getElementById('wizSelectedDetails').textContent = details;
+    document.getElementById('wizError').style.display = 'none';
+    wizardShowStep(3);
+}
+
+// Submit
+function wizardSubmit() {
+    let name = document.getElementById('wizName').value.trim();
+    let phone = document.getElementById('wizPhone').value.trim();
+    let comment = document.getElementById('wizComment').value.trim();
+    let errEl = document.getElementById('wizError');
+
+    if (!name) { errEl.textContent = 'Введите имя'; errEl.style.display = 'block'; return; }
+    if (!phone || phone.length < 7) { errEl.textContent = 'Введите корректный телефон'; errEl.style.display = 'block'; return; }
+
+    let btn = document.getElementById('wizSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Отправка...';
+
+    fetch('/api/wizard/booking/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCSRF()},
+        body: JSON.stringify({
+            category_id: wizardData.categoryId,
+            service_id: wizardData.serviceId,
+            option_id: wizardData.optionId,
+            client_name: name,
+            client_phone: phone,
+            comment: comment
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            wizardShowStep(4);
+            // Reset form
+            document.getElementById('wizName').value = '';
+            document.getElementById('wizPhone').value = '';
+            document.getElementById('wizComment').value = '';
+        } else {
+            errEl.textContent = data.error || 'Ошибка отправки';
+            errEl.style.display = 'block';
+        }
+        btn.disabled = false;
+        btn.textContent = 'Записаться';
+    })
+    .catch(() => {
+        errEl.textContent = 'Ошибка сети';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Записаться';
+    });
+}
+
+function getCSRF() {
+    let c = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+    return c ? c.split('=')[1] : '';
+}
+</script>
+<!-- ============== Booking Wizard End =================== -->
+    <!-- ============== Modal end =================== -->
+
+    <!-- ========================= JS here ========================= -->
+    <script src="{% static 'js/bootstrap.bundle-5.0.0-beta1.min.js' %}"></script>
+    <script src="https://yastatic.net/jquery/3.3.1/jquery.min.js"></script>
+    <script src="{% static 'js/owl.carousel.min.js' %}"></script>
+    <script>
+        // Инициализация Owl Carousel для элементов с классом .o-carousel
+        $(document).ready(function() {
+            if ($('.o-carousel').length) {
+                $('.o-carousel').owlCarousel({
+                    loop: true,
+                    margin: 16,
+                    nav: false,
+                    responsive: {
+                        0: {
+                            items: 1
+                        },
+                        600: {
+                            items: 2
+                        },
+                        1000: {
+                            items: 3
+                        }
+                    }
+                });
+            }
         });
-      });
-    };
-    document.head.appendChild(s);
-  })();
-</script>
-{% else %}
-<script>
-  // Если company_id не задан — показываем заглушку
-  document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-booking]");
-    if (t) {
-      e.preventDefault();
-      alert("Запись временно недоступна: не указан YCLIENTS company id в настройках сайта.");
-    }
-  });
-</script>
-{% endif %}
+    </script>
+    <script src="{% static 'js/wow.min.js' %}"></script>
+    <script src="{% static 'js/imagesloaded.min.js' %}"></script>
+    <script src="{% static 'js/main.js' %}"></script>
+    
+    <!-- Flatpickr JS (для форм бронирования) -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/ru.js"></script>
+    
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

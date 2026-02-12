@@ -1,0 +1,452 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "BeautyGO API",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/auth/logout/": {
+      "post": {
+        "summary": "Выход из системы",
+        "description": "Выход пользователя. Требуется JWT токен в заголовке Authorization.",
+        "responses": {
+          "204": {
+            "description": "Успешный выход пользователя"
+          },
+          "401": {
+            "description": "Пользователь не авторизован"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/auth/verify-phone/": {
+      "post": {
+        "summary": "Подтверждение номера телефона",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "phone",
+                  "code"
+                ],
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "+79991234567"
+                  },
+                  "code": {
+                    "type": "string",
+                    "example": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Телефон успешно подтверждён"
+          },
+          "400": {
+            "description": "Неверный код или формат телефона",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_code": {
+                    "summary": "Неверный код подтверждения",
+                    "value": {
+                      "detail": "Invalid confirmation code"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/verify-email/": {
+      "post": {
+        "summary": "Подтверждение email",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "code"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ivan@example.com"
+                  },
+                  "code": {
+                    "type": "string",
+                    "example": "654321"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email успешно подтверждён"
+          },
+          "400": {
+            "description": "Неверный код или email",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid_code": {
+                    "summary": "Неверный код подтверждения",
+                    "value": {
+                      "detail": "Invalid confirmation code"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/social-login/": {
+      "post": {
+        "summary": "Авторизация через социальные сети",
+        "description": "Вход с использованием access_token из соцсетей (Google, VK, Apple)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "provider",
+                  "access_token"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "google",
+                      "vk",
+                      "apple"
+                    ],
+                    "example": "google"
+                  },
+                  "access_token": {
+                    "type": "string",
+                    "example": "ya29.A0ARrdaM..."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Успешная авторизация",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "example": "JWT_TOKEN"
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "name": {
+                          "type": "string",
+                          "example": "Иван Иванов"
+                        },
+                        "role": {
+                          "type": "string",
+                          "example": "client"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ошибка авторизации через соцсеть",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "unsupported": {
+                    "summary": "Неподдерживаемый провайдер",
+                    "value": {
+                      "detail": "Unsupported provider"
+                    }
+                  },
+                  "invalid_token": {
+                    "summary": "Неверный access_token",
+                    "value": {
+                      "detail": "Invalid access token"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    "/auth/register/": {
+      "post": {
+        "summary": "Регистрация пользователя",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "phone",
+                  "password",
+                  "role"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Иван Иванов"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+79991234567"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "securepassword"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "specialist"
+                    ],
+                    "example": "client"
+                  },
+                  "social_accounts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "google",
+                        "vk",
+                        "apple"
+                      ]
+                    },
+                    "example": [
+                      "google"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Пользователь успешно зарегистрирован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Иван Иванов"
+                    },
+                    "phone": {
+                      "type": "string",
+                      "example": "+79991234567"
+                    },
+                    "role": {
+                      "type": "string",
+                      "example": "client"
+                    },
+                    "token": {
+                      "type": "string",
+                      "example": "JWT_TOKEN"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ошибка валидации",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "phone_exists": {
+                    "summary": "Телефон уже зарегистрирован",
+                    "value": {
+                      "detail": "Phone already registered"
+                    }
+                  },
+                  "invalid_format": {
+                    "summary": "Неверный формат телефона",
+                    "value": {
+                      "detail": "Invalid phone format"
+                    }
+                  },
+                  "weak_password": {
+                    "summary": "Слишком простой пароль",
+                    "value": {
+                      "detail": "Password too weak"
+                    }
+                  },
+                  "unsupported_social": {
+                    "summary": "Неподдерживаемая соцсеть",
+                    "value": {
+                      "detail": "Unsupported social account type"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login/": {
+      "post": {
+        "summary": "Авторизация пользователя",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "phone",
+                  "password"
+                ],
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "+79991234567"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "securepassword"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Успешная авторизация",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "example": "JWT_TOKEN"
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "name": {
+                          "type": "string",
+                          "example": "Иван Иванов"
+                        },
+                        "role": {
+                          "type": "string",
+                          "example": "client"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ошибка авторизации или валидации",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "missing_phone": {
+                    "summary": "Не указан номер телефона",
+                    "value": {
+                      "detail": "Missing required field: phone"
+                    }
+                  },
+                  "missing_password": {
+                    "summary": "Не указан пароль",
+                    "value": {
+                      "detail": "Missing required field: password"
+                    }
+                  },
+                  "invalid_format": {
+                    "summary": "Неверный формат телефона",
+                    "value": {
+                      "detail": "Invalid phone format"
+                    }
+                  },
+                  "invalid_credentials": {
+                    "summary": "Неверные учетные данные",
+                    "value": {
+                      "detail": "Invalid credentials"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
