@@ -141,9 +141,8 @@
                 <h3 class="wow fadeInUp" data-wow-delay=".2s">Контакты</h3>
                 <div class="d-flex">
                     <div class="map wow fadeInUp" data-wow-delay=".6s">
-                        <img src="{% static 'images/map-mob.jpg' %}" class="responsive mobb" alt="Адрес" loading="lazy">
-                        <img src="{% static 'images/map.jpg' %}" class="responsive mn" alt="Адрес" loading="lazy">
-                    </div>
+                        <iframe src="https://yandex.ru/map-widget/v1/?um=constructor%3A1add670ea4f2f7880be94aae36cfce289a88c7a36db95772ba1f1d74138c30f3&amp;source=constructor" width="328" height="300" frameborder="0" class="mobb" style="border-radius:24px;" loading="lazy"></iframe>
+                        <iframe src="https://yandex.ru/map-widget/v1/?um=constructor%3A1add670ea4f2f7880be94aae36cfce289a88c7a36db95772ba1f1d74138c30f3&amp;source=constructor" width="100%" height="400" frameborder="0" class="mn" style="border-radius:56px;" loading="lazy"></iframe></div>
                     <div class="in wow fadeInUp" data-wow-delay="1s">
                         <div class="heading semi upcs mb-30">{{ settings.salon_name|default:"Студия эстетики Формула Тела" }}</div>
                         <ul class="contacts f20 mb-30">
