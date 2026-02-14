@@ -762,7 +762,6 @@ input[type='time']::-webkit-calendar-picker-indicator  {
 	.banner2 h2 {font-size:24px;margin-bottom:20px;}
 	p.text-banner {font-size:16px;}
 	.banner2 .d-flex,.banner2 .d-flex div {display:grid !important;grid-template-columns: repeat(1, 1fr);gap: 15px;}
-	.meet .form-select, .meet .form-select:focus {min-width:auto;}
 	    .kompleks .in-form2 {margin-bottom: 35px;}
 }
 
@@ -896,7 +895,7 @@ h1, h2, h3, h4, h5, h6 {margin-bottom:32px;}
 .modal-body {padding:0 16px 7px;}
 .modal-header .btn-close {display:none;}
 .modal-open .modal {padding:0;}
-.modal-dialog {margin:0;position:fixed;bottom:0;}
+.modal-dialog {margin:0;position:fixed;bottom:0;left:0;right:0;width:100%;}
 .modal {bottom:0;}
 .modal-body .in-form.mt-40 {margin-top:20px;}
 .modal-content {border-radius:24px 24px 0 0;}
