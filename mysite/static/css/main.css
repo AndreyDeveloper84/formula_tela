@@ -570,7 +570,7 @@ img.mn {display:block !important;}
 .serv2 .item img.responsive.mobb,
 .serv2 .item img.mobb,
 img.responsive.mobb,
-img.mobb {display:none !important;}
+img.mobb, iframe.mobb {display:none !important;}  
 
 @media (min-width:768px) {
 .item img { transition: transform 0.6s; }  
@@ -723,7 +723,7 @@ input[type='time']::-webkit-calendar-picker-indicator  {
 	.serv2 .item img.responsive.mobb,
 	.serv2 .item img.mobb,
 	img.responsive.mobb,
-	img.mobb {display:block !important;}
+  img.mobb, iframe.mobb {display:block !important;}
     
     
     #re .navbar-nav .nav-item a {
@@ -744,7 +744,7 @@ input[type='time']::-webkit-calendar-picker-indicator  {
   .master .item {border-radius:16px;}
   .banner2 .b2 {border-radius:24px;}
   .home .banner2 {margin-bottom:56px;}
-  .footer .map .mobb {display:none;}
+  .footer .map .mobb, .footer .map iframe.mobb {display:none;}
   .footer .map .mn {display:block;}
 
   .serv3 .item {margin-top:70px;}
