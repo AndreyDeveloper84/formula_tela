@@ -566,7 +566,12 @@ p.text-banner {font-size:20px;line-height:1.5;max-width:623px;}
   object-position: top !important;
   display: block !important;
 }
-.serv2 .item span {position:absolute;left:0;top:0;right:0;bottom:0;text-align: center;z-index:1;}
+.master a.item {
+  display: block;
+  width: 100%;
+}
+.serv2 
+.item span {position:absolute;left:0;top:0;right:0;bottom:0;text-align: center;z-index:1;}
 
 /* Базовые правила для .mn и .mobb - по умолчанию показываем desktop версию */
 /* Используем максимально специфичные селекторы с учетом класса responsive */
