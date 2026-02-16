@@ -150,16 +150,9 @@
                             <div class="col-lg-4 col-md-6 col-sm-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% else %}1.4{% endif %}s">
                                 <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
                                     {% if s.image %}
-                                        <img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                        <img src="{{ s.image.url }}" class="responsive" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
                                     {% else %}
-                                        <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
-                                    {% endif %}
-                                    {% if s.image_mobile %}
-                                        <img src="{{ s.image_mobile.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
-                                    {% elif s.image %}
-                                        <img src="{{ s.image.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
-                                    {% else %}
-                                        <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                        <img src="{% static 'images/us1.jpg' %}" class="responsive" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
                                     {% endif %}
                                 </a>
                                 
