@@ -47,11 +47,11 @@
                 {% for m in masters %}
                 <div class="col-md-3 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% else %}1{% endif %}s">
                     <a class="item" href="#master-{{ m.id }}" onclick="toggleMasterAccordion({{ m.id }}); return false;">
-                        {% if m.photo %}<img src="{{ m.photo.url }}" class="responsive mn7" alt="{{ m.name }}, {{ m.specialization }}" loading="lazy">
-                        {% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ m.name }}" loading="lazy">{% endif %}
-                        {% if m.photo_mobile %}<img src="{{ m.photo_mobile.url }}" class="responsive mobb7" alt="{{ m.name }}" loading="lazy">
-                        {% elif m.photo %}<img src="{{ m.photo.url }}" class="responsive mobb7" alt="{{ m.name }}" loading="lazy">
-                        {% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ m.name }}" loading="lazy">{% endif %}
+                        {% if m.photo %}
+                            <img src="{{ m.photo.url }}" class="responsive" alt="{{ m.name }}, {{ m.specialization }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/us1.jpg' %}" class="responsive" alt="{{ m.name }}" loading="lazy">
+                        {% endif %}
                     </a>
                     <a class="text-center mb-40" href="#master-{{ m.id }}" onclick="toggleMasterAccordion({{ m.id }}); return false;">
                         <span class="semi f20 mb-15">{{ m.name }}</span>
@@ -86,8 +86,11 @@
                 {% for s in m.services.all %}{% if s.is_active %}
                 <div class="col-xl-3 col-lg-4 col-md-6 col-sm-6">
                     <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
-                        {% if s.image %}<img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" loading="lazy">{% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ s.name }}" loading="lazy">{% endif %}
-                        {% if s.image_mobile %}<img src="{{ s.image_mobile.url }}" class="responsive mobb7" alt="{{ s.name }}" loading="lazy">{% elif s.image %}<img src="{{ s.image.url }}" class="responsive mobb7" alt="{{ s.name }}" loading="lazy">{% else %}<img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ s.name }}" loading="lazy">{% endif %}
+                        {% if s.image %}
+                            <img src="{{ s.image.url }}" class="responsive" alt="{{ s.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/us1.jpg' %}" class="responsive" alt="{{ s.name }}" loading="lazy">
+                        {% endif %}
                     </a>
                     <a class="text-center mb-40" href="{% url 'website:service_detail' service_id=s.id %}">
                         <span class="semi f20 mb-15">{{ s.name }}</span>

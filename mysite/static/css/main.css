@@ -745,7 +745,7 @@ input[type='time']::-webkit-calendar-picker-indicator  {
   .master .item {border-radius:16px;}
   .master .item img {
     width: 100%;
-    aspect-ratio: 3 / 4;    /* портретная пропорция */
+    height: 380px;
     object-fit: cover;
     object-position: top;
     display: block;
