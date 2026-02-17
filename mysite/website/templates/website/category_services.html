@@ -2,67 +2,39 @@
 {% load static service_extras humanize %}
 {% block title %}{{ category.name }} — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<link rel="stylesheet" href="{% static 'css/booking.css' %}">
-<style>
-    .flatpickr-calendar { z-index: 10060 !important; }
-    #modal-booking-form input.flatpickr-input[readonly] {
-        background-color: #fff !important; color: #000 !important;
-        cursor: pointer !important; opacity: 1 !important;
-    }
-    .date-wrapper { position: relative; cursor: pointer; width: 100%; }
-    .date-wrapper #m-date-zapis, .date-wrapper .flatpickr-input { width: 100% !important; cursor: pointer !important; }
-    .date-wrapper input[readonly], .date-wrapper .flatpickr-wrapper input {
-        background-color: #fff !important; color: #000 !important;
-        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
-        background-repeat: no-repeat; background-position: right 0.75rem center;
-        background-size: 16px 12px; padding-right: 2.25rem; appearance: none;
-        width: 100% !important; box-sizing: border-box;
-    }
-    @media (max-width: 576px) { #bookingModal .modal-body { padding: 20px !important; } }
-    #m-contact-form .form-group { margin-bottom: 15px; }
-    #m-contact-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
-    #m-contact-form .form-group input, #m-contact-form .form-group textarea {
-        width: 100%; box-sizing: border-box; padding: 10px 15px;
-        border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px;
-        font-family: inherit; transition: border-color 0.2s;
-    }
-    #m-contact-form .form-group input:focus, #m-contact-form .form-group textarea:focus { outline: none; border-color: #000; }
-    .booking-summary { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
-    .booking-summary-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
-    .booking-summary-item span { opacity: 0.6; }
-    .booking-summary-item strong { text-align: right; max-width: 60%; }
-    #bookingModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
-    #bookingModal .modal-dialog {
-        display: flex !important; justify-content: center !important;
-        min-height: 100vh; align-items: center; margin: 0 auto !important;
-        max-width: 100% !important; width: 100% !important; pointer-events: none;
-    }
-    #bookingModal .modal-content {
-        max-width: 500px; width: calc(100% - 30px); pointer-events: auto;
-        max-height: 90vh; overflow-y: auto;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 
-    <!-- ========================= Услуги категории ========================= -->
+    <!-- ========================= Баннер категории ========================= -->
+    <section class="banner2 cat1">
+        <div class="container"> 
+            <div class="b2 d-flex flex-column">
+                <h2>{{ category.name }}</h2>
+                {% if category.description %}
+                    <p class="text-banner">{{ category.description }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+    
+    <!-- ========================= Виды процедур ========================= -->
     <section class="service serv1 mb-72">
         <div class="container"> 
-            <h2 class="wow fadeInUp" data-wow-delay=".2s">{{ category.name }}</h2>
-            {% if category.description %}
-                <p class="text-banner mb-4 wow fadeInUp" data-wow-delay=".3s">{{ category.description }}</p>
-            {% endif %}
+            <h2>Виды процедур</h2>
             <div class="row">
                 {% for s in services %}
-                    <div class="col-xl-3 col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% elif forloop.counter == 6 %}1.4{% elif forloop.counter == 7 %}1.6{% else %}1.8{% endif %}s">
+                    <div class="col-lg-4 col-md-6 col-sm-6">
                         <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
                             {% if s.image %}
-                                <img src="{{ s.image.url }}" class="responsive" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                <img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
                             {% else %}
-                                <img src="{% static 'images/us1.jpg' %}" class="responsive" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% endif %}
+                            {% if s.image_mobile %}
+                                <img src="{{ s.image_mobile.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% elif s.image %}
+                                <img src="{{ s.image.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
                             {% endif %}
                         </a>
 
@@ -82,17 +54,6 @@
                                 <span class="op50">от {{ s.price_from|floatformat:0 }} ₽</span>
                             {% endif %}
                         </a>
-                        
-                        {% if s.options.all %}
-                            <div class="text-center mb-40" style="margin-top: -20px;">
-                                <a class="btn-black t-btn" 
-                                   href="#" 
-                                   onclick="openBookingModal({{ s.id }}, '{{ s.name|escapejs }}'); return false;"
-                                   style="display: inline-block; width: 100%; text-align: center;">
-                                    Записаться
-                                </a>
-                            </div>
-                        {% endif %}
                     </div>
                 {% empty %}
                     <div class="col-12">
@@ -102,446 +63,35 @@
             </div>
         </div>
     </section>
-
-    <!-- ========================= Модалка бронирования ========================= -->
-    <div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
-        <div class="modal-dialog" id="bookingModalDialog">
-            <div class="modal-content" style="border: none; border-radius: 12px;">
-                
-                <!-- Шаг 1: Выбор параметров -->
-                <div id="booking-step-1">
-                    <div class="modal-header" style="border-bottom: 1px solid #eee; padding: 20px 30px;">
-                        <h5 class="modal-title semi" id="bookingModalLabel">Записаться</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+    
+    <!-- ========================= Другие услуги ========================= -->
+    {% if other_categories %}
+    <section class="service serv2 mb-112">
+        <div class="container"> 
+            <h2>Другие услуги</h2>
+            <div class="row">
+                {% for cat in other_categories %}
+                    <div class="col-xxl-3 col-xl-4 col-md-4 col-sm-6">
+                        <a href="{% url 'website:category_services' category_id=cat.id %}" class="item">
+                            {% if cat.image %}
+                                <img src="{{ cat.image.url }}" class="responsive mn" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% endif %}
+                            {% if cat.image_mobile %}
+                                <img src="{{ cat.image_mobile.url }}" class="responsive mobb" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% elif cat.image %}
+                                <img src="{{ cat.image.url }}" class="responsive mobb" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% endif %}
+                            <span class="semi d-flex align-items-center justify-content-center">{{ cat.name }}</span>
+                        </a>
                     </div>
-                    <div class="modal-body" style="padding: 30px;">
-                        <div class="mb-20" id="modal-service-title" style="font-size: 18px; font-weight: 600;"></div>
-                        <div id="modal-loading" style="text-align: center; padding: 40px; display: none;">
-                            <div class="spinner-border" role="status" style="color: #000;">
-                                <span class="visually-hidden">Загрузка...</span>
-                            </div>
-                            <p style="margin-top: 10px; opacity: 0.5;">Загрузка вариантов...</p>
-                        </div>
-                        <form id="modal-booking-form" style="display: none;">
-                            <div class="in-form">
-                                <select id="m-duration-select" class="form-select" required><option value="">Выберите длительность</option></select>
-                                <div id="m-quantity-container"><select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select></div>
-                                <input type="hidden" id="m-option-select" value="">
-                                <select id="m-master-select" class="form-select" required><option value="">Сначала выберите вариант услуги</option></select>
-                                <input type="text" id="m-date-disabled" class="text-def" value="Сначала выберите мастера" disabled style="display: block;">
-                                <div class="date-wrapper" id="m-date-wrapper" style="display: none;">
-                                    <input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required>
-                                </div>
-                                <select id="m-time-zapis" class="form-select" required disabled><option value="">Сначала выберите дату</option></select>
-                                <input type="text" id="m-price-display" class="text-def semi" value="Стоимость: — ₽" disabled>
-                            </div>
-                            <button type="submit" id="m-submit-booking" class="btn-black t-btn submit" style="width: 100%; margin-top: 15px;">Записаться онлайн</button>
-                        </form>
-                    </div>
-                </div>
-                
-                <!-- Шаг 2: Контакты -->
-                <div id="booking-step-2" style="display: none;">
-                    <div class="modal-header" style="border-bottom: 1px solid #eee; padding: 20px 30px;">
-                        <h5 class="modal-title semi">Подтверждение записи</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
-                    </div>
-                    <div class="modal-body" style="padding: 30px;">
-                        <div class="booking-summary">
-                            <div class="booking-summary-item"><span>Услуга:</span><strong id="m-summary-service"></strong></div>
-                            <div class="booking-summary-item"><span>Мастер:</span><strong id="m-summary-master"></strong></div>
-                            <div class="booking-summary-item"><span>Дата и время:</span><strong id="m-summary-datetime"></strong></div>
-                            <div class="booking-summary-item"><span>Стоимость:</span><strong id="m-summary-price"></strong></div>
-                        </div>
-                        <form id="m-contact-form">
-                            <div class="form-group"><label for="m-client-name">Ваше имя *</label><input type="text" id="m-client-name" placeholder="Иван Петров" required></div>
-                            <div class="form-group"><label for="m-client-phone">Телефон *</label><input type="tel" id="m-client-phone" placeholder="+7 (900) 123-45-67" required></div>
-                            <div class="form-group"><label for="m-client-email">Email</label><input type="email" id="m-client-email" placeholder="email@example.com"></div>
-                            <div class="form-group"><label for="m-client-comment">Комментарий</label><textarea id="m-client-comment" rows="3" placeholder="Дополнительные пожелания"></textarea></div>
-                            <div id="m-modal-alert"></div>
-                            <button type="submit" id="m-confirm-booking" class="btn-black t-btn" style="width: 100%; margin-top: 10px;">Подтвердить запись</button>
-                        </form>
-                    </div>
-                </div>
-                
-                <!-- Шаг 3: Успех -->
-                <div id="booking-step-3" style="display: none;">
-                    <div class="modal-body" style="padding: 50px 30px; text-align: center;">
-                        <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
-                        <h4 class="semi" style="margin-bottom: 10px;">Вы записаны!</h4>
-                        <p id="m-success-message" style="opacity: 0.7;"></p>
-                        <button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top: 20px;">Закрыть</button>
-                    </div>
-                </div>
-                
+                {% endfor %}
             </div>
         </div>
-    </div>
+    </section>
+    {% endif %}
 
-{% endblock %}
-
-{% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
-<script>
-(function() {
-    'use strict';
-    
-    const API_BASE_URL = '{{ request.scheme }}://{{ request.get_host }}';
-    const CSRF_TOKEN = '{{ csrf_token }}';
-    
-    let currentServiceId = null;
-    let currentServiceName = '';
-    let serviceOptions = [];
-    let optionsMap = {};
-    let uniqueDurations = [];
-    let bookingData = {};
-    let availableDates = [];
-    let datePicker = null;
-    let isLoadingDates = false;
-    let isLoadingTimes = false;
-    let bsModal = null;
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        const modalEl = document.getElementById('bookingModal');
-        if (!modalEl) return;
-        
-        bsModal = new bootstrap.Modal(modalEl);
-        modalEl.addEventListener('hidden.bs.modal', resetModal);
-        
-        document.getElementById('m-date-wrapper').addEventListener('click', function() {
-            if (!isMobile && datePicker && typeof datePicker.open === 'function') {
-                datePicker.open();
-            }
-        });
-        
-        document.getElementById('modal-booking-form').addEventListener('change', function(e) {
-            if (e.target.id === 'm-duration-select') onDurationChange(e.target.value);
-            else if (e.target.id === 'm-quantity-select') onQuantityChange();
-            else if (e.target.id === 'm-master-select') onMasterChange(e.target.value);
-            else if (e.target.id === 'm-time-zapis') onTimeChange(e.target.value);
-        });
-        
-        document.getElementById('modal-booking-form').addEventListener('submit', function(e) { e.preventDefault(); showContactStep(); });
-        document.getElementById('m-contact-form').addEventListener('submit', function(e) { e.preventDefault(); submitBooking(); });
-    });
-    
-    window.openBookingModal = function(serviceId, serviceName) {
-        currentServiceId = serviceId;
-        currentServiceName = serviceName;
-        document.getElementById('modal-service-title').textContent = serviceName;
-        document.getElementById('bookingModalLabel').textContent = 'Записаться';
-        document.getElementById('modal-loading').style.display = 'block';
-        document.getElementById('modal-booking-form').style.display = 'none';
-        document.getElementById('booking-step-1').style.display = 'block';
-        document.getElementById('booking-step-2').style.display = 'none';
-        document.getElementById('booking-step-3').style.display = 'none';
-        bsModal.show();
-        loadServiceOptions(serviceId);
-    };
-    
-    async function loadServiceOptions(serviceId) {
-        try {
-            const url = `${API_BASE_URL}/api/booking/service_options/?service_id=${serviceId}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.success && data.data) {
-                serviceOptions = data.data;
-                optionsMap = {};
-                serviceOptions.forEach(opt => {
-                    if (!optionsMap[opt.duration]) optionsMap[opt.duration] = {};
-                    optionsMap[opt.duration][opt.quantity] = opt;
-                });
-                uniqueDurations = [...new Set(serviceOptions.map(o => o.duration))].sort((a, b) => a - b);
-                initBookingForm();
-            } else {
-                document.getElementById('modal-loading').innerHTML = '<p style="color: red;">Не удалось загрузить варианты услуги</p>';
-            }
-        } catch (error) {
-            document.getElementById('modal-loading').innerHTML = '<p style="color: red;">Ошибка подключения к серверу</p>';
-        }
-    }
-    
-    function initBookingForm() {
-        const durationSelect = document.getElementById('m-duration-select');
-        const priceDisplay = document.getElementById('m-price-display');
-        const optionInput = document.getElementById('m-option-select');
-        
-        if (uniqueDurations.length === 1) {
-            const dur = uniqueDurations[0];
-            durationSelect.style.display = 'none';
-            const wrapper = durationSelect.parentElement;
-            const disabledInput = document.createElement('input');
-            disabledInput.type = 'text'; disabledInput.className = 'text-def';
-            disabledInput.value = dur + ' минут'; disabledInput.disabled = true;
-            disabledInput.id = 'm-duration-display';
-            wrapper.insertBefore(disabledInput, durationSelect);
-            durationSelect.innerHTML = `<option value="${dur}" selected>${dur} минут</option>`;
-            durationSelect.value = dur;
-            onDurationChange(dur);
-        } else {
-            durationSelect.style.display = '';
-            durationSelect.innerHTML = '<option value="">Выберите длительность</option>';
-            uniqueDurations.forEach(dur => {
-                const option = document.createElement('option');
-                option.value = dur; option.textContent = dur + ' минут';
-                durationSelect.appendChild(option);
-            });
-        }
-        
-        document.getElementById('modal-loading').style.display = 'none';
-        document.getElementById('modal-booking-form').style.display = 'block';
-        
-        if (serviceOptions.length === 1) {
-            const opt = serviceOptions[0];
-            optionInput.value = opt.id;
-            priceDisplay.value = 'Стоимость: ' + formatPrice(opt.price) + ' ₽';
-            loadMasters();
-        }
-    }
-    
-    function onDurationChange(duration) {
-        if (!duration) return;
-        const durationInt = parseInt(duration);
-        const quantities = optionsMap[durationInt] ? Object.keys(optionsMap[durationInt]).map(Number).sort((a, b) => a - b) : [];
-        const container = document.getElementById('m-quantity-container');
-        if (!quantities.length) { container.innerHTML = '<input type="text" class="text-def" value="Нет вариантов" disabled>'; return; }
-        if (quantities.length === 1) {
-            const opt = optionsMap[durationInt][quantities[0]];
-            container.innerHTML = `<input type="text" class="text-def" value="${quantities[0]} ${opt.unit_type_display}" disabled><input type="hidden" id="m-quantity-select" value="${quantities[0]}">`;
-            selectOption(durationInt, quantities[0]);
-        } else {
-            let html = '<select id="m-quantity-select" class="form-select" required><option value="">Выберите количество</option>';
-            quantities.forEach(qty => { const opt = optionsMap[durationInt][qty]; html += `<option value="${qty}">${qty} ${opt.unit_type_display}</option>`; });
-            container.innerHTML = html + '</select>';
-        }
-    }
-    
-    function onQuantityChange() {
-        const d = document.getElementById('m-duration-select'), q = document.getElementById('m-quantity-select');
-        if (d && q && d.value && q.value) selectOption(parseInt(d.value), parseInt(q.value));
-    }
-    
-    function selectOption(duration, quantity) {
-        const opt = optionsMap[duration] && optionsMap[duration][quantity];
-        if (!opt) return;
-        document.getElementById('m-option-select').value = opt.id;
-        document.getElementById('m-price-display').value = 'Стоимость: ' + formatPrice(opt.price) + ' ₽';
-        bookingData.price = opt.price; bookingData.optionId = opt.id; bookingData.yclientsId = opt.yclients_id;
-        loadMasters();
-    }
-    
-    function onMasterChange(staffId) {
-        if (!staffId) return;
-        const sel = document.getElementById('m-master-select');
-        bookingData.staffId = staffId; bookingData.masterName = sel.options[sel.selectedIndex].textContent;
-        loadAvailableDates(staffId);
-    }
-    
-    function onTimeChange(time) { if (time) bookingData.time = time; }
-    
-    async function loadMasters() {
-        const optionId = document.getElementById('m-option-select').value;
-        if (!optionId) return;
-        const select = document.getElementById('m-master-select');
-        select.innerHTML = '<option value="">Загрузка мастеров...</option>'; select.disabled = true;
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/booking/get_staff/?service_option_id=${optionId}`);
-            const data = await response.json();
-            if (data.success && data.data) {
-                select.innerHTML = '<option value="">Выберите мастера</option>';
-                if (!data.data.length) { select.innerHTML = '<option value="">Нет доступных мастеров</option>'; select.disabled = false; return; }
-                data.data.forEach(master => {
-                    const option = document.createElement('option');
-                    option.value = master.id;
-                    let name = master.name || '';
-                    if (master.specialization) name += ` (${master.specialization})`;
-                    option.textContent = name; select.appendChild(option);
-                });
-                if (data.data.length === 1) { select.value = data.data[0].id; onMasterChange(data.data[0].id); }
-            } else { select.innerHTML = '<option value="">Ошибка загрузки</option>'; }
-            select.disabled = false;
-        } catch (error) { select.innerHTML = '<option value="">Ошибка подключения</option>'; select.disabled = false; }
-    }
-    
-    async function loadAvailableDates(staffId) {
-        if (!staffId || isLoadingDates) return;
-        isLoadingDates = true;
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/booking/available_dates/?staff_id=${staffId}`);
-            const data = await response.json();
-            if (data.success && data.data && data.data.dates) {
-                availableDates = data.data.dates;
-                if (availableDates.length > 0) initializeDatePicker(staffId);
-                else {
-                    document.getElementById('m-date-disabled').value = 'Нет свободных дат';
-                    document.getElementById('m-date-disabled').style.display = 'block';
-                    document.getElementById('m-date-wrapper').style.display = 'none';
-                }
-            }
-        } catch (error) { console.error('Ошибка загрузки дат:', error); }
-        finally { isLoadingDates = false; }
-    }
-    
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
-    
-    function initializeDatePicker(staffId) {
-        const dateDisabled = document.getElementById('m-date-disabled');
-        const dateWrapper = document.getElementById('m-date-wrapper');
-        if (datePicker && typeof datePicker.destroy === 'function') { try { datePicker.destroy(); } catch(e) {} datePicker = null; }
-        dateDisabled.style.display = 'none'; dateWrapper.style.display = 'block';
-        const firstDate = availableDates[0];
-        if (isMobile) initMobileDateSelect(staffId, firstDate);
-        else initDesktopDatePicker(staffId, firstDate);
-    }
-    
-    function initMobileDateSelect(staffId, firstDate) {
-        const dateWrapper = document.getElementById('m-date-wrapper');
-        let select = document.getElementById('m-date-select');
-        if (!select) { select = document.createElement('select'); select.id = 'm-date-select'; select.className = 'form-select'; select.required = true; dateWrapper.innerHTML = ''; dateWrapper.appendChild(select); }
-        select.innerHTML = '';
-        availableDates.forEach(dateStr => {
-            const option = document.createElement('option'); option.value = dateStr;
-            const d = new Date(dateStr + 'T00:00:00');
-            option.textContent = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'short' });
-            select.appendChild(option);
-        });
-        select.value = firstDate;
-        select.addEventListener('change', function() {
-            const dateStr = this.value; if (!dateStr) return;
-            bookingData.date = dateStr;
-            bookingData.dateFormatted = new Date(dateStr + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-            document.getElementById('m-time-zapis').disabled = false;
-            loadAvailableTimes(staffId, dateStr);
-        });
-        bookingData.date = firstDate;
-        bookingData.dateFormatted = new Date(firstDate + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-        loadAvailableTimes(staffId, firstDate);
-    }
-    
-    function initDesktopDatePicker(staffId, firstDate) {
-        datePicker = flatpickr(document.getElementById('m-date-zapis'), {
-            locale: 'ru', dateFormat: 'Y-m-d', altInput: true, altFormat: 'j F Y (D)',
-            minDate: availableDates[0], maxDate: availableDates[availableDates.length - 1],
-            enable: availableDates, defaultDate: firstDate, disableMobile: true, allowInput: false, clickOpens: true,
-            onChange: function(selectedDates, dateStr) {
-                if (!dateStr || !staffId) return;
-                bookingData.date = dateStr;
-                bookingData.dateFormatted = selectedDates[0].toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-                document.getElementById('m-time-zapis').disabled = false;
-                loadAvailableTimes(staffId, dateStr);
-            },
-            onReady: function() {
-                bookingData.date = firstDate;
-                bookingData.dateFormatted = new Date(firstDate + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-                loadAvailableTimes(staffId, firstDate);
-            }
-        });
-    }
-    
-    async function loadAvailableTimes(staffId, date) {
-        if (isLoadingTimes) return; isLoadingTimes = true;
-        const timeSelect = document.getElementById('m-time-zapis');
-        timeSelect.disabled = true; timeSelect.innerHTML = '<option value="">Загрузка...</option>';
-        try {
-            const optionId = document.getElementById('m-option-select').value;
-            let url = `${API_BASE_URL}/api/booking/available_times/?staff_id=${staffId}&date=${date}`;
-            if (optionId) url += `&service_option_id=${optionId}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.success && data.data && data.data.times) {
-                const times = data.data.times;
-                if (times.length > 0) {
-                    const grouped = groupTimesByPeriod(times);
-                    timeSelect.innerHTML = '<option value="">Выберите время</option>';
-                    for (const [period, periodTimes] of Object.entries(grouped)) {
-                        if (periodTimes.length > 0) {
-                            const optgroup = document.createElement('optgroup'); optgroup.label = period;
-                            periodTimes.forEach(time => { const o = document.createElement('option'); o.value = time; o.textContent = time; optgroup.appendChild(o); });
-                            timeSelect.appendChild(optgroup);
-                        }
-                    }
-                } else { timeSelect.innerHTML = '<option value="">Нет свободного времени</option>'; }
-            }
-            timeSelect.disabled = false;
-        } catch (error) { timeSelect.innerHTML = '<option value="">Ошибка загрузки</option>'; timeSelect.disabled = false; }
-        finally { isLoadingTimes = false; }
-    }
-    
-    function showContactStep() {
-        const time = document.getElementById('m-time-zapis').value;
-        if (!time) { alert('Пожалуйста, выберите время'); return; }
-        bookingData.time = time;
-        document.getElementById('m-summary-service').textContent = currentServiceName;
-        document.getElementById('m-summary-master').textContent = bookingData.masterName || '—';
-        document.getElementById('m-summary-datetime').textContent = (bookingData.dateFormatted || bookingData.date) + ', ' + bookingData.time;
-        document.getElementById('m-summary-price').textContent = formatPrice(bookingData.price) + ' ₽';
-        document.getElementById('booking-step-1').style.display = 'none';
-        document.getElementById('booking-step-2').style.display = 'block';
-    }
-    
-    async function submitBooking() {
-        const confirmBtn = document.getElementById('m-confirm-booking');
-        const alertDiv = document.getElementById('m-modal-alert');
-        confirmBtn.disabled = true; confirmBtn.textContent = 'Отправка...'; alertDiv.innerHTML = '';
-        const name = document.getElementById('m-client-name').value.trim();
-        const phone = document.getElementById('m-client-phone').value.trim();
-        const email = document.getElementById('m-client-email').value.trim();
-        const comment = document.getElementById('m-client-comment').value.trim();
-        if (!name || !phone) { alertDiv.innerHTML = '<div class="alert alert-danger">Заполните имя и телефон</div>'; confirmBtn.disabled = false; confirmBtn.textContent = 'Подтвердить запись'; return; }
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/booking/create/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-                body: JSON.stringify({
-                    staff_id: parseInt(bookingData.staffId), service_ids: [parseInt(bookingData.yclientsId)],
-                    date: bookingData.date, time: bookingData.time,
-                    client: { name: name, phone: phone, email: email || undefined }, comment: comment
-                })
-            });
-            const data = await response.json();
-            if (data.success) {
-                document.getElementById('booking-step-2').style.display = 'none';
-                document.getElementById('booking-step-3').style.display = 'block';
-                document.getElementById('m-success-message').textContent = `${currentServiceName}, ${bookingData.dateFormatted || bookingData.date} в ${bookingData.time}`;
-            } else { alertDiv.innerHTML = `<div class="alert alert-danger">${data.error || 'Ошибка при записи'}</div>`; }
-        } catch (error) { alertDiv.innerHTML = '<div class="alert alert-danger">Ошибка подключения к серверу</div>'; }
-        finally { confirmBtn.disabled = false; confirmBtn.textContent = 'Подтвердить запись'; }
-    }
-    
-    function resetModal() {
-        currentServiceId = null; currentServiceName = ''; serviceOptions = []; optionsMap = {}; uniqueDurations = [];
-        bookingData = {}; availableDates = []; isLoadingDates = false; isLoadingTimes = false;
-        if (datePicker && typeof datePicker.destroy === 'function') { try { datePicker.destroy(); } catch(e) {} datePicker = null; }
-        document.getElementById('booking-step-1').style.display = 'block';
-        document.getElementById('booking-step-2').style.display = 'none';
-        document.getElementById('booking-step-3').style.display = 'none';
-        document.getElementById('modal-booking-form').style.display = 'none';
-        document.getElementById('modal-loading').style.display = 'none';
-        document.getElementById('modal-loading').innerHTML = '<div class="spinner-border" role="status" style="color: #000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top: 10px; opacity: 0.5;">Загрузка вариантов...</p>';
-        const ds = document.getElementById('m-duration-select'); ds.style.display = ''; ds.innerHTML = '<option value="">Выберите длительность</option>';
-        const dd = document.getElementById('m-duration-display'); if (dd) dd.remove();
-        document.getElementById('m-quantity-container').innerHTML = '<select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select>';
-        document.getElementById('m-option-select').value = '';
-        document.getElementById('m-master-select').innerHTML = '<option value="">Сначала выберите вариант услуги</option>';
-        document.getElementById('m-date-disabled').style.display = 'block';
-        document.getElementById('m-date-disabled').value = 'Сначала выберите мастера';
-        const dw = document.getElementById('m-date-wrapper'); dw.style.display = 'none';
-        if (isMobile) { dw.innerHTML = '<input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required>'; }
-        document.getElementById('m-time-zapis').innerHTML = '<option value="">Сначала выберите дату</option>';
-        document.getElementById('m-time-zapis').disabled = true;
-        document.getElementById('m-price-display').value = 'Стоимость: — ₽';
-        document.getElementById('m-client-name').value = ''; document.getElementById('m-client-phone').value = '';
-        document.getElementById('m-client-email').value = ''; document.getElementById('m-client-comment').value = '';
-        document.getElementById('m-modal-alert').innerHTML = '';
-    }
-    
-    function formatPrice(price) { return new Intl.NumberFormat('ru-RU').format(price); }
-    function groupTimesByPeriod(times) {
-        const g = { 'Утро (до 12:00)': [], 'День (12:00–17:00)': [], 'Вечер (после 17:00)': [] };
-        times.forEach(t => { const h = parseInt(t.split(':')[0]); if (h < 12) g['Утро (до 12:00)'].push(t); else if (h < 17) g['День (12:00–17:00)'].push(t); else g['Вечер (после 17:00)'].push(t); });
-        return g;
-    }
-})();
-</script>
 {% endblock %}

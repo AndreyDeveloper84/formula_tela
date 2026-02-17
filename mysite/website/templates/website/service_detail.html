@@ -126,7 +126,14 @@
                 <div class="col-xl-6 col-lg-4">
                     <div class="item">
                         {% if service.image %}
-                            <img src="{{ service.image.url }}" class="responsive"
+                            <img src="{{ service.image.url }}" class="responsive mn7"
+                                 alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
+                        {% endif %}
+                        {% if service.image_mobile %}
+                            <img src="{{ service.image_mobile.url }}" class="responsive mobb7"
+                                 alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
+                        {% elif service.image %}
+                            <img src="{{ service.image.url }}" class="responsive mobb7"
                                  alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
                         {% endif %}
                     </div>
@@ -145,8 +152,15 @@
                 {% if cat.image %}
                 <div class="col-xxl-3 col-xl-4 col-md-4 col-sm-6">
                     <a href="{% url 'website:category_services' category_id=cat.id %}" class="item">
-                        <img src="{{ cat.image.url }}" class="responsive"
+                        <img src="{{ cat.image.url }}" class="responsive mn"
                              alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                        {% if cat.image_mobile %}
+                            <img src="{{ cat.image_mobile.url }}" class="responsive mobb"
+                                 alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{{ cat.image.url }}" class="responsive mobb"
+                                 alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                        {% endif %}
                         <span class="semi d-flex align-items-center justify-content-center">{{ cat.name }}</span>
                     </a>
                 </div>

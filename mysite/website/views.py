@@ -659,10 +659,19 @@ def category_services(request, category_id):
         .prefetch_related("options")
     )
     
+    # Другие категории (исключаем текущую)
+    other_categories = (
+        ServiceCategory.objects
+        .exclude(id=category_id)
+        .prefetch_related("services")
+        .order_by("order", "name")
+    )
+    
     return render(request, "website/category_services.html", {
         "settings": _settings(),
         "category": category,
         "services": services_qs,
+        "other_categories": other_categories,
     })
     
 def service_detail(request, service_id):
