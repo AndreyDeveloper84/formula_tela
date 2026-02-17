@@ -1,0 +1,97 @@
+{% extends "website/base.html" %}
+{% load static service_extras humanize %}
+{% block title %}{{ category.name }} — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+
+{% block content %}
+
+    <!-- ========================= Баннер категории ========================= -->
+    <section class="banner2 cat1">
+        <div class="container"> 
+            <div class="b2 d-flex flex-column">
+                <h2>{{ category.name }}</h2>
+                {% if category.description %}
+                    <p class="text-banner">{{ category.description }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+    
+    <!-- ========================= Виды процедур ========================= -->
+    <section class="service serv1 mb-72">
+        <div class="container"> 
+            <h2>Виды процедур</h2>
+            <div class="row">
+                {% for s in services %}
+                    <div class="col-lg-4 col-md-6 col-sm-6">
+                        <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
+                            {% if s.image %}
+                                <img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% endif %}
+                            {% if s.image_mobile %}
+                                <img src="{{ s.image_mobile.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% elif s.image %}
+                                <img src="{{ s.image.url }}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
+                            {% endif %}
+                        </a>
+
+                        <a href="{% url 'website:service_detail' service_id=s.id %}" class="text-center mb-40">
+                            <span class="semi f20 mb-15">{{ s.name }}</span>
+                            {% if s.options.all %}
+                                {% with first_option=s.options.all|first %}
+                                    <span class="op50">
+                                        {% if first_option.units and first_option.units > 1 %}
+                                            {{ first_option.duration_min }} мин × {{ first_option.units }} {{ first_option.get_unit_type_display }} — от {{ first_option.price|floatformat:0 }} ₽
+                                        {% else %}
+                                            {{ first_option.duration_min }} мин — от {{ first_option.price|floatformat:0 }} ₽
+                                        {% endif %}
+                                    </span>
+                                {% endwith %}
+                            {% elif s.price_from %}
+                                <span class="op50">от {{ s.price_from|floatformat:0 }} ₽</span>
+                            {% endif %}
+                        </a>
+                    </div>
+                {% empty %}
+                    <div class="col-12">
+                        <p class="text-center op50">В этой категории пока нет услуг</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    
+    <!-- ========================= Другие услуги ========================= -->
+    {% if other_categories %}
+    <section class="service serv2 mb-112">
+        <div class="container"> 
+            <h2>Другие услуги</h2>
+            <div class="row">
+                {% for cat in other_categories %}
+                    <div class="col-xxl-3 col-xl-4 col-md-4 col-sm-6">
+                        <a href="{% url 'website:category_services' category_id=cat.id %}" class="item">
+                            {% if cat.image %}
+                                <img src="{{ cat.image.url }}" class="responsive mn" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% endif %}
+                            {% if cat.image_mobile %}
+                                <img src="{{ cat.image_mobile.url }}" class="responsive mobb" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% elif cat.image %}
+                                <img src="{{ cat.image.url }}" class="responsive mobb" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            {% endif %}
+                            <span class="semi d-flex align-items-center justify-content-center">{{ cat.name }}</span>
+                        </a>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+{% endblock %}

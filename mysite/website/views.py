@@ -650,6 +650,30 @@ def api_create_booking(request):
             'error': str(e)
         }, status=500)
 
+def category_services(request, category_id):
+    """Услуги конкретной категории"""
+    category = get_object_or_404(ServiceCategory, id=category_id)
+    services_qs = (
+        category.services
+        .filter(is_active=True)
+        .prefetch_related("options")
+    )
+    
+    # Другие категории (исключаем текущую)
+    other_categories = (
+        ServiceCategory.objects
+        .exclude(id=category_id)
+        .prefetch_related("services")
+        .order_by("order", "name")
+    )
+    
+    return render(request, "website/category_services.html", {
+        "settings": _settings(),
+        "category": category,
+        "services": services_qs,
+        "other_categories": other_categories,
+    })
+    
 def service_detail(request, service_id):
     """
     Страница конкретной услуги с формой бронирования.

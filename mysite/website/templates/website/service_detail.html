@@ -151,15 +151,15 @@
                 {% for cat in other_categories %}
                 {% if cat.image %}
                 <div class="col-xxl-3 col-xl-4 col-md-4 col-sm-6">
-                    <a href="{% url 'website:services' %}#category-{{ cat.id }}" class="item">
+                    <a href="{% url 'website:category_services' category_id=cat.id %}" class="item">
                         <img src="{{ cat.image.url }}" class="responsive mn"
                              alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                         {% if cat.image_mobile %}
-                        <img src="{{ cat.image_mobile.url }}" class="responsive mobb"
-                             alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            <img src="{{ cat.image_mobile.url }}" class="responsive mobb"
+                                 alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                         {% else %}
-                        <img src="{{ cat.image.url }}" class="responsive mobb"
-                             alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
+                            <img src="{{ cat.image.url }}" class="responsive mobb"
+                                 alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                         {% endif %}
                         <span class="semi d-flex align-items-center justify-content-center">{{ cat.name }}</span>
                     </a>
