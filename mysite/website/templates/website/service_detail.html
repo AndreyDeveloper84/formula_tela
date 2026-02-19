@@ -1,22 +1,141 @@
 {% extends 'website/base.html' %}
 {% load static %}
 
-{% block title %}{{ service.name }} | {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+{% block title %}{{ seo_title|default:service.name }} | {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+
+{% block extra_head %}
+    {% if seo_description %}
+    <meta name="description" content="{{ seo_description }}">
+    {% endif %}
+{% endblock %}
 
 {% block extra_css %}
     <link rel="stylesheet" href="{% static 'css/booking.css' %}">
 {% endblock %}
 
 {% block content %}
-    <!-- ========================= Форма бронирования (uslugi3 / uslugi4) ========================= -->
-    <section class="service serv3 mb-112 mt-56">
+    <!-- ========================= Услуга: контент + форма бронирования ========================= -->
+    <section class="service serv3 mb-112 mt-56" id="booking-section">
         <div class="container"> 
             <div class="row row1">
-                <!-- Левая колонка: описание + форма -->
+                <!-- Левая колонка: контент + форма -->
                 <div class="col-xl-6 col-lg-8">
-                    <h2>{{ service.name }}</h2>
-                    {% if service.description %}
-                        {{ service.description|linebreaks }}
+
+                    {# === РЕЖИМ С БЛОКАМИ (лендинг) === #}
+                    {% if has_blocks %}
+                        {% if seo_h1 %}<h2>{{ seo_h1 }}</h2>{% endif %}
+                        {% if subtitle %}<p class="f20 op80 mb-20">{{ subtitle }}</p>{% endif %}
+
+                        {% for block in blocks %}
+
+                        {% if block.block_type == "text" %}
+                        <div class="landing-block landing-text mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {{ block.content|safe }}
+                        </div>
+
+                        {% elif block.block_type == "accent" %}
+                        <div class="landing-block landing-accent mb-30 {{ block.css_class }}"
+                             style="background:{{ block.extra.bg_color|default:'#9BAE9E' }};color:{{ block.extra.text_color|default:'#fff' }};border-radius:16px;padding:24px;">
+                            {% if block.title %}<h3 style="color:{{ block.extra.text_color|default:'#fff' }};margin-bottom:12px;text-transform:none;">{{ block.title }}</h3>{% endif %}
+                            {{ block.content|safe }}
+                        </div>
+
+                        {% elif block.block_type == "checklist" %}
+                        <div class="landing-block landing-checklist mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% for line in block.content.splitlines %}
+                            {% if line.strip %}
+                            <div class="mb-10" style="padding-left:24px;position:relative;">
+                                <span style="color:#9BAE9E;position:absolute;left:0;">&#10003;</span> {{ line.strip }}
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+
+                        {% elif block.block_type == "identification" %}
+                        <div class="landing-block landing-identification mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% for line in block.content.splitlines %}
+                            {% if line.strip %}
+                            <div class="mb-10">{{ line.strip }}</div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+
+                        {% elif block.block_type == "cta" %}
+                        <div class="landing-block landing-cta mb-30 {{ block.css_class }}">
+                            <a href="#booking-form" class="btn-black t-btn" style="min-width:280px;text-align:center;">
+                                {{ block.extra.btn_text|default:"Записаться онлайн" }}
+                            </a>
+                            {% if block.extra.btn_sub %}
+                            <p class="f14 op50 mt-24">{{ block.extra.btn_sub }}</p>
+                            {% endif %}
+                        </div>
+
+                        {% elif block.block_type == "price_table" %}
+                        <div class="landing-block landing-price-table mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            <div style="overflow-x:auto;">
+                                {{ block.content|safe }}
+                            </div>
+                        </div>
+
+                        {% elif block.block_type == "accordion" %}
+                        <div class="landing-block landing-accordion mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            <div class="accordion" id="accordion-{{ block.id }}">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button"
+                                                data-bs-toggle="collapse" data-bs-target="#collapse-{{ block.id }}">
+                                            {{ block.extra.accordion_title|default:block.title }}
+                                        </button>
+                                    </h2>
+                                    <div id="collapse-{{ block.id }}" class="accordion-collapse collapse"
+                                         data-bs-parent="#accordion-{{ block.id }}">
+                                        <div class="accordion-body">
+                                            {{ block.content|safe }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% elif block.block_type == "special_formats" %}
+                        <div class="landing-block landing-special mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {{ block.content|safe }}
+                        </div>
+
+                        {% elif block.block_type == "subscriptions" %}
+                        <div class="landing-block landing-subscriptions mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {{ block.content|safe }}
+                        </div>
+
+                        {% elif block.block_type == "navigation" %}
+                        <div class="landing-block landing-navigation mb-30 {{ block.css_class }}"
+                             style="background:#f5f5f5;border-radius:16px;padding:24px;">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {{ block.content|safe }}
+                        </div>
+
+                        {% elif block.block_type == "html" %}
+                        <div class="landing-block landing-html mb-30 {{ block.css_class }}">
+                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {{ block.content|safe }}
+                        </div>
+
+                        {% endif %}
+                        {% endfor %}
+
+                    {# === РЕЖИМ БЕЗ БЛОКОВ (стандартный) === #}
+                    {% else %}
+                        <h2>{{ service.name }}</h2>
+                        {% if service.description %}
+                            {{ service.description|linebreaks }}
+                        {% endif %}
                     {% endif %}
                     
                     <!-- ========================= ФОРМА БРОНИРОВАНИЯ ========================= -->
@@ -24,11 +143,7 @@
                         {% csrf_token %}
                         <div class="in-form">
                             {% if options_count > 0 %}
-                                {# ======================================================== #}
-                                {# ДЛИТЕЛЬНОСТЬ: select (несколько вариантов) или disabled  #}
-                                {# ======================================================== #}
                                 {% if durations_count > 1 %}
-                                    {# --- uslugi4-стиль: выбираемая длительность --- #}
                                     <select id="duration-select" class="form-select" required>
                                         <option value="">Длительность</option>
                                         {% for duration in durations %}
@@ -36,51 +151,37 @@
                                         {% endfor %}
                                     </select>
                                 {% elif durations_count == 1 %}
-                                    {# --- uslugi3-стиль: фиксированная длительность --- #}
                                     {% with duration=durations.0 %}
                                     <input type="text" class="text-def" value="{{ duration }} минут" disabled>
                                     <input type="hidden" id="duration-select" value="{{ duration }}">
                                     {% endwith %}
                                 {% endif %}
                                 
-                                {# ======================================================== #}
-                                {# КОЛИЧЕСТВО: select / disabled / динамически по duration  #}
-                                {# ======================================================== #}
                                 {% if is_single_quantity_for_all_durations %}
-                                    {# Для всех длительностей одно и то же количество → input disabled #}
                                     <input type="text" class="text-def" id="quantity-display"
                                            value="{{ single_quantity_value }} {{ single_quantity_unit_type_display }}" disabled>
                                     <input type="hidden" id="quantity-select" value="{{ single_quantity_value }}">
-
                                 {% elif durations_count == 1 and quantities_count > 1 %}
-                                    {# Одна длительность, несколько количеств → select #}
                                     <select id="quantity-select" class="form-select" required>
                                         <option value="">Выберите количество</option>
                                         {% for opt in options %}
                                         <option value="{{ opt.units }}">{{ opt.units }} {{ opt.get_unit_type_display }}</option>
                                         {% endfor %}
                                     </select>
-
                                 {% elif durations_count == 1 and quantities_count == 1 %}
-                                    {# Одна длительность, одно количество → input disabled #}
                                     {% with opt=options.0 %}
                                     <input type="text" class="text-def" id="quantity-display"
                                            value="{{ opt.units }} {{ opt.get_unit_type_display }}" disabled>
                                     <input type="hidden" id="quantity-select" value="{{ opt.units }}">
                                     {% endwith %}
-
                                 {% else %}
-                                    {# Несколько длительностей, разное количество → динамический select #}
                                     <select id="quantity-select" class="form-select" required>
                                         <option value="">Сначала выберите длительность</option>
                                     </select>
                                 {% endif %}
                                 
-                                {# Скрытое поле для ID выбранной опции #}
                                 <input type="hidden" id="option-select" value="">
-                                
                             {% else %}
-                                {# Нет доступных вариантов #}
                                 <div class="alert alert-warning">
                                     Нет доступных вариантов услуги для онлайн-записи
                                 </div>
@@ -89,35 +190,22 @@
                                 <input type="hidden" id="quantity-select" value="">
                             {% endif %}
                             
-                            {# ======================================================== #}
-                            {# МАСТЕР (загружается через API)                          #}
-                            {# ======================================================== #}
                             <select id="master-select" class="form-select" required>
                                 <option value="">Сначала выберите вариант услуги</option>
                             </select>
                             
-                            {# ======================================================== #}
-                            {# ДАТА (Flatpickr — включается после выбора мастера)      #}
-                            {# ======================================================== #}
                             <input type="text" id="date-zapis" class="form-control"
                                    placeholder="Сначала выберите мастера" disabled required>
                             
-                            {# ======================================================== #}
-                            {# ВРЕМЯ (загружается через API после выбора даты)         #}
-                            {# ======================================================== #}
                             <select id="time-zapis" class="form-select" required disabled>
                                 <option value="">Сначала выберите дату</option>
                             </select>
                             
-                            {# ======================================================== #}
-                            {# СТОИМОСТЬ                                                #}
-                            {# ======================================================== #}
                             <input type="text" id="price-display" class="text-def semi"
                                    value="Стоимость: {% if options_count == 1 %}{{ options.0.price|floatformat:0 }}{% else %}—{% endif %} ₽"
                                    disabled>
                         </div>
                         
-                        {# Кнопка записи — <a>, как в оригинале #}
                         <a href="#" id="submit-booking" class="btn-black t-btn submit">Записаться онлайн</a>
                     </form>
                 </div>
@@ -171,7 +259,7 @@
     </section>
     {% endif %}
 
-    <!-- ========================= Модальное окно подтверждения записи ========================= -->
+    <!-- ========================= Модальное окно ========================= -->
     <div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -180,7 +268,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
                 </div>
                 <div class="modal-body">
-                    <!-- Сводка бронирования -->
                     <div class="booking-summary mb-30" style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
                         <div class="d-flex justify-content-between mb-10">
                             <span>Услуга:</span>
@@ -200,7 +287,6 @@
                         </div>
                     </div>
                     
-                    <!-- Форма контактов -->
                     <form id="contact-form">
                         <div class="in-form">
                             <input type="text" id="client-name" class="form-control"
@@ -228,21 +314,13 @@
 
 {% block extra_js %}
 <script>
-// ============================================================
-// КОНФИГУРАЦИЯ
-// ============================================================
 const API_BASE_URL = '{{ request.scheme }}://{{ request.get_host }}';
-
-// Состояние формы
 let bookingData = {};
 let availableDates = [];
 let datePicker = null;
 let isLoadingDates = false;
 let isLoadingTimes = false;
 
-// ============================================================
-// ДАННЫЕ ОПЦИЙ УСЛУГИ (из Django → JS)
-// ============================================================
 const serviceOptions = [
     {% for opt in options %}
     {
@@ -257,43 +335,29 @@ const serviceOptions = [
     {% endfor %}
 ];
 
-// Быстрый поиск: {duration: {quantity: option}}
 const optionsMap = {};
 serviceOptions.forEach(opt => {
     if (!optionsMap[opt.duration]) optionsMap[opt.duration] = {};
     optionsMap[opt.duration][opt.quantity] = opt;
 });
 
-// ============================================================
-// УТИЛИТЫ
-// ============================================================
-
 function getOptionByDurationAndQuantity(duration, quantity) {
     return (optionsMap[duration] && optionsMap[duration][quantity]) || null;
 }
-
-function formatPrice(price) {
-    return new Intl.NumberFormat('ru-RU').format(price);
-}
-
+function formatPrice(price) { return new Intl.NumberFormat('ru-RU').format(price); }
 function formatDate(dateString) {
     const date = new Date(dateString);
     return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 }
-
 function getCsrfToken() {
     const el = document.querySelector('[name=csrfmiddlewaretoken]');
     if (el) return el.value;
-    // Fallback: из cookie
     const match = document.cookie.match(/csrftoken=([^;]+)/);
     return match ? match[1] : '';
 }
-
-// Склонение единиц: 1 процедура, 2 процедуры, 5 процедур
 function getQuantityLabel(quantity, unitType) {
     const last = quantity % 10;
     const lastTwo = quantity % 100;
-    
     if (lastTwo >= 11 && lastTwo <= 14) {
         if (unitType === 'процедуры') return 'процедур';
         if (unitType === 'зоны') return 'зон';
@@ -307,319 +371,168 @@ function getQuantityLabel(quantity, unitType) {
         return unitType;
     }
     if (last >= 2 && last <= 4) return unitType;
-    
     if (unitType === 'процедуры') return 'процедур';
     if (unitType === 'зоны') return 'зон';
     if (unitType === 'визиты') return 'визитов';
     return unitType;
 }
-
-// Группировка времени по периодам дня
 function groupTimesByPeriod(times) {
-    const periods = {
-        '🌅 Утро (9:00 – 12:00)': [],
-        '☀️ День (12:00 – 17:00)': [],
-        '🌆 Вечер (17:00 – 21:00)': []
-    };
+    const periods = { 'Утро (9:00 - 12:00)': [], 'День (12:00 - 17:00)': [], 'Вечер (17:00 - 21:00)': [] };
     times.forEach(time => {
         const h = parseInt(time.split(':')[0]);
-        if (h >= 9 && h < 12) periods['🌅 Утро (9:00 – 12:00)'].push(time);
-        else if (h >= 12 && h < 17) periods['☀️ День (12:00 – 17:00)'].push(time);
-        else if (h >= 17 && h < 21) periods['🌆 Вечер (17:00 – 21:00)'].push(time);
+        if (h >= 9 && h < 12) periods['Утро (9:00 - 12:00)'].push(time);
+        else if (h >= 12 && h < 17) periods['День (12:00 - 17:00)'].push(time);
+        else if (h >= 17 && h < 21) periods['Вечер (17:00 - 21:00)'].push(time);
     });
     return periods;
 }
-
-// ============================================================
-// ОБНОВЛЕНИЕ ЦЕНЫ И ОПЦИИ
-// ============================================================
 
 function updatePrice() {
     const durationEl = document.getElementById('duration-select');
     const quantityEl = document.getElementById('quantity-select');
     const priceEl = document.getElementById('price-display');
     const optionEl = document.getElementById('option-select');
-    
     if (!durationEl || !priceEl) return;
-    
     const duration = parseInt(durationEl.value);
     const quantity = parseInt(quantityEl ? quantityEl.value : '');
-    
     if (duration && quantity) {
         const opt = getOptionByDurationAndQuantity(duration, quantity);
         if (opt) {
-            priceEl.value = `Стоимость: ${formatPrice(opt.price)} ₽`;
+            priceEl.value = 'Стоимость: ' + formatPrice(opt.price) + ' ₽';
             if (optionEl) optionEl.value = opt.id;
             loadMasters();
             return;
         }
     }
-    
     priceEl.value = 'Стоимость: — ₽';
     if (optionEl) optionEl.value = '';
 }
 
-// ============================================================
-// ОБНОВЛЕНИЕ КОЛИЧЕСТВА (при смене длительности)
-// ============================================================
-
 function updateQuantityForDuration(duration) {
     const quantityDisplay = document.getElementById('quantity-display');
     const quantitySelect = document.getElementById('quantity-select');
-    
-    // Если количество одинаковое для всех длительностей — не трогаем
     const allQuantities = new Set();
-    Object.values(optionsMap).forEach(dmap => {
-        Object.keys(dmap).forEach(q => allQuantities.add(q));
-    });
-    if (allQuantities.size === 1 && quantityDisplay) {
-        updatePrice();
-        return;
-    }
-    
+    Object.values(optionsMap).forEach(dmap => { Object.keys(dmap).forEach(q => allQuantities.add(q)); });
+    if (allQuantities.size === 1 && quantityDisplay) { updatePrice(); return; }
     if (!duration) {
         if (quantitySelect && quantitySelect.tagName === 'SELECT') {
             quantitySelect.innerHTML = '<option value="">Сначала выберите длительность</option>';
         }
-        updatePrice();
-        return;
+        updatePrice(); return;
     }
-    
     const durationInt = parseInt(duration);
     const quantities = optionsMap[durationInt]
-        ? Object.keys(optionsMap[durationInt]).map(Number).sort((a, b) => a - b)
-        : [];
-    
+        ? Object.keys(optionsMap[durationInt]).map(Number).sort((a, b) => a - b) : [];
     if (quantities.length === 0) {
         if (quantitySelect && quantitySelect.tagName === 'SELECT') {
             quantitySelect.innerHTML = '<option value="">Нет доступных вариантов</option>';
         }
-        updatePrice();
-        return;
+        updatePrice(); return;
     }
-    
     if (quantities.length === 1) {
-        // Один вариант — показать как disabled input
         const opt = optionsMap[durationInt][quantities[0]];
-        const container = (quantitySelect || quantityDisplay).parentElement;
-        
-        // Удаляем старые элементы quantity
         const oldDisplay = document.getElementById('quantity-display');
         const oldSelect = document.getElementById('quantity-select');
         if (oldDisplay) oldDisplay.remove();
         if (oldSelect) oldSelect.remove();
-        
-        // Создаём disabled input + hidden
         const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'text-def';
-        inp.value = `${quantities[0]} ${getQuantityLabel(quantities[0], opt.unitTypeDisplay)}`;
-        inp.disabled = true;
-        inp.id = 'quantity-display';
-        
+        inp.type = 'text'; inp.className = 'text-def';
+        inp.value = quantities[0] + ' ' + getQuantityLabel(quantities[0], opt.unitTypeDisplay);
+        inp.disabled = true; inp.id = 'quantity-display';
         const hidden = document.createElement('input');
-        hidden.type = 'hidden';
-        hidden.id = 'quantity-select';
-        hidden.value = quantities[0];
-        
-        // Вставляем после duration-select (или его disabled-версии)
+        hidden.type = 'hidden'; hidden.id = 'quantity-select'; hidden.value = quantities[0];
         const durationEl = document.getElementById('duration-select');
-        const insertAfter = durationEl.type === 'hidden'
-            ? durationEl.previousElementSibling  // disabled input перед hidden
-            : durationEl;
-        insertAfter.after(hidden);
-        insertAfter.after(inp);
-        
-        updatePrice();
-        return;
+        const insertAfter = durationEl.type === 'hidden' ? durationEl.previousElementSibling : durationEl;
+        insertAfter.after(hidden); insertAfter.after(inp);
+        updatePrice(); return;
     }
-    
-    // Несколько вариантов — показать select
-    const container = (quantitySelect || quantityDisplay).parentElement;
-    
-    // Удаляем старые элементы
     const oldDisplay = document.getElementById('quantity-display');
     const oldSelect = document.getElementById('quantity-select');
     if (oldDisplay) oldDisplay.remove();
     if (oldSelect) oldSelect.remove();
-    
     const sel = document.createElement('select');
-    sel.id = 'quantity-select';
-    sel.className = 'form-select';
-    sel.required = true;
+    sel.id = 'quantity-select'; sel.className = 'form-select'; sel.required = true;
     sel.innerHTML = '<option value="">Выберите количество</option>';
-    
     quantities.forEach(qty => {
         const opt = optionsMap[durationInt][qty];
         const o = document.createElement('option');
-        o.value = qty;
-        o.textContent = `${qty} ${getQuantityLabel(qty, opt.unitTypeDisplay)}`;
+        o.value = qty; o.textContent = qty + ' ' + getQuantityLabel(qty, opt.unitTypeDisplay);
         sel.appendChild(o);
     });
-    
     const durationEl = document.getElementById('duration-select');
-    const insertAfter = durationEl.type === 'hidden'
-        ? durationEl.previousElementSibling
-        : durationEl;
+    const insertAfter = durationEl.type === 'hidden' ? durationEl.previousElementSibling : durationEl;
     insertAfter.after(sel);
-    
     updatePrice();
 }
 
-// ============================================================
-// СБРОС ПОЛЕЙ (при смене duration/quantity/master)
-// ============================================================
-
 function resetMasterAndBelow() {
     const masterSelect = document.getElementById('master-select');
-    if (masterSelect) {
-        masterSelect.innerHTML = '<option value="">Сначала выберите вариант услуги</option>';
-        masterSelect.value = '';
-    }
+    if (masterSelect) { masterSelect.innerHTML = '<option value="">Сначала выберите вариант услуги</option>'; masterSelect.value = ''; }
     resetDateAndBelow();
 }
-
 function resetDateAndBelow() {
     const dateInput = document.getElementById('date-zapis');
-    if (dateInput) {
-        dateInput.value = '';
-        dateInput.disabled = true;
-        dateInput.placeholder = 'Сначала выберите мастера';
-    }
-    
-    // Уничтожаем Flatpickr
-    if (datePicker) {
-        try { datePicker.destroy(); } catch(e) {}
-        datePicker = null;
-    }
-    
-    availableDates = [];
-    isLoadingDates = false;
-    isLoadingTimes = false;
-    
+    if (dateInput) { dateInput.value = ''; dateInput.disabled = true; dateInput.placeholder = 'Сначала выберите мастера'; }
+    if (datePicker) { try { datePicker.destroy(); } catch(e) {} datePicker = null; }
+    availableDates = []; isLoadingDates = false; isLoadingTimes = false;
     resetTimeSelect();
 }
-
 function resetTimeSelect() {
     const timeSelect = document.getElementById('time-zapis');
-    if (timeSelect) {
-        timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>';
-        timeSelect.disabled = true;
-    }
+    if (timeSelect) { timeSelect.innerHTML = '<option value="">Сначала выберите дату</option>'; timeSelect.disabled = true; }
 }
-
-// ============================================================
-// API: ЗАГРУЗКА МАСТЕРОВ
-// ============================================================
 
 async function loadMasters() {
     const optionEl = document.getElementById('option-select');
-    if (!optionEl || !optionEl.value) {
-        console.log('⏸️ Вариант услуги не выбран');
-        return;
-    }
-    
+    if (!optionEl || !optionEl.value) return;
     const serviceOptionId = optionEl.value;
     const select = document.getElementById('master-select');
-    select.innerHTML = '<option value="">Загрузка мастеров...</option>';
-    select.disabled = true;
-    
+    select.innerHTML = '<option value="">Загрузка мастеров...</option>'; select.disabled = true;
     try {
-        const url = `${API_BASE_URL}/api/booking/get_staff/?service_option_id=${serviceOptionId}`;
-        console.log('🔍 Загрузка мастеров:', url);
-        
+        const url = API_BASE_URL + '/api/booking/get_staff/?service_option_id=' + serviceOptionId;
         const resp = await fetch(url);
         const data = await resp.json();
-        
         if (data.success && data.data && data.data.length > 0) {
             select.innerHTML = '<option value="">Выберите мастера</option>';
             data.data.forEach(master => {
                 const o = document.createElement('option');
-                o.value = master.id;
-                o.textContent = master.name || '';
-                if (master.specialization) o.textContent += ` (${master.specialization})`;
+                o.value = master.id; o.textContent = master.name || '';
+                if (master.specialization) o.textContent += ' (' + master.specialization + ')';
                 select.appendChild(o);
             });
-            console.log('✅ Мастеров загружено:', data.data.length);
-        } else {
-            select.innerHTML = '<option value="">Нет доступных мастеров</option>';
-            console.warn('⚠️ Мастеров не найдено');
-        }
-    } catch (err) {
-        console.error('❌ Ошибка загрузки мастеров:', err);
-        select.innerHTML = '<option value="">Ошибка загрузки</option>';
-    } finally {
-        select.disabled = false;
-        resetDateAndBelow();
-    }
+        } else { select.innerHTML = '<option value="">Нет доступных мастеров</option>'; }
+    } catch (err) { select.innerHTML = '<option value="">Ошибка загрузки</option>'; }
+    finally { select.disabled = false; resetDateAndBelow(); }
 }
-
-// ============================================================
-// API: ЗАГРУЗКА ДОСТУПНЫХ ДАТ
-// ============================================================
 
 async function loadAvailableDates(staffId) {
     if (!staffId || isLoadingDates) return;
     isLoadingDates = true;
-    
     try {
-        const url = `${API_BASE_URL}/api/booking/available_dates/?staff_id=${staffId}`;
-        console.log('📅 Загрузка дат:', url);
-        
+        const url = API_BASE_URL + '/api/booking/available_dates/?staff_id=' + staffId;
         const resp = await fetch(url);
         const data = await resp.json();
-        
         if (data.success && data.data && data.data.dates && data.data.dates.length > 0) {
             availableDates = data.data.dates;
-            console.log('✅ Доступных дат:', availableDates.length);
             initializeDatePicker(staffId);
         } else {
-            console.warn('⚠️ Нет доступных дат');
             const dateInput = document.getElementById('date-zapis');
-            if (dateInput) {
-                dateInput.placeholder = 'Нет свободных дат';
-                dateInput.disabled = true;
-            }
+            if (dateInput) { dateInput.placeholder = 'Нет свободных дат'; dateInput.disabled = true; }
         }
-    } catch (err) {
-        console.error('❌ Ошибка загрузки дат:', err);
-    } finally {
-        isLoadingDates = false;
-    }
+    } catch (err) { console.error('Ошибка загрузки дат:', err); }
+    finally { isLoadingDates = false; }
 }
-
-// ============================================================
-// FLATPICKR: ИНИЦИАЛИЗАЦИЯ КАЛЕНДАРЯ
-// ============================================================
 
 function initializeDatePicker(staffId) {
     const dateInput = document.getElementById('date-zapis');
     if (!dateInput || !availableDates.length) return;
-    
-    // Уничтожаем предыдущий
-    if (datePicker) {
-        try { datePicker.destroy(); } catch(e) {}
-        datePicker = null;
-    }
-    
-    dateInput.disabled = false;
-    dateInput.placeholder = 'Выберите дату';
-    
+    if (datePicker) { try { datePicker.destroy(); } catch(e) {} datePicker = null; }
+    dateInput.disabled = false; dateInput.placeholder = 'Выберите дату';
     const firstDate = availableDates[0];
-    
     datePicker = flatpickr(dateInput, {
-        locale: 'ru',
-        dateFormat: 'Y-m-d',
-        altInput: true,
-        altFormat: 'j F Y (D)',
-        minDate: availableDates[0],
-        maxDate: availableDates[availableDates.length - 1],
-        enable: availableDates,
-        defaultDate: firstDate,
-        disableMobile: false,
-        allowInput: false,
-        clickOpens: true,
-        
+        locale: 'ru', dateFormat: 'Y-m-d', altInput: true, altFormat: 'j F Y (D)',
+        minDate: availableDates[0], maxDate: availableDates[availableDates.length - 1],
+        enable: availableDates, defaultDate: firstDate, disableMobile: false, allowInput: false, clickOpens: true,
         onChange: function(selectedDates, dateStr) {
             if (!dateStr || !staffId) return;
             resetTimeSelect();
@@ -627,85 +540,48 @@ function initializeDatePicker(staffId) {
             if (timeSelect) timeSelect.disabled = false;
             loadAvailableTimes(staffId, dateStr);
         },
-        
-        onReady: function() {
-            console.log('✅ Календарь готов');
-            // Загружаем время для первой даты
-            loadAvailableTimes(staffId, firstDate);
-        }
+        onReady: function() { loadAvailableTimes(staffId, firstDate); }
     });
-    
-    // Автооткрытие
     if (datePicker) datePicker.open();
 }
 
-// ============================================================
-// API: ЗАГРУЗКА ДОСТУПНЫХ ВРЕМЁН
-// ============================================================
-
 let timesDebounceTimer = null;
-
 async function loadAvailableTimes(staffId, date) {
-    // Debounce 300ms
     clearTimeout(timesDebounceTimer);
     timesDebounceTimer = setTimeout(() => _loadAvailableTimes(staffId, date), 300);
 }
-
 async function _loadAvailableTimes(staffId, date) {
     if (isLoadingTimes) return;
     isLoadingTimes = true;
-    
     const timeSelect = document.getElementById('time-zapis');
     const optionEl = document.getElementById('option-select');
     const serviceOptionId = optionEl ? optionEl.value : '';
-    
-    timeSelect.disabled = true;
-    timeSelect.innerHTML = '<option value="">Загрузка...</option>';
-    
+    timeSelect.disabled = true; timeSelect.innerHTML = '<option value="">Загрузка...</option>';
     try {
-        let url = `${API_BASE_URL}/api/booking/available_times/?staff_id=${staffId}&date=${date}`;
-        if (serviceOptionId) url += `&service_option_id=${serviceOptionId}`;
-        console.log('⏰ Загрузка времени:', url);
-        
+        let url = API_BASE_URL + '/api/booking/available_times/?staff_id=' + staffId + '&date=' + date;
+        if (serviceOptionId) url += '&service_option_id=' + serviceOptionId;
         const resp = await fetch(url);
         const data = await resp.json();
-        
         if (data.success && data.data && data.data.times && data.data.times.length > 0) {
             const times = data.data.times;
             const grouped = groupTimesByPeriod(times);
-            
             timeSelect.innerHTML = '<option value="">Выберите время</option>';
-            
             for (const [period, periodTimes] of Object.entries(grouped)) {
                 if (periodTimes.length > 0) {
                     const optgroup = document.createElement('optgroup');
                     optgroup.label = period;
                     periodTimes.forEach(time => {
                         const o = document.createElement('option');
-                        o.value = time;
-                        o.textContent = time;
+                        o.value = time; o.textContent = time;
                         optgroup.appendChild(o);
                     });
                     timeSelect.appendChild(optgroup);
                 }
             }
-            
-            console.log(`✅ Слотов: ${times.length}`);
-        } else {
-            timeSelect.innerHTML = '<option value="">На эту дату всё занято</option>';
-        }
-    } catch (err) {
-        console.error('❌ Ошибка загрузки времени:', err);
-        timeSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
-    } finally {
-        timeSelect.disabled = false;
-        isLoadingTimes = false;
-    }
+        } else { timeSelect.innerHTML = '<option value="">На эту дату всё занято</option>'; }
+    } catch (err) { timeSelect.innerHTML = '<option value="">Ошибка загрузки</option>'; }
+    finally { timeSelect.disabled = false; isLoadingTimes = false; }
 }
-
-// ============================================================
-// ОТПРАВКА ЗАПИСИ (клик «Записаться онлайн»)
-// ============================================================
 
 function handleBookingSubmit() {
     const optionEl = document.getElementById('option-select');
@@ -714,67 +590,39 @@ function handleBookingSubmit() {
     const masterSelect = document.getElementById('master-select');
     const dateInput = document.getElementById('date-zapis');
     const timeSelect = document.getElementById('time-zapis');
-    
-    // Валидация
     if (!durationEl || !durationEl.value) { alert('Выберите длительность'); return; }
-    
     const quantity = quantityEl ? quantityEl.value : '';
     if (!quantity) { alert('Выберите количество'); return; }
-    
     const serviceOptionId = optionEl ? optionEl.value : '';
     if (!serviceOptionId) { alert('Выберите вариант услуги'); return; }
-    
     if (!masterSelect || !masterSelect.value) { alert('Выберите мастера'); return; }
-    
     const date = dateInput ? dateInput.value : '';
     if (!date) { alert('Выберите дату'); return; }
-    
     const time = timeSelect ? timeSelect.value : '';
     if (!time) { alert('Выберите время'); return; }
-    
-    // Находим выбранную опцию
-    const opt = getOptionByDurationAndQuantity(
-        parseInt(durationEl.value),
-        parseInt(quantity)
-    );
+    const opt = getOptionByDurationAndQuantity(parseInt(durationEl.value), parseInt(quantity));
     if (!opt) { alert('Ошибка: вариант услуги не найден'); return; }
-    
     const masterName = masterSelect.options[masterSelect.selectedIndex].text;
-    
-    // Сохраняем данные
     bookingData = {
         staff_id: parseInt(masterSelect.value),
         service_ids: [parseInt(opt.yclientsId)],
-        date: date,
-        time: time,
-        master_name: masterName,
-        service_name: '{{ service.name|escapejs }}',
-        service_price: opt.price
+        date: date, time: time, master_name: masterName,
+        service_name: '{{ service.name|escapejs }}', service_price: opt.price
     };
-    
-    // Заполняем сводку в модальном окне
     document.getElementById('summary-service').textContent = '{{ service.name|escapejs }}';
     document.getElementById('summary-master').textContent = masterName;
-    document.getElementById('summary-datetime').textContent = `${formatDate(date)} в ${time}`;
-    document.getElementById('summary-price').textContent = `${formatPrice(opt.price)} ₽`;
-    
-    // Открываем Bootstrap modal
+    document.getElementById('summary-datetime').textContent = formatDate(date) + ' в ' + time;
+    document.getElementById('summary-price').textContent = formatPrice(opt.price) + ' ₽';
     const modal = new bootstrap.Modal(document.getElementById('contactModal'));
     modal.show();
 }
 
-// ============================================================
-// ПОДТВЕРЖДЕНИЕ ЗАПИСИ (форма контактов в модальном окне)
-// ============================================================
-
 async function handleConfirmBooking(e) {
     e.preventDefault();
-    
     const btn = document.getElementById('confirm-booking');
     const originalText = btn.textContent;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Создаём запись...';
     btn.disabled = true;
-    
     const requestData = {
         ...bookingData,
         client: {
@@ -784,106 +632,53 @@ async function handleConfirmBooking(e) {
         },
         comment: document.getElementById('client-comment').value.trim()
     };
-    
     try {
-        const resp = await fetch(`${API_BASE_URL}/api/booking/create/`, {
+        const resp = await fetch(API_BASE_URL + '/api/booking/create/', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken()
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
             body: JSON.stringify(requestData)
         });
-        
         const data = await resp.json();
-        
         if (resp.ok && data.success) {
-            showModalAlert('✅ Запись создана! ID: ' + data.data.booking_id, 'success');
+            showModalAlert('Запись создана! ID: ' + data.data.booking_id, 'success');
             setTimeout(() => window.location.reload(), 2000);
         } else {
-            showModalAlert('❌ ' + (data.error || 'Ошибка при создании записи'), 'danger');
-            btn.textContent = originalText;
-            btn.disabled = false;
+            showModalAlert(data.error || 'Ошибка при создании записи', 'danger');
+            btn.textContent = originalText; btn.disabled = false;
         }
     } catch (err) {
-        console.error('❌ Ошибка:', err);
-        showModalAlert('❌ Ошибка соединения с сервером', 'danger');
-        btn.textContent = originalText;
-        btn.disabled = false;
+        showModalAlert('Ошибка соединения с сервером', 'danger');
+        btn.textContent = originalText; btn.disabled = false;
     }
 }
 
 function showModalAlert(message, type) {
-    document.getElementById('modal-alert').innerHTML =
-        `<div class="alert alert-${type} mt-15">${message}</div>`;
+    document.getElementById('modal-alert').innerHTML = '<div class="alert alert-' + type + ' mt-15">' + message + '</div>';
 }
 
-// ============================================================
-// ИНИЦИАЛИЗАЦИЯ: ОДИН DOMContentLoaded
-// ============================================================
-
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Инициализация формы бронирования...');
-    console.log('📦 Опций услуги:', serviceOptions.length);
-    
-    // ---- 1. Делегирование событий через контейнер формы ----
     const form = document.getElementById('booking-form');
     if (form) {
         form.addEventListener('change', function(e) {
             const id = e.target.id;
-            
-            if (id === 'duration-select') {
-                updateQuantityForDuration(e.target.value);
-                resetMasterAndBelow();
-            }
-            
-            if (id === 'quantity-select') {
-                updatePrice();
-                // Если option-select уже установлен — мастера загрузятся из updatePrice
-            }
-            
-            if (id === 'master-select') {
-                const staffId = e.target.value;
-                resetDateAndBelow();
-                if (staffId) {
-                    loadAvailableDates(staffId);
-                }
-            }
+            if (id === 'duration-select') { updateQuantityForDuration(e.target.value); resetMasterAndBelow(); }
+            if (id === 'quantity-select') { updatePrice(); }
+            if (id === 'master-select') { const staffId = e.target.value; resetDateAndBelow(); if (staffId) loadAvailableDates(staffId); }
         });
     }
-    
-    // ---- 2. Кнопка «Записаться онлайн» ----
     const submitBtn = document.getElementById('submit-booking');
-    if (submitBtn) {
-        submitBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            handleBookingSubmit();
-        });
-    }
-    
-    // ---- 3. Подтверждение в модальном окне ----
+    if (submitBtn) { submitBtn.addEventListener('click', function(e) { e.preventDefault(); handleBookingSubmit(); }); }
     const contactForm = document.getElementById('contact-form');
-    if (contactForm) {
-        contactForm.addEventListener('submit', handleConfirmBooking);
-    }
-    
-    // ---- 4. Автоинициализация (если единственный вариант) ----
+    if (contactForm) { contactForm.addEventListener('submit', handleConfirmBooking); }
     const durationEl = document.getElementById('duration-select');
     const quantityEl = document.getElementById('quantity-select');
     const optionEl = document.getElementById('option-select');
-    
     if (durationEl && durationEl.value) {
         const duration = parseInt(durationEl.value);
         const quantity = quantityEl ? parseInt(quantityEl.value) : null;
-        
         if (duration && quantity) {
             const opt = getOptionByDurationAndQuantity(duration, quantity);
-            if (opt && optionEl) {
-                optionEl.value = opt.id;
-                updatePrice();
-                // Мастера загрузятся автоматически из updatePrice()
-                console.log('📋 Единственный вариант — автозагрузка мастеров');
-            }
+            if (opt && optionEl) { optionEl.value = opt.id; updatePrice(); }
         }
     }
 });
