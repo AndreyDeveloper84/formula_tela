@@ -67,15 +67,43 @@ class ServiceOptionAdmin(admin.ModelAdmin):
 
 
 class ServiceBlockInline(admin.StackedInline):
-
+    """Inline-редактор контентных блоков на странице услуги"""
     model = ServiceBlock
     extra = 0
     ordering = ("order",)
-    fields = ("order", "is_active", "block_type", "title", "content", "extra", "css_class")
     classes = ("collapse",)
     verbose_name = "Контентный блок"
     verbose_name_plural = "📝 Контентные блоки (лендинг)"
 
+    fieldsets = (
+        (None, {
+            "fields": ("order", "is_active", "block_type", "heading_level", "title")
+        }),
+        ("Содержимое", {
+            "fields": ("content",),
+            "description": (
+                "<b>Форматы заполнения:</b><br>"
+                "• <b>Текст / Акцент / HTML / Форматы / Абонементы:</b> HTML-контент<br>"
+                "• <b>Чеклист / Идентификация:</b> каждый пункт с новой строки<br>"
+                "• <b>FAQ:</b> Вопрос?<br>Текст ответа.<br>---<br>Вопрос?<br>Текст ответа.<br>"
+                "&nbsp;&nbsp;(разделитель между вопросами — строка из трёх дефисов: <code>---</code>)<br>"
+                "• <b>CTA:</b> оставьте пустым (используется только кнопка)<br>"
+                "• <b>Таблица цен:</b> HTML-таблица<br>"
+                "• <b>Аккордеон:</b> HTML-контент (раскрывается по клику на заголовок)"
+            ),
+        }),
+        ("Оформление", {
+            "fields": ("bg_color", "text_color", "btn_text", "btn_sub", "css_class"),
+            "classes": ("collapse",),
+            "description": (
+                "<b>Какие поля для какого типа:</b><br>"
+                "• <b>Акцентный блок:</b> Цвет фона (#9BAE9E), Цвет текста (#fff)<br>"
+                "• <b>CTA-кнопка:</b> Текст кнопки, Подпись под кнопкой<br>"
+                "• <b>Навигация:</b> Цвет фона (#F5F5F5)<br>"
+                "• <b>Остальные:</b> можно не заполнять"
+            ),
+        }),
+    )
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):

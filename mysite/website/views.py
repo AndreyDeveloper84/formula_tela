@@ -673,19 +673,44 @@ def category_services(request, category_id):
         "services": services_qs,
         "other_categories": other_categories,
     })
+
+def service_detail_by_slug(request, slug):
+    """
+    ЧПУ-версия страницы услуги: /uslugi/klassicheskij-massazh/
+    Находит услугу по slug и вызывает основную логику.
+    """
+    service = get_object_or_404(
+        Service.objects.select_related('category'),
+        slug=slug,
+        is_active=True
+    )
+    # Перенаправляем на основную логику по ID
+    # (чтобы не дублировать код)
+    return _render_service_detail(request, service)
     
 def service_detail(request, service_id):
     """
-    Страница конкретной услуги с формой бронирования.
-    Поддерживает SEO-поля и контентные блоки (лендинг).
+    Страница конкретной услуги (по ID).
+    Если у услуги есть slug — делаем 301 редирект на ЧПУ-URL.
     """
-    
-    # 1. Получаем услугу
     service = get_object_or_404(
         Service.objects.select_related('category'),
         pk=service_id,
         is_active=True
     )
+    
+    # Если есть slug — редирект на ЧПУ
+    if service.slug:
+        from django.shortcuts import redirect
+        return redirect('website:service_detail_by_slug', slug=service.slug, permanent=True)
+    
+    return _render_service_detail(request, service)
+
+def _render_service_detail(request, service):
+    """
+    Общая логика рендеринга страницы услуги.
+    Используется и для /service/60/ и для /uslugi/klassicheskij-massazh/
+    """
     
     # 2. Варианты услуги (только с yclients_service_id)
     options = service.options.filter(
@@ -728,7 +753,7 @@ def service_detail(request, service_id):
     # 6. Контентные блоки (SEO-лендинг)
     blocks = service.blocks.filter(is_active=True).order_by('order')
 
-    logger.info(f"📋 Других категорий с фото: {other_categories.count()}")
+    logger.info(f"Других категорий с фото: {other_categories.count()}")
     
     # 7. SEO — fallback на название услуги если поля пусты
     seo_title = service.seo_title or f"{service.name} — {service.category.name if service.category else ''}"
@@ -758,7 +783,7 @@ def service_detail(request, service_id):
     }
     
     return render(request, 'website/service_detail.html', context)
-    
+
 @require_GET
 def api_service_options(request):
     """
