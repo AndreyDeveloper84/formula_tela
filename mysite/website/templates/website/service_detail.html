@@ -111,7 +111,7 @@
                         {# --- CTA-кнопка --- #}
                         {% elif block.block_type == "cta" %}
                         <div class="landing-block landing-cta mb-30 {{ block.css_class }}">
-                            <a href="#booking-form" class="btn-black t-btn" style="min-width:280px;text-align:center;">
+                            <a href="#booking-form-anchor" class="btn-black t-btn" style="min-width:280px;text-align:center;">
                                 {{ block.btn_text|default:"Записаться онлайн" }}
                             </a>
                             {% if block.btn_sub %}
@@ -234,6 +234,7 @@
                     {% endif %}
                     
                     <!-- ========================= ФОРМА БРОНИРОВАНИЯ ========================= -->
+                    <div id="booking-form-anchor" style="scroll-margin-top:100px;"></div>
                     <form id="booking-form" class="mt-40">
                         {% csrf_token %}
                         <div class="in-form">

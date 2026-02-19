@@ -140,3 +140,12 @@
         line-height: 42px !important;
     }
 }
+
+/* Лендинг-блоки: заголовки без uppercase */
+.landing-block h2,
+.landing-block h3,
+.landing-faq h2,
+.landing-accordion h2,
+section.service h1 {
+    text-transform: none;
+}
