@@ -19,6 +19,7 @@ from .models import (
     Review,
     BundleRequest,
     BookingRequest,
+    ServiceBlock,
 )
 
 from .forms import ServiceCSVImportForm
@@ -51,7 +52,6 @@ class ServiceOptionInline(admin.TabularInline):
     def price_per_unit_readonly(self, obj):
         if not obj or not obj.units:
             return "—"
-        # показываем среднюю цену за единицу (процедуру/зону/визит)
         try:
             val = (obj.price or 0) / obj.units
         except Exception:
@@ -61,22 +61,44 @@ class ServiceOptionInline(admin.TabularInline):
 
 @admin.register(ServiceOption)
 class ServiceOptionAdmin(admin.ModelAdmin):
-    search_fields = ("name", "service__title", "yclients_service_id", "service__name")  # ищем по названию варианта и названию услуги
+    search_fields = ("name", "service__title", "yclients_service_id", "service__name")
     list_display = ("name", "service", "price", "duration_min", "is_active", "yclients_service_id")
     list_filter = ("is_active", "service")
 
+
+class ServiceBlockInline(admin.StackedInline):
+
+    model = ServiceBlock
+    extra = 0
+    ordering = ("order",)
+    fields = ("order", "is_active", "block_type", "title", "content", "extra", "css_class")
+    classes = ("collapse",)
+    verbose_name = "Контентный блок"
+    verbose_name_plural = "📝 Контентные блоки (лендинг)"
+
+
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "short", "category", "image_preview", "is_active", "is_popular")
+    list_display = ("id", "name", "short", "category", "slug", "image_preview", "order", "is_active", "is_popular")
     list_filter = ("category", "is_active", "is_popular")
-    search_fields = ("name",)
-    inlines = [ServiceOptionInline]
+    list_editable = ("order", "is_active")
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
+    inlines = [ServiceOptionInline, ServiceBlockInline]
 
     change_list_template = "admin/services_app/service/change_list.html"
 
     fieldsets = (
         ("Основная информация", {
-            "fields": ("name", "short", "category", "description", "image")
+            "fields": ("name", "short", "slug", "category", "order")
+        }),
+        ("SEO", {
+            "fields": ("seo_title", "seo_description", "seo_h1", "subtitle"),
+            "classes": ("collapse",),
+            "description": "Поля для поисковой оптимизации. Если пусто — используются значения по умолчанию."
+        }),
+        ("Контент", {
+            "fields": ("description", "image", "image_mobile"),
         }),
         ("Статус", {
             "fields": ("is_active", "is_popular")
@@ -91,9 +113,12 @@ class ServiceAdmin(admin.ModelAdmin):
     
     def image_preview(self, obj):
         if obj.image:
-            return format_html('<img src="{}" style="max-height: 50px; max-width: 50px; object-fit: cover; border-radius: 4px;" />', obj.image.url)
+            return format_html(
+                '<img src="{}" style="max-height: 50px; max-width: 50px; '
+                'object-fit: cover; border-radius: 4px;" />', obj.image.url
+            )
         return "—"
-    image_preview.short_description = "Изображение"
+    image_preview.short_description = "Фото"
     
     def get_urls(self):
         urls = super().get_urls()
@@ -129,7 +154,7 @@ class ServiceAdmin(admin.ModelAdmin):
                 @transaction.atomic
                 def process():
                     nonlocal created, updated, skipped
-                    for row_num, row in enumerate(reader, start=2):  # с учётом заголовка
+                    for row_num, row in enumerate(reader, start=2):
                         try:
                             cat_name = (row.get("category") or "").strip()
                             name = (row.get("name") or "").strip()
@@ -194,7 +219,6 @@ class ServiceAdmin(admin.ModelAdmin):
                 if len(errors) > 10:
                     messages.error(request, f"И ещё ошибок: {len(errors) - 10}")
 
-                # вернуть на список услуг
                 from django.shortcuts import redirect
                 return redirect("admin:services_app_service_changelist")
         else:
@@ -204,6 +228,16 @@ class ServiceAdmin(admin.ModelAdmin):
     def _render_import_form(self, request, form):
         from django.shortcuts import render
         return render(request, "admin/services_app/service/import_form.html", {"form": form})
+
+
+@admin.register(ServiceBlock)
+class ServiceBlockAdmin(admin.ModelAdmin):
+    list_display = ("id", "service", "block_type", "title", "order", "is_active")
+    list_filter = ("block_type", "is_active", "service")
+    list_editable = ("order", "is_active")
+    search_fields = ("title", "content", "service__name")
+    ordering = ("service", "order")
+
 
 @admin.register(Master)
 class MasterAdmin(admin.ModelAdmin):
@@ -257,7 +291,7 @@ class MasterAdmin(admin.ModelAdmin):
 
 class BundleItemInline(admin.TabularInline):
     model = BundleItem
-    autocomplete_fields = ('option',)   # удобно, если вариантов много
+    autocomplete_fields = ('option',)
     fields = ('option', 'quantity', 'order', 'parallel_group', 'gap_after_min')
     extra = 1
 
