@@ -677,7 +677,7 @@ def category_services(request, category_id):
 def service_detail(request, service_id):
     """
     Страница конкретной услуги с формой бронирования.
-    Соответствует uslugi3.html (фикс.) и uslugi4.html (с выбором).
+    Поддерживает SEO-поля и контентные блоки (лендинг).
     """
     
     # 1. Получаем услугу
@@ -710,7 +710,7 @@ def service_detail(request, service_id):
     if is_single_quantity and all_qty_pairs:
         single_qty_value, single_qty_display = all_qty_pairs.pop()
     
-    # 5. ✅ ИСПРАВЛЕНО: Другие КАТЕГОРИИ (не услуги!)
+    # 5. Другие категории
     other_categories = ServiceCategory.objects.exclude(
         pk=service.category_id
     ).exclude(
@@ -725,7 +725,15 @@ def service_detail(request, service_id):
         image=''
     ).order_by('order')
 
+    # 6. Контентные блоки (SEO-лендинг)
+    blocks = service.blocks.filter(is_active=True).order_by('order')
+
     logger.info(f"📋 Других категорий с фото: {other_categories.count()}")
+    
+    # 7. SEO — fallback на название услуги если поля пусты
+    seo_title = service.seo_title or f"{service.name} — {service.category.name if service.category else ''}"
+    seo_description = service.seo_description or service.description[:160] if service.description else ""
+    seo_h1 = service.seo_h1 or service.name
     
     context = {
         'service': service,
@@ -737,12 +745,20 @@ def service_detail(request, service_id):
         'is_single_quantity_for_all_durations': is_single_quantity,
         'single_quantity_value': single_qty_value,
         'single_quantity_unit_type_display': single_qty_display,
-        'other_categories': other_categories,     # ← БЫЛО: other_services
+        'other_categories': other_categories,
         'settings': SiteSettings.objects.first(),
+        # SEO
+        'seo_title': seo_title,
+        'seo_description': seo_description,
+        'seo_h1': seo_h1,
+        'subtitle': service.subtitle,
+        # Контентные блоки
+        'blocks': blocks,
+        'has_blocks': blocks.exists(),
     }
     
     return render(request, 'website/service_detail.html', context)
-
+    
 @require_GET
 def api_service_options(request):
     """

@@ -29,10 +29,55 @@ class Service(models.Model):
         verbose_name="Изображение (мобильное)",
         help_text="Для экранов <768px. Если не загружено — используется основное изображение."
     )
+
+    # --- SEO и расширенный контент ---
+    slug = models.SlugField(
+        max_length=200,
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name="URL-slug",
+        help_text="ЧПУ-ссылка, например: klassicheskij-massazh"
+    )
+    seo_h1 = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="H1 заголовок",
+        help_text="Если пусто — используется название услуги."
+    )
+    seo_title = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="SEO Title",
+        help_text="Для тега title. До 60 символов. Если пусто — используется название услуги."
+    )
+    seo_description = models.CharField(
+        max_length=300,
+        blank=True,
+        verbose_name="SEO Description",
+        help_text="Для <meta description>. До 160 символов."
+    )
+    seo_h1 = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="H1 заголовок",
+        help_text="Если пусто — используется название услуги."
+    )
+    subtitle = models.CharField(
+        max_length=300,
+        blank=True,
+        verbose_name="Подзаголовок",
+        help_text="Текст под H1 на странице услуги."
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Порядок сортировки"
+    )
     
     class Meta:
         verbose_name = "Услуга"
         verbose_name_plural = "Услуги"
+        #ordering = ["order", "name"]
         indexes = [
             models.Index(fields=["is_active", "is_popular"]),
         ]
@@ -145,6 +190,85 @@ class ServiceCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# ─────────────────────────────────────────────────────
+# Контентные блоки для страниц услуг (SEO-лендинги)
+# ─────────────────────────────────────────────────────
+
+BLOCK_TYPE_CHOICES = [
+    ("text",            "Текстовый блок"),
+    ("accent",          "Акцентный блок (цветной фон)"),
+    ("checklist",       "Чеклист (✅ пункты)"),
+    ("identification",  "Блок идентификации (Ваш случай?)"),
+    ("cta",             "CTA-кнопка (Записаться)"),
+    ("price_table",     "Таблица цен"),
+    ("accordion",       "Аккордеон (раскрывающийся блок)"),
+    ("special_formats", "Особые форматы"),
+    ("subscriptions",   "Абонементы / экономия"),
+    ("navigation",      "Навигация (Не знаете, что выбрать?)"),
+    ("html",            "Произвольный HTML"),
+]
+
+
+class ServiceBlock(models.Model):
+    
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="blocks",
+        verbose_name="Услуга"
+    )
+    block_type = models.CharField(
+        max_length=30,
+        choices=BLOCK_TYPE_CHOICES,
+        verbose_name="Тип блока"
+    )
+    title = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Заголовок блока",
+        help_text="H2 заголовок. Можно оставить пустым."
+    )
+    content = models.TextField(
+        blank=True,
+        verbose_name="Содержимое",
+        help_text="HTML разрешён. Для чеклиста — каждый пункт с новой строки."
+    )
+    extra = models.JSONField(
+        blank=True,
+        null=True,
+        verbose_name="Доп. настройки (JSON)",
+        help_text='Например: {"bg_color": "#9BAE9E", "btn_text": "Записаться"}'
+    )
+    css_class = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="CSS-класс",
+        help_text="Дополнительный класс для стилизации блока."
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Порядок"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активен"
+    )
+
+    class Meta:
+        verbose_name = "Контентный блок услуги"
+        verbose_name_plural = "Контентные блоки услуг"
+        ordering = ["order"]
+        indexes = [
+            models.Index(fields=["service", "is_active", "order"]),
+        ]
+
+    def __str__(self):
+        type_label = dict(BLOCK_TYPE_CHOICES).get(self.block_type, self.block_type)
+        title_str = f" — {self.title}" if self.title else ""
+        return f"[{type_label}]{title_str}"
+
     
 class FAQ(models.Model):
     question = models.CharField(max_length=255, verbose_name="Вопрос")
@@ -248,8 +372,7 @@ class ServicePackage(models.Model):
         return self.title
 
 class Bundle(models.Model):
-    name = models.CharField(max_length=120, verbose_name="Название комплекса", null=True, blank=True)  # название комплекса (набор услуг)
-    # простая логика цены: либо фиксированная, либо сумма услуг минус скидка
+    name = models.CharField(max_length=120, verbose_name="Название комплекса", null=True, blank=True)
     fixed_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     discount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0.00"))
 
@@ -258,8 +381,6 @@ class Bundle(models.Model):
     image_mobile = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото (мобильное)")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
 
-    # связь «многие-ко-многим» через промежуточную таблицу,
-    # в которой хранится порядок услуг внутри комплекса
     options = models.ManyToManyField('ServiceOption', through='BundleItem', related_name='bundles')
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
@@ -275,11 +396,9 @@ class Bundle(models.Model):
     def __str__(self):
         return self.name
 
-    # посчитаем итоговую цену: либо fixed, либо сумма - скидка
     def total_price(self) -> Decimal:
         if self.fixed_price is not None:
             return self.fixed_price
-        # суммируем цену вариантов с учётом количества
         items = self.items.select_related("option").all()
         total = Decimal("0.00")
         for it in items:
@@ -287,10 +406,7 @@ class Bundle(models.Model):
                 total += Decimal(it.option.price) * it.quantity
         return max(Decimal("0.00"), total - self.discount)
 
-    # простая длительность: сумма длительностей всех услуг
-    # (без параллельности и пауз — чтобы было максимально понятно)
     def total_duration_min(self) -> int:
-        # простая сумма длительностей вариантов с учётом количества
         items = self.items.select_related("option").all()
         return sum((it.option.duration_min if it.option else 0) * it.quantity for it in items)
 
@@ -300,10 +416,9 @@ class BundleItem(models.Model):
         ServiceOption, on_delete=models.PROTECT, related_name="bundle_items", null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1)
     
-    order = models.PositiveIntegerField(default=1)  # порядок в комплексе
-
-    parallel_group = models.PositiveIntegerField(default=1)  # группа параллельности
-    gap_after_min = models.PositiveIntegerField(default=0)  # пауза после услуги в минутах
+    order = models.PositiveIntegerField(default=1)
+    parallel_group = models.PositiveIntegerField(default=1)
+    gap_after_min = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ['order']
@@ -339,8 +454,6 @@ class Promotion(models.Model):
     features = models.JSONField(blank=True, null=True, verbose_name="Особенности/преимущества")
     image = models.ImageField(upload_to="promotions/", blank=True, null=True, verbose_name="Изображение")
     
-
-    # Привязка к конкретным вариантам услуг (может быть пусто — тогда акция общая)
     options = models.ManyToManyField(
         ServiceOption, blank=True, related_name="promotions", verbose_name="Варианты услуг"
     )
@@ -417,4 +530,3 @@ class BookingRequest(models.Model):
 
     def __str__(self):
         return f"{self.client_name} — {self.service_name} ({self.created_at:%d.%m.%Y %H:%M})"
-
