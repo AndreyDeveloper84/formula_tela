@@ -30,6 +30,8 @@ class Service(models.Model):
         help_text="Для экранов <768px. Если не загружено — используется основное изображение."
     )
 
+
+
     # --- SEO и расширенный контент ---
     slug = models.SlugField(
         max_length=200,
@@ -63,12 +65,36 @@ class Service(models.Model):
         verbose_name="H1 заголовок",
         help_text="Если пусто — используется название услуги."
     )
+    
     subtitle = models.CharField(
         max_length=300,
         blank=True,
         verbose_name="Подзаголовок",
         help_text="Текст под H1 на странице услуги."
     )
+
+    related_services = models.ManyToManyField(
+        'self',
+        blank=True,
+        symmetrical=False,
+        verbose_name="Связанные услуги",
+        help_text="Блок «Другие виды массажа». Выберите услуги для перелинковки."
+    )
+    
+    short_description = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Краткое описание для карточки",
+        help_text="1 строка для карточки перелинковки. Пример: Восстановление после тренировок, снятие крепатуры"
+    )
+    
+    emoji = models.CharField(
+        max_length=10,
+        blank=True,
+        verbose_name="Эмодзи",
+        help_text="Иконка для карточки. Пример: 💪 🔥 💧 ⚡"
+    )
+
     order = models.PositiveIntegerField(
         default=0,
         verbose_name="Порядок сортировки"
@@ -200,18 +226,24 @@ BLOCK_TYPE_CHOICES = [
     ("text",            "Текстовый блок"),
     ("accent",          "Акцентный блок (цветной фон)"),
     ("checklist",       "Чеклист (✅ пункты)"),
-    ("identification",  "Блок идентификации (Ваш случай?)"),
+    ("identification",  "Блок идентификации (Узнаёте себя?)"),
     ("cta",             "CTA-кнопка (Записаться)"),
     ("price_table",     "Таблица цен"),
     ("accordion",       "Аккордеон (раскрывающийся блок)"),
+    ("faq",             "FAQ — вопросы и ответы"),
     ("special_formats", "Особые форматы"),
     ("subscriptions",   "Абонементы / экономия"),
     ("navigation",      "Навигация (Не знаете, что выбрать?)"),
     ("html",            "Произвольный HTML"),
 ]
 
+HEADING_LEVEL_CHOICES = [
+    ("h2", "H2 — заголовок блока"),
+    ("h3", "H3 — подзаголовок"),
+]
 
 class ServiceBlock(models.Model):
+    """Контентный блок страницы услуги — конструктор лендинга"""
     
     service = models.ForeignKey(
         Service,
@@ -228,18 +260,49 @@ class ServiceBlock(models.Model):
         max_length=200,
         blank=True,
         verbose_name="Заголовок блока",
-        help_text="H2 заголовок. Можно оставить пустым."
+        help_text="Заголовок (H2 или H3). Можно оставить пустым."
+    )
+    heading_level = models.CharField(
+        max_length=2,
+        choices=HEADING_LEVEL_CHOICES,
+        default="h2",
+        verbose_name="Уровень заголовка",
+        help_text="H2 — основной заголовок блока. H3 — подзаголовок внутри блока."
     )
     content = models.TextField(
         blank=True,
         verbose_name="Содержимое",
-        help_text="HTML разрешён. Для чеклиста — каждый пункт с новой строки."
+        help_text=(
+            "HTML разрешён. "
+            "Для чеклиста/идентификации — каждый пункт с новой строки. "
+            "Для FAQ — формат: Вопрос?\\nОтвет текст.\\n---\\nВопрос?\\nОтвет текст."
+        )
     )
-    extra = models.JSONField(
+
+    # --- Настройки оформления (вместо JSON-поля extra) ---
+    bg_color = models.CharField(
+        max_length=20,
         blank=True,
-        null=True,
-        verbose_name="Доп. настройки (JSON)",
-        help_text='Например: {"bg_color": "#9BAE9E", "btn_text": "Записаться"}'
+        verbose_name="Цвет фона",
+        help_text="Для акцентного/навигационного блока. Пример: #9BAE9E"
+    )
+    text_color = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="Цвет текста",
+        help_text="Пример: #fff или #333333"
+    )
+    btn_text = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Текст кнопки",
+        help_text="Для CTA-блока. По умолчанию: Записаться онлайн"
+    )
+    btn_sub = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Подпись под кнопкой",
+        help_text="Мелкий текст под кнопкой. Пример: Выберите удобное время — мы подтвердим запись"
     )
     css_class = models.CharField(
         max_length=100,
@@ -269,7 +332,124 @@ class ServiceBlock(models.Model):
         title_str = f" — {self.title}" if self.title else ""
         return f"[{type_label}]{title_str}"
 
+MEDIA_TYPE_CHOICES = [
+    ("photo", "Фотография"),
+    ("video", "Видео (YouTube/ссылка)"),
+]
+
+MEDIA_DISPLAY_CHOICES = [
+    ("single", "Одиночное (полная ширина)"),
+    ("carousel", "В карусель (группировка)"),
+]
+
+class ServiceMedia(models.Model):
+    """
+    Медиа-файлы для страницы услуги.
     
+    Десктоп: отображаются в правой колонке друг под другом.
+    Мобильный: вставляются между текстовыми блоками по полю insert_after_order.
+    Карусель: несколько фото с одинаковым carousel_group объединяются в слайдер.
+    """
+    
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="media",
+        verbose_name="Услуга"
+    )
+    media_type = models.CharField(
+        max_length=10,
+        choices=MEDIA_TYPE_CHOICES,
+        default="photo",
+        verbose_name="Тип медиа"
+    )
+    display_mode = models.CharField(
+        max_length=10,
+        choices=MEDIA_DISPLAY_CHOICES,
+        default="single",
+        verbose_name="Режим отображения",
+        help_text="Одиночное — показывается как отдельная картинка. Карусель — группируется с другими фото той же группы."
+    )
+    carousel_group = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Группа карусели",
+        help_text="Фото с одинаковой группой объединяются в карусель. Пример: hero, cabinet, process"
+    )
+
+    image = models.ImageField(
+        upload_to="services/gallery/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение",
+        help_text="JPG/PNG/WebP. Рекомендуемый размер: 800×600px."
+    )
+    image_mobile = models.ImageField(
+        upload_to="services/gallery/mobile/",
+        blank=True,
+        null=True,
+        verbose_name="Мобильная версия",
+        help_text="Для экранов <768px. Если пусто — используется основное."
+    )
+    video_url = models.URLField(
+        blank=True,
+        verbose_name="URL видео",
+        help_text="YouTube или Vimeo ссылка. Пример: https://www.youtube.com/embed/XXXXX"
+    )
+    video_file = models.FileField(
+        upload_to="services/video/",
+        blank=True,
+        null=True,
+        verbose_name="Видеофайл",
+        help_text="MP4/WebM. До 50 МБ. Если заполнено — приоритет над YouTube-ссылкой."
+    )
+
+    alt_text = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Alt-текст",
+        help_text="Описание для SEO. Пример: Процесс классического массажа в студии Формула Тела"
+    )
+    title_text = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Title-текст",
+        help_text="Подсказка при наведении."
+    )
+
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Порядок (десктоп)",
+        help_text="Порядок отображения в правой колонке на десктопе."
+    )
+    insert_after_order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Вставить после блока №",
+        help_text=(
+            "На мобильном: после какого блока показать это медиа. "
+            "Используется значение поля 'Порядок' у блока. "
+            "Пример: 20 — вставить после блока с порядком 20 (чеклист)."
+        )
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активен"
+    )
+
+    class Meta:
+        verbose_name = "Медиа-файл услуги"
+        verbose_name_plural = "📷 Медиа-файлы услуги"
+        ordering = ["order"]
+        indexes = [
+            models.Index(fields=["service", "is_active", "order"]),
+        ]
+
+    def __str__(self):
+        label = self.alt_text or f"Медиа #{self.pk}"
+        mode = "🎠" if self.display_mode == "carousel" else "🖼"
+        return f"{mode} {label} (после блока {self.insert_after_order})"
+
 class FAQ(models.Model):
     question = models.CharField(max_length=255, verbose_name="Вопрос")
     answer = models.TextField(verbose_name="Ответ")

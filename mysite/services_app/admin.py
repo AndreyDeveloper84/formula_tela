@@ -20,6 +20,7 @@ from .models import (
     BundleRequest,
     BookingRequest,
     ServiceBlock,
+    ServiceMedia,
 )
 
 from .forms import ServiceCSVImportForm
@@ -67,14 +68,73 @@ class ServiceOptionAdmin(admin.ModelAdmin):
 
 
 class ServiceBlockInline(admin.StackedInline):
-
+    """Inline-редактор контентных блоков на странице услуги"""
     model = ServiceBlock
     extra = 0
     ordering = ("order",)
-    fields = ("order", "is_active", "block_type", "title", "content", "extra", "css_class")
     classes = ("collapse",)
     verbose_name = "Контентный блок"
     verbose_name_plural = "📝 Контентные блоки (лендинг)"
+
+    fieldsets = (
+        (None, {
+            "fields": ("order", "is_active", "block_type", "heading_level", "title")
+        }),
+        ("Содержимое", {
+            "fields": ("content",),
+            "description": (
+                "<b>Форматы заполнения:</b><br>"
+                "• <b>Текст / Акцент / HTML / Форматы / Абонементы:</b> HTML-контент<br>"
+                "• <b>Чеклист / Идентификация:</b> каждый пункт с новой строки<br>"
+                "• <b>FAQ:</b> Вопрос?<br>Текст ответа.<br>---<br>Вопрос?<br>Текст ответа.<br>"
+                "&nbsp;&nbsp;(разделитель между вопросами — строка из трёх дефисов: <code>---</code>)<br>"
+                "• <b>CTA:</b> оставьте пустым (используется только кнопка)<br>"
+                "• <b>Таблица цен:</b> HTML-таблица<br>"
+                "• <b>Аккордеон:</b> HTML-контент (раскрывается по клику на заголовок)"
+            ),
+        }),
+        ("Оформление", {
+            "fields": ("bg_color", "text_color", "btn_text", "btn_sub", "css_class"),
+            "classes": ("collapse",),
+            "description": (
+                "<b>Какие поля для какого типа:</b><br>"
+                "• <b>Акцентный блок:</b> Цвет фона (#9BAE9E), Цвет текста (#fff)<br>"
+                "• <b>CTA-кнопка:</b> Текст кнопки, Подпись под кнопкой<br>"
+                "• <b>Навигация:</b> Цвет фона (#F5F5F5)<br>"
+                "• <b>Остальные:</b> можно не заполнять"
+            ),
+        }),
+    )
+
+class ServiceMediaInline(admin.StackedInline):
+    """Inline-редактор медиа-файлов на странице услуги"""
+    model = ServiceMedia
+    extra = 0
+    ordering = ("order",)
+    classes = ("collapse",)
+    verbose_name = "Медиа-файл"
+    verbose_name_plural = "📷 Медиа-файлы (фото/видео)"
+
+    fieldsets = (
+        (None, {
+            "fields": ("order", "is_active", "media_type", "display_mode", "carousel_group")
+        }),
+        ("Файлы", {
+            "fields": ("image", "image_mobile", "video_file", "video_url"),
+            "description": (
+                "<b>Для фото:</b> загрузите изображение. Мобильная версия — опционально.<br>"
+                "<b>Для видео:</b> вставьте embed-ссылку YouTube. Пример: https://www.youtube.com/embed/XXXXX"
+            ),
+        }),
+        ("SEO и позиция", {
+            "fields": ("alt_text", "title_text", "insert_after_order"),
+            "classes": ("collapse",),
+            "description": (
+                "<b>insert_after_order</b> — на мобильном медиа вставится после блока с этим порядком.<br>"
+                "Например: 20 = после чеклиста, 50 = после таблицы цен."
+            ),
+        }),
+    )
 
 
 @admin.register(Service)
@@ -84,7 +144,7 @@ class ServiceAdmin(admin.ModelAdmin):
     list_editable = ("order", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
-    inlines = [ServiceOptionInline, ServiceBlockInline]
+    inlines = [ServiceOptionInline, ServiceBlockInline, ServiceMediaInline]
 
     change_list_template = "admin/services_app/service/change_list.html"
 
@@ -100,6 +160,14 @@ class ServiceAdmin(admin.ModelAdmin):
         ("Контент", {
             "fields": ("description", "image", "image_mobile"),
         }),
+        ("Перелинковка", {
+            "fields": ("related_services",),
+            "classes": ("collapse",),
+            "description": (
+                "Выберите услуги для блока «Другие виды массажа» внизу страницы. "
+                "Фото, название и цена подтягиваются автоматически из выбранных услуг."
+            ),
+        }),
         ("Статус", {
             "fields": ("is_active", "is_popular")
         }),
@@ -108,6 +176,8 @@ class ServiceAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
+
+    filter_horizontal = ('related_services',)
 
     readonly_fields = ("price", "price_from", "duration", "duration_min")
     
@@ -388,3 +458,4 @@ class BookingRequestAdmin(admin.ModelAdmin):
     list_editable = ("is_processed",)
     search_fields = ("client_name", "client_phone", "service_name")
     readonly_fields = ("created_at",)
+

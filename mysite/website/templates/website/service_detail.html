@@ -1,5 +1,5 @@
 {% extends 'website/base.html' %}
-{% load static %}
+{% load static media_tags %}
 
 {% block title %}{{ seo_title|default:service.name }} | {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 
@@ -7,10 +7,91 @@
     {% if seo_description %}
     <meta name="description" content="{{ seo_description }}">
     {% endif %}
+
+    {# --- Canonical --- #}
+    {% if service.slug %}
+    <link rel="canonical" href="https://formulatela58.ru/uslugi/{{ service.slug }}/">
+    {% endif %}
+
+    {# --- Open Graph --- #}
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ seo_title|default:service.name }}">
+    {% if seo_description %}<meta property="og:description" content="{{ seo_description }}">{% endif %}
+    {% if service.image %}<meta property="og:image" content="https://formulatela58.ru{{ service.image.url }}">{% endif %}
+    {% if service.slug %}<meta property="og:url" content="https://formulatela58.ru/uslugi/{{ service.slug }}/">{% endif %}
+    <meta property="og:site_name" content="{{ settings.salon_name|default:'Формула Тела' }}">
+
+    {# --- Schema.org: Service --- #}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "{{ seo_h1|default:service.name }}",
+        "description": "{{ seo_description|default:service.description|truncatewords:30 }}",
+        "provider": {
+            "@type": "HealthAndBeautyBusiness",
+            "name": "{{ settings.salon_name|default:'Студия эстетики Формула Тела' }}",
+            "address": {
+                "@type": "PostalAddress",
+                "addressLocality": "Пенза",
+                "streetAddress": "{{ settings.address|default:'Ул. Пушкина, 45' }}"
+            },
+            "telephone": "{{ settings.contact_phone|default:'+7 (8412) 39-34-33' }}"
+        }{% if service.image %},
+        "image": "https://formulatela58.ru{{ service.image.url }}"{% endif %}
+    }
+    </script>
+
+    {# --- Schema.org: FAQPage (если есть FAQ-блоки) --- #}
+    {% load faq_tags %}
+    {% for block in blocks %}
+    {% if block.block_type == "faq" %}
+    {% faq_items block.content as faq_items_list %}
+    {% if faq_items_list %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {% for item in faq_items_list %}{% if not forloop.first %},{% endif %}
+            {
+                "@type": "Question",
+                "name": "{{ item.question }}",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "{{ item.answer|striptags }}"
+                }
+            }
+            {% endfor %}
+        ]
+    }
+    </script>
+    {% endif %}
+    {% endif %}
+    {% endfor %}
 {% endblock %}
 
 {% block extra_css %}
     <link rel="stylesheet" href="{% static 'css/booking.css' %}">
+    <style>
+        /* Десктоп: показываем правую колонку медиа, скрываем мобильные вставки */
+        .landing-media-mobile { display: none; }
+        .service-media-desktop .service-media-item,
+        .service-media-desktop .service-carousel { display: block; }
+        
+        @media (max-width: 991px) {
+            /* Мобильный: показываем вставки между блоками, скрываем правую колонку */
+            .landing-media-mobile { display: block; }
+            .service-media-desktop .service-media-item,
+            .service-media-desktop .service-carousel { display: none; }
+        }
+
+        /* Карусель: кнопки hover */
+        .carousel-btn:hover { background: rgba(0,0,0,0.7) !important; }
+
+        /* Карточки связанных услуг */
+        .related-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    </style>
 {% endblock %}
 
 {% block content %}
@@ -23,27 +104,39 @@
 
                     {# === РЕЖИМ С БЛОКАМИ (лендинг) === #}
                     {% if has_blocks %}
-                        {% if seo_h1 %}<h2>{{ seo_h1 }}</h2>{% endif %}
+                        {% if seo_h1 %}<h1>{{ seo_h1 }}</h1>{% endif %}
                         {% if subtitle %}<p class="f20 op80 mb-20">{{ subtitle }}</p>{% endif %}
 
                         {% for block in blocks %}
 
+                        {# --- Текстовый блок --- #}
                         {% if block.block_type == "text" %}
                         <div class="landing-block landing-text mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {{ block.content|safe }}
                         </div>
 
+                        {# --- Акцентный блок (цветной фон) --- #}
                         {% elif block.block_type == "accent" %}
                         <div class="landing-block landing-accent mb-30 {{ block.css_class }}"
-                             style="background:{{ block.extra.bg_color|default:'#9BAE9E' }};color:{{ block.extra.text_color|default:'#fff' }};border-radius:16px;padding:24px;">
-                            {% if block.title %}<h3 style="color:{{ block.extra.text_color|default:'#fff' }};margin-bottom:12px;text-transform:none;">{{ block.title }}</h3>{% endif %}
+                             style="background:{{ block.bg_color|default:'#9BAE9E' }};color:{{ block.text_color|default:'#fff' }};border-radius:16px;padding:24px;">
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 style="color:{{ block.text_color|default:'#fff' }};margin-bottom:12px;text-transform:none;">{{ block.title }}</h3>
+                                {% else %}<h2 style="color:{{ block.text_color|default:'#fff' }};margin-bottom:12px;text-transform:none;">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {{ block.content|safe }}
                         </div>
 
+                        {# --- Чеклист (✅ пункты) --- #}
                         {% elif block.block_type == "checklist" %}
                         <div class="landing-block landing-checklist mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {% for line in block.content.splitlines %}
                             {% if line.strip %}
                             <div class="mb-10" style="padding-left:24px;position:relative;">
@@ -53,9 +146,14 @@
                             {% endfor %}
                         </div>
 
+                        {# --- Блок идентификации (Узнаёте себя?) --- #}
                         {% elif block.block_type == "identification" %}
-                        <div class="landing-block landing-identification mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                        <div class="landing-block landing-identification mb-30 {{ block.css_class }}"
+                             {% if block.bg_color %}style="background:{{ block.bg_color }};border-radius:16px;padding:24px;"{% endif %}>
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {% for line in block.content.splitlines %}
                             {% if line.strip %}
                             <div class="mb-10">{{ line.strip }}</div>
@@ -63,33 +161,38 @@
                             {% endfor %}
                         </div>
 
+                        {# --- CTA-кнопка --- #}
                         {% elif block.block_type == "cta" %}
                         <div class="landing-block landing-cta mb-30 {{ block.css_class }}">
-                            <a href="#booking-form" class="btn-black t-btn" style="min-width:280px;text-align:center;">
-                                {{ block.extra.btn_text|default:"Записаться онлайн" }}
+                            <a href="#booking-form-anchor" class="btn-black t-btn" style="min-width:280px;text-align:center;">
+                                {{ block.btn_text|default:"Записаться онлайн" }}
                             </a>
-                            {% if block.extra.btn_sub %}
-                            <p class="f14 op50 mt-24">{{ block.extra.btn_sub }}</p>
+                            {% if block.btn_sub %}
+                            <p class="f14 op50 mt-10">{{ block.btn_sub|safe }}</p>
                             {% endif %}
                         </div>
 
+                        {# --- Таблица цен --- #}
                         {% elif block.block_type == "price_table" %}
                         <div class="landing-block landing-price-table mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             <div style="overflow-x:auto;">
                                 {{ block.content|safe }}
                             </div>
                         </div>
 
+                        {# --- Аккордеон (1 раскрывающийся блок) --- #}
                         {% elif block.block_type == "accordion" %}
                         <div class="landing-block landing-accordion mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
                             <div class="accordion" id="accordion-{{ block.id }}">
                                 <div class="accordion-item">
                                     <h2 class="accordion-header">
                                         <button class="accordion-button collapsed" type="button"
                                                 data-bs-toggle="collapse" data-bs-target="#collapse-{{ block.id }}">
-                                            {{ block.extra.accordion_title|default:block.title }}
+                                            {{ block.title }}
                                         </button>
                                     </h2>
                                     <div id="collapse-{{ block.id }}" class="accordion-collapse collapse"
@@ -102,32 +205,149 @@
                             </div>
                         </div>
 
+                        {# --- FAQ — мульти-аккордеон (вопросы/ответы через ---) --- #}
+                        {% elif block.block_type == "faq" %}
+                        <div class="landing-block landing-faq mb-30 {{ block.css_class }}">
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
+                            <div class="accordion" id="faq-accordion-{{ block.id }}">
+                                {% load faq_tags %}
+                                {% faq_items block.content as items %}
+                                {% for item in items %}
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button"
+                                                data-bs-toggle="collapse" data-bs-target="#faq-{{ block.id }}-{{ forloop.counter }}">
+                                            {{ item.question }}
+                                        </button>
+                                    </h2>
+                                    <div id="faq-{{ block.id }}-{{ forloop.counter }}" class="accordion-collapse collapse"
+                                         data-bs-parent="#faq-accordion-{{ block.id }}">
+                                        <div class="accordion-body">
+                                            {{ item.answer|safe }}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        {# --- Особые форматы --- #}
                         {% elif block.block_type == "special_formats" %}
                         <div class="landing-block landing-special mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {{ block.content|safe }}
                         </div>
 
+                        {# --- Абонементы --- #}
                         {% elif block.block_type == "subscriptions" %}
                         <div class="landing-block landing-subscriptions mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {{ block.content|safe }}
                         </div>
 
+                        {# --- Навигация (Не знаете, что выбрать?) --- #}
                         {% elif block.block_type == "navigation" %}
                         <div class="landing-block landing-navigation mb-30 {{ block.css_class }}"
-                             style="background:#f5f5f5;border-radius:16px;padding:24px;">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                             style="background:{{ block.bg_color|default:'#f5f5f5' }};border-radius:16px;padding:24px;">
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {{ block.content|safe }}
                         </div>
 
+                        {# --- Произвольный HTML --- #}
                         {% elif block.block_type == "html" %}
                         <div class="landing-block landing-html mb-30 {{ block.css_class }}">
-                            {% if block.title %}<h3 class="mb-15">{{ block.title }}</h3>{% endif %}
+                            {% if block.title %}
+                                {% if block.heading_level == "h3" %}<h3 class="mb-15">{{ block.title }}</h3>
+                                {% else %}<h2 class="mb-15">{{ block.title }}</h2>{% endif %}
+                            {% endif %}
                             {{ block.content|safe }}
                         </div>
 
                         {% endif %}
+
+                        {# --- Мобильные медиа-вставки после текущего блока --- #}
+                        {% if has_media %}
+                        {% get_media_after media_by_position block.order as media_here %}
+                        {% for media_entry in media_here %}
+                            <div class="landing-media-mobile mobb7 mb-20">
+                            {% if media_entry.type == "single" %}
+                                {% with m=media_entry.item %}
+                                {% if m.media_type == "photo" %}
+                                    {% if m.image_mobile %}
+                                    <img src="{{ m.image_mobile.url }}" class="responsive"
+                                         alt="{{ m.alt_text|default:service.name }}" loading="lazy"
+                                         style="border-radius:12px;width:100%;">
+                                    {% elif m.image %}
+                                    <img src="{{ m.image.url }}" class="responsive"
+                                         alt="{{ m.alt_text|default:service.name }}" loading="lazy"
+                                         style="border-radius:12px;width:100%;">
+                                    {% endif %}
+                                {% elif m.media_type == "video" and m.video_file %}
+                                    <video controls playsinline preload="metadata"
+                                           style="width:100%;border-radius:12px;"
+                                           {% if m.image %}poster="{{ m.image.url }}"{% endif %}>
+                                        <source src="{{ m.video_file.url }}" type="video/mp4">
+                                    </video>
+                                {% elif m.media_type == "video" and m.video_url %}
+                                    <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:12px;overflow:hidden;">
+                                        <iframe src="{{ m.video_url }}" style="position:absolute;top:0;left:0;width:100%;height:100%;"
+                                                frameborder="0" allowfullscreen loading="lazy"></iframe>
+                                    </div>
+                                {% endif %}
+                                {% endwith %}
+
+                            {% elif media_entry.type == "carousel" %}
+                                {% with group=media_entry.group items=media_entry.items %}
+                                <div class="service-carousel" id="carousel-mob-{{ group }}"
+                                     style="position:relative;border-radius:12px;overflow:hidden;">
+                                    <div class="carousel-track" style="display:flex;transition:transform 0.4s ease;">
+                                        {% for m in items %}
+                                        <div class="carousel-slide" style="min-width:100%;flex-shrink:0;">
+                                            {% if m.image_mobile %}
+                                            <img src="{{ m.image_mobile.url }}" class="responsive"
+                                                 alt="{{ m.alt_text|default:service.name }}" loading="lazy"
+                                                 style="width:100%;border-radius:12px;">
+                                            {% elif m.image %}
+                                            <img src="{{ m.image.url }}" class="responsive"
+                                                 alt="{{ m.alt_text|default:service.name }}" loading="lazy"
+                                                 style="width:100%;border-radius:12px;">
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if items|length > 1 %}
+                                    <button class="carousel-btn carousel-prev" onclick="slideCarousel('mob-{{ group }}', -1)"
+                                            style="position:absolute;top:50%;left:8px;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:18px;z-index:2;">❮</button>
+                                    <button class="carousel-btn carousel-next" onclick="slideCarousel('mob-{{ group }}', 1)"
+                                            style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:18px;z-index:2;">❯</button>
+                                    <div class="carousel-dots" style="text-align:center;padding:8px 0;">
+                                        {% for m in items %}
+                                        <span class="carousel-dot{% if forloop.first %} active{% endif %}"
+                                              data-carousel="mob-{{ group }}" data-index="{{ forloop.counter0 }}"
+                                              onclick="goToSlide('mob-{{ group }}', {{ forloop.counter0 }})"
+                                              style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{% if forloop.first %}#333{% else %}#ccc{% endif %};margin:0 4px;cursor:pointer;"></span>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endwith %}
+                            {% endif %}
+                            </div>
+                        {% endfor %}
+                        {% endif %}
+
                         {% endfor %}
 
                     {# === РЕЖИМ БЕЗ БЛОКОВ (стандартный) === #}
@@ -138,6 +358,41 @@
                         {% endif %}
                     {% endif %}
                     
+                    {# === Связанные услуги (перелинковка) === #}
+                    {% if has_related %}
+                    <div class="landing-block landing-related mb-30">
+                        <h2 class="mb-15">Другие виды массажа</h2>
+                        <div class="row">
+                            {% for item in related_services %}
+                            <div class="col-sm-6 mb-20">
+                                <a href="{% if item.service.slug %}/uslugi/{{ item.service.slug }}/{% else %}/service/{{ item.service.id }}/{% endif %}"
+                                   class="related-card" style="display:block;text-decoration:none;color:inherit;border:1px solid #eee;border-radius:12px;overflow:hidden;transition:box-shadow 0.2s;">
+                                    {% if item.service.image %}
+                                    <div style="height:160px;overflow:hidden;">
+                                        <img src="{{ item.service.image.url }}" 
+                                             alt="{{ item.service.name }}" loading="lazy"
+                                             style="width:100%;height:100%;object-fit:cover;">
+                                    </div>
+                                    {% endif %}
+                                    <div style="padding:12px 16px;">
+                                        <p style="font-weight:600;margin-bottom:4px;">
+                                            {% if item.service.emoji %}{{ item.service.emoji }} {% endif %}{{ item.service.name }}
+                                        </p>
+                                        {% if item.service.short_description %}
+                                        <p style="font-size:14px;opacity:0.7;margin-bottom:6px;">{{ item.service.short_description }}</p>
+                                        {% endif %}
+                                        {% if item.min_price %}
+                                        <p style="font-size:14px;font-weight:500;">от {{ item.min_price|floatformat:0 }} ₽</p>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div id="booking-form-anchor" style="scroll-margin-top:100px;"></div>
                     <!-- ========================= ФОРМА БРОНИРОВАНИЯ ========================= -->
                     <form id="booking-form" class="mt-40">
                         {% csrf_token %}
@@ -210,19 +465,102 @@
                     </form>
                 </div>
                 
-                <!-- Правая колонка: изображение услуги -->
+                <!-- Правая колонка: медиа-файлы услуги -->
                 <div class="col-xl-6 col-lg-4">
-                    <div class="item">
-                        {% if service.image %}
-                            <img src="{{ service.image.url }}" class="responsive mn7"
-                                 alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
+                    <div class="service-media-desktop" style="position:sticky;top:100px;">
+                        {% if has_media %}
+                            {% load faq_tags %}
+                            {% for m in media_items %}
+                                {% if m.display_mode == "single" %}
+                                    {% if m.media_type == "photo" and m.image %}
+                                    <div class="service-media-item mb-20 mn7">
+                                        <img src="{{ m.image.url }}" class="responsive"
+                                             alt="{{ m.alt_text|default:service.name }}"
+                                             title="{{ m.title_text|default:service.name }}"
+                                             loading="lazy"
+                                             style="border-radius:12px;width:100%;">
+                                    </div>
+                                    {% elif m.media_type == "video" and m.video_file %}
+                                    <div class="service-media-item mb-20 mn7">
+                                        <video controls playsinline preload="metadata"
+                                               style="width:100%;border-radius:12px;"
+                                               {% if m.image %}poster="{{ m.image.url }}"{% endif %}>
+                                            <source src="{{ m.video_file.url }}" type="video/mp4">
+                                        </video>
+                                    </div>
+                                    {% elif m.media_type == "video" and m.video_url %}
+                                    <div class="service-media-item mb-20 mn7">
+                                        <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:12px;overflow:hidden;">
+                                            <iframe src="{{ m.video_url }}" style="position:absolute;top:0;left:0;width:100%;height:100%;"
+                                                    frameborder="0" allowfullscreen loading="lazy"
+                                                    title="{{ m.alt_text|default:service.name }}"></iframe>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+
+                            {# --- Карусели --- #}
+                            {% for group_name, items in carousels.items %}
+                            <div class="service-carousel mb-20 mn7" id="carousel-{{ group_name }}" 
+                                 style="position:relative;border-radius:12px;overflow:hidden;">
+                                <div class="carousel-track" style="display:flex;transition:transform 0.4s ease;width:100%;">
+                                    {% for m in items %}
+                                    <div class="carousel-slide" style="min-width:100%;flex-shrink:0;">
+                                        {% if m.media_type == "photo" and m.image %}
+                                        <img src="{{ m.image.url }}" class="responsive"
+                                             alt="{{ m.alt_text|default:service.name }}"
+                                             loading="lazy" style="width:100%;border-radius:12px;">
+                                        {% elif m.media_type == "video" and m.video_file %}
+                                        <video controls playsinline preload="metadata"
+                                               style="width:100%;border-radius:12px;"
+                                               {% if m.image %}poster="{{ m.image.url }}"{% endif %}>
+                                            <source src="{{ m.video_file.url }}" type="video/mp4">
+                                        </video>
+                                        {% elif m.media_type == "video" and m.video_url %}
+                                        <div style="position:relative;padding-bottom:56.25%;height:0;">
+                                            <iframe src="{{ m.video_url }}" style="position:absolute;top:0;left:0;width:100%;height:100%;"
+                                                    frameborder="0" allowfullscreen loading="lazy"></iframe>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% if items|length > 1 %}
+                                <button class="carousel-btn carousel-prev" onclick="slideCarousel('{{ group_name }}', -1)"
+                                        style="position:absolute;top:50%;left:8px;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:18px;z-index:2;">❮</button>
+                                <button class="carousel-btn carousel-next" onclick="slideCarousel('{{ group_name }}', 1)"
+                                        style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:18px;z-index:2;">❯</button>
+                                <div class="carousel-dots" style="text-align:center;padding:8px 0;">
+                                    {% for m in items %}
+                                    <span class="carousel-dot{% if forloop.first %} active{% endif %}" 
+                                          data-carousel="{{ group_name }}" data-index="{{ forloop.counter0 }}"
+                                          onclick="goToSlide('{{ group_name }}', {{ forloop.counter0 }})"
+                                          style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{% if forloop.first %}#333{% else %}#ccc{% endif %};margin:0 4px;cursor:pointer;"></span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+
+                        {% else %}
+                            {# Fallback: старое одиночное фото #}
+                            {% if service.image %}
+                                <img src="{{ service.image.url }}" class="responsive mn7"
+                                     alt="{{ service.name }}" title="{{ service.name }}" loading="lazy"
+                                     style="border-radius:12px;">
+                            {% endif %}
                         {% endif %}
-                        {% if service.image_mobile %}
-                            <img src="{{ service.image_mobile.url }}" class="responsive mobb7"
-                                 alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
-                        {% elif service.image %}
-                            <img src="{{ service.image.url }}" class="responsive mobb7"
-                                 alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
+
+                        {# Мобильная версия старого фото (fallback) #}
+                        {% if not has_media %}
+                            {% if service.image_mobile %}
+                                <img src="{{ service.image_mobile.url }}" class="responsive mobb7"
+                                     alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
+                            {% elif service.image %}
+                                <img src="{{ service.image.url }}" class="responsive mobb7"
+                                     alt="{{ service.name }}" title="{{ service.name }}" loading="lazy">
+                            {% endif %}
                         {% endif %}
                     </div>
                 </div>
@@ -681,6 +1019,61 @@ document.addEventListener('DOMContentLoaded', function() {
             if (opt && optionEl) { optionEl.value = opt.id; updatePrice(); }
         }
     }
+});
+
+/* ===================== Карусель ===================== */
+const carouselState = {};
+
+function slideCarousel(id, direction) {
+    const container = document.getElementById('carousel-' + id);
+    if (!container) return;
+    const track = container.querySelector('.carousel-track');
+    const slides = track.querySelectorAll('.carousel-slide');
+    if (!slides.length) return;
+
+    if (!carouselState[id]) carouselState[id] = 0;
+    carouselState[id] += direction;
+    if (carouselState[id] < 0) carouselState[id] = slides.length - 1;
+    if (carouselState[id] >= slides.length) carouselState[id] = 0;
+
+    track.style.transform = 'translateX(-' + (carouselState[id] * 100) + '%)';
+    updateDots(id);
+}
+
+function goToSlide(id, index) {
+    const container = document.getElementById('carousel-' + id);
+    if (!container) return;
+    const track = container.querySelector('.carousel-track');
+    carouselState[id] = index;
+    track.style.transform = 'translateX(-' + (index * 100) + '%)';
+    updateDots(id);
+}
+
+function updateDots(id) {
+    const dots = document.querySelectorAll('.carousel-dot[data-carousel="' + id + '"]');
+    dots.forEach(function(dot) {
+        const idx = parseInt(dot.getAttribute('data-index'));
+        dot.style.background = (idx === carouselState[id]) ? '#333' : '#ccc';
+    });
+}
+
+/* Свайп на мобильном */
+document.querySelectorAll('.service-carousel').forEach(function(carousel) {
+    let startX = 0;
+    let endX = 0;
+    const id = carousel.id.replace('carousel-', '');
+
+    carousel.addEventListener('touchstart', function(e) {
+        startX = e.touches[0].clientX;
+    }, {passive: true});
+
+    carousel.addEventListener('touchend', function(e) {
+        endX = e.changedTouches[0].clientX;
+        const diff = startX - endX;
+        if (Math.abs(diff) > 50) {
+            slideCarousel(id, diff > 0 ? 1 : -1);
+        }
+    }, {passive: true});
 });
 </script>
 {% endblock %}
