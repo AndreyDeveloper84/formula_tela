@@ -1,5 +1,5 @@
 {% extends 'website/base.html' %}
-{% load static media_tags social_tags faq_tags %}
+{% load static media_tags %}
 
 {% block title %}{{ seo_title|default:service.name }} | {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 
@@ -88,6 +88,9 @@
 
         /* Карусель: кнопки hover */
         .carousel-btn:hover { background: rgba(0,0,0,0.7) !important; }
+
+        /* Карточки связанных услуг */
+        .related-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
     </style>
 {% endblock %}
 
@@ -291,6 +294,12 @@
                                          alt="{{ m.alt_text|default:service.name }}" loading="lazy"
                                          style="border-radius:12px;width:100%;">
                                     {% endif %}
+                                {% elif m.media_type == "video" and m.video_file %}
+                                    <video controls playsinline preload="metadata"
+                                           style="width:100%;border-radius:12px;"
+                                           {% if m.image %}poster="{{ m.image.url }}"{% endif %}>
+                                        <source src="{{ m.video_file.url }}" type="video/mp4">
+                                    </video>
                                 {% elif m.media_type == "video" and m.video_url %}
                                     <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:12px;overflow:hidden;">
                                         <iframe src="{{ m.video_url }}" style="position:absolute;top:0;left:0;width:100%;height:100%;"
@@ -349,6 +358,40 @@
                         {% endif %}
                     {% endif %}
                     
+                    {# === Связанные услуги (перелинковка) === #}
+                    {% if has_related %}
+                    <div class="landing-block landing-related mb-30">
+                        <h2 class="mb-15">Другие виды массажа</h2>
+                        <div class="row">
+                            {% for item in related_services %}
+                            <div class="col-sm-6 mb-20">
+                                <a href="{% if item.service.slug %}/uslugi/{{ item.service.slug }}/{% else %}/service/{{ item.service.id }}/{% endif %}"
+                                   class="related-card" style="display:block;text-decoration:none;color:inherit;border:1px solid #eee;border-radius:12px;overflow:hidden;transition:box-shadow 0.2s;">
+                                    {% if item.service.image %}
+                                    <div style="height:160px;overflow:hidden;">
+                                        <img src="{{ item.service.image.url }}" 
+                                             alt="{{ item.service.name }}" loading="lazy"
+                                             style="width:100%;height:100%;object-fit:cover;">
+                                    </div>
+                                    {% endif %}
+                                    <div style="padding:12px 16px;">
+                                        <p style="font-weight:600;margin-bottom:4px;">
+                                            {% if item.service.emoji %}{{ item.service.emoji }} {% endif %}{{ item.service.name }}
+                                        </p>
+                                        {% if item.service.short_description %}
+                                        <p style="font-size:14px;opacity:0.7;margin-bottom:6px;">{{ item.service.short_description }}</p>
+                                        {% endif %}
+                                        {% if item.min_price %}
+                                        <p style="font-size:14px;font-weight:500;">от {{ item.min_price|floatformat:0 }} ₽</p>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <div id="booking-form-anchor" style="scroll-margin-top:100px;"></div>
                     <!-- ========================= ФОРМА БРОНИРОВАНИЯ ========================= -->
                     <form id="booking-form" class="mt-40">
@@ -437,6 +480,14 @@
                                              loading="lazy"
                                              style="border-radius:12px;width:100%;">
                                     </div>
+                                    {% elif m.media_type == "video" and m.video_file %}
+                                    <div class="service-media-item mb-20 mn7">
+                                        <video controls playsinline preload="metadata"
+                                               style="width:100%;border-radius:12px;"
+                                               {% if m.image %}poster="{{ m.image.url }}"{% endif %}>
+                                            <source src="{{ m.video_file.url }}" type="video/mp4">
+                                        </video>
+                                    </div>
                                     {% elif m.media_type == "video" and m.video_url %}
                                     <div class="service-media-item mb-20 mn7">
                                         <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:12px;overflow:hidden;">
@@ -460,6 +511,12 @@
                                         <img src="{{ m.image.url }}" class="responsive"
                                              alt="{{ m.alt_text|default:service.name }}"
                                              loading="lazy" style="width:100%;border-radius:12px;">
+                                        {% elif m.media_type == "video" and m.video_file %}
+                                        <video controls playsinline preload="metadata"
+                                               style="width:100%;border-radius:12px;"
+                                               {% if m.image %}poster="{{ m.image.url }}"{% endif %}>
+                                            <source src="{{ m.video_file.url }}" type="video/mp4">
+                                        </video>
                                         {% elif m.media_type == "video" and m.video_url %}
                                         <div style="position:relative;padding-bottom:56.25%;height:0;">
                                             <iframe src="{{ m.video_url }}" style="position:absolute;top:0;left:0;width:100%;height:100%;"

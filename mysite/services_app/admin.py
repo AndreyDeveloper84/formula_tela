@@ -120,7 +120,7 @@ class ServiceMediaInline(admin.StackedInline):
             "fields": ("order", "is_active", "media_type", "display_mode", "carousel_group")
         }),
         ("Файлы", {
-            "fields": ("image", "image_mobile", "video_url"),
+            "fields": ("image", "image_mobile", "video_file", "video_url"),
             "description": (
                 "<b>Для фото:</b> загрузите изображение. Мобильная версия — опционально.<br>"
                 "<b>Для видео:</b> вставьте embed-ссылку YouTube. Пример: https://www.youtube.com/embed/XXXXX"
@@ -160,6 +160,14 @@ class ServiceAdmin(admin.ModelAdmin):
         ("Контент", {
             "fields": ("description", "image", "image_mobile"),
         }),
+        ("Перелинковка", {
+            "fields": ("related_services",),
+            "classes": ("collapse",),
+            "description": (
+                "Выберите услуги для блока «Другие виды массажа» внизу страницы. "
+                "Фото, название и цена подтягиваются автоматически из выбранных услуг."
+            ),
+        }),
         ("Статус", {
             "fields": ("is_active", "is_popular")
         }),
@@ -168,6 +176,8 @@ class ServiceAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
+
+    filter_horizontal = ('related_services',)
 
     readonly_fields = ("price", "price_from", "duration", "duration_min")
     

@@ -30,6 +30,8 @@ class Service(models.Model):
         help_text="Для экранов <768px. Если не загружено — используется основное изображение."
     )
 
+
+
     # --- SEO и расширенный контент ---
     slug = models.SlugField(
         max_length=200,
@@ -63,12 +65,36 @@ class Service(models.Model):
         verbose_name="H1 заголовок",
         help_text="Если пусто — используется название услуги."
     )
+    
     subtitle = models.CharField(
         max_length=300,
         blank=True,
         verbose_name="Подзаголовок",
         help_text="Текст под H1 на странице услуги."
     )
+
+    related_services = models.ManyToManyField(
+        'self',
+        blank=True,
+        symmetrical=False,
+        verbose_name="Связанные услуги",
+        help_text="Блок «Другие виды массажа». Выберите услуги для перелинковки."
+    )
+    
+    short_description = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Краткое описание для карточки",
+        help_text="1 строка для карточки перелинковки. Пример: Восстановление после тренировок, снятие крепатуры"
+    )
+    
+    emoji = models.CharField(
+        max_length=10,
+        blank=True,
+        verbose_name="Эмодзи",
+        help_text="Иконка для карточки. Пример: 💪 🔥 💧 ⚡"
+    )
+
     order = models.PositiveIntegerField(
         default=0,
         verbose_name="Порядок сортировки"
@@ -369,6 +395,13 @@ class ServiceMedia(models.Model):
         blank=True,
         verbose_name="URL видео",
         help_text="YouTube или Vimeo ссылка. Пример: https://www.youtube.com/embed/XXXXX"
+    )
+    video_file = models.FileField(
+        upload_to="services/video/",
+        blank=True,
+        null=True,
+        verbose_name="Видеофайл",
+        help_text="MP4/WebM. До 50 МБ. Если заполнено — приоритет над YouTube-ссылкой."
     )
 
     alt_text = models.CharField(

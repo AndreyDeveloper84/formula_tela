@@ -777,6 +777,23 @@ def _render_service_detail(request, service):
     seo_description = service.seo_description or service.description[:160] if service.description else ""
     seo_h1 = service.seo_h1 or service.name
     
+    related_services = service.related_services.filter(
+        is_active=True
+    ).select_related('category').prefetch_related('options').order_by('order')
+    
+    related_with_prices = []
+    for rs in related_services:
+        min_price = None
+        active_options = rs.options.filter(is_active=True).exclude(
+            yclients_service_id__isnull=True
+        ).exclude(yclients_service_id='')
+        if active_options.exists():
+            min_price = active_options.order_by('price').first().price
+        related_with_prices.append({
+            'service': rs,
+            'min_price': min_price,
+        })
+
     context = {
         'service': service,
         'options': options_list,
@@ -802,6 +819,9 @@ def _render_service_detail(request, service):
         'media_by_position': media_by_position,
         'carousels': carousels,
         'has_media': len(media_items) > 0,
+
+        'related_services': related_with_prices,
+        'has_related': len(related_with_prices) > 0,
     }
     
     return render(request, 'website/service_detail.html', context)
