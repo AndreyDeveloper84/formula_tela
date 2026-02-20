@@ -216,7 +216,6 @@ HEADING_LEVEL_CHOICES = [
     ("h3", "H3 — подзаголовок"),
 ]
 
-
 class ServiceBlock(models.Model):
     """Контентный блок страницы услуги — конструктор лендинга"""
     
@@ -306,7 +305,118 @@ class ServiceBlock(models.Model):
         type_label = dict(BLOCK_TYPE_CHOICES).get(self.block_type, self.block_type)
         title_str = f" — {self.title}" if self.title else ""
         return f"[{type_label}]{title_str}"
+
+MEDIA_TYPE_CHOICES = [
+    ("photo", "Фотография"),
+    ("video", "Видео (YouTube/ссылка)"),
+]
+
+MEDIA_DISPLAY_CHOICES = [
+    ("single", "Одиночное (полная ширина)"),
+    ("carousel", "В карусель (группировка)"),
+]
+
+class ServiceMedia(models.Model):
+    """
+    Медиа-файлы для страницы услуги.
     
+    Десктоп: отображаются в правой колонке друг под другом.
+    Мобильный: вставляются между текстовыми блоками по полю insert_after_order.
+    Карусель: несколько фото с одинаковым carousel_group объединяются в слайдер.
+    """
+    
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="media",
+        verbose_name="Услуга"
+    )
+    media_type = models.CharField(
+        max_length=10,
+        choices=MEDIA_TYPE_CHOICES,
+        default="photo",
+        verbose_name="Тип медиа"
+    )
+    display_mode = models.CharField(
+        max_length=10,
+        choices=MEDIA_DISPLAY_CHOICES,
+        default="single",
+        verbose_name="Режим отображения",
+        help_text="Одиночное — показывается как отдельная картинка. Карусель — группируется с другими фото той же группы."
+    )
+    carousel_group = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Группа карусели",
+        help_text="Фото с одинаковой группой объединяются в карусель. Пример: hero, cabinet, process"
+    )
+
+    image = models.ImageField(
+        upload_to="services/gallery/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение",
+        help_text="JPG/PNG/WebP. Рекомендуемый размер: 800×600px."
+    )
+    image_mobile = models.ImageField(
+        upload_to="services/gallery/mobile/",
+        blank=True,
+        null=True,
+        verbose_name="Мобильная версия",
+        help_text="Для экранов <768px. Если пусто — используется основное."
+    )
+    video_url = models.URLField(
+        blank=True,
+        verbose_name="URL видео",
+        help_text="YouTube или Vimeo ссылка. Пример: https://www.youtube.com/embed/XXXXX"
+    )
+
+    alt_text = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Alt-текст",
+        help_text="Описание для SEO. Пример: Процесс классического массажа в студии Формула Тела"
+    )
+    title_text = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Title-текст",
+        help_text="Подсказка при наведении."
+    )
+
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Порядок (десктоп)",
+        help_text="Порядок отображения в правой колонке на десктопе."
+    )
+    insert_after_order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Вставить после блока №",
+        help_text=(
+            "На мобильном: после какого блока показать это медиа. "
+            "Используется значение поля 'Порядок' у блока. "
+            "Пример: 20 — вставить после блока с порядком 20 (чеклист)."
+        )
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активен"
+    )
+
+    class Meta:
+        verbose_name = "Медиа-файл услуги"
+        verbose_name_plural = "📷 Медиа-файлы услуги"
+        ordering = ["order"]
+        indexes = [
+            models.Index(fields=["service", "is_active", "order"]),
+        ]
+
+    def __str__(self):
+        label = self.alt_text or f"Медиа #{self.pk}"
+        mode = "🎠" if self.display_mode == "carousel" else "🖼"
+        return f"{mode} {label} (после блока {self.insert_after_order})"
+
 class FAQ(models.Model):
     question = models.CharField(max_length=255, verbose_name="Вопрос")
     answer = models.TextField(verbose_name="Ответ")

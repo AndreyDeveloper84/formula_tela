@@ -20,6 +20,7 @@ from .models import (
     BundleRequest,
     BookingRequest,
     ServiceBlock,
+    ServiceMedia,
 )
 
 from .forms import ServiceCSVImportForm
@@ -105,6 +106,37 @@ class ServiceBlockInline(admin.StackedInline):
         }),
     )
 
+class ServiceMediaInline(admin.StackedInline):
+    """Inline-редактор медиа-файлов на странице услуги"""
+    model = ServiceMedia
+    extra = 0
+    ordering = ("order",)
+    classes = ("collapse",)
+    verbose_name = "Медиа-файл"
+    verbose_name_plural = "📷 Медиа-файлы (фото/видео)"
+
+    fieldsets = (
+        (None, {
+            "fields": ("order", "is_active", "media_type", "display_mode", "carousel_group")
+        }),
+        ("Файлы", {
+            "fields": ("image", "image_mobile", "video_url"),
+            "description": (
+                "<b>Для фото:</b> загрузите изображение. Мобильная версия — опционально.<br>"
+                "<b>Для видео:</b> вставьте embed-ссылку YouTube. Пример: https://www.youtube.com/embed/XXXXX"
+            ),
+        }),
+        ("SEO и позиция", {
+            "fields": ("alt_text", "title_text", "insert_after_order"),
+            "classes": ("collapse",),
+            "description": (
+                "<b>insert_after_order</b> — на мобильном медиа вставится после блока с этим порядком.<br>"
+                "Например: 20 = после чеклиста, 50 = после таблицы цен."
+            ),
+        }),
+    )
+
+
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "short", "category", "slug", "image_preview", "order", "is_active", "is_popular")
@@ -112,7 +144,7 @@ class ServiceAdmin(admin.ModelAdmin):
     list_editable = ("order", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
-    inlines = [ServiceOptionInline, ServiceBlockInline]
+    inlines = [ServiceOptionInline, ServiceBlockInline, ServiceMediaInline]
 
     change_list_template = "admin/services_app/service/change_list.html"
 
@@ -416,3 +448,4 @@ class BookingRequestAdmin(admin.ModelAdmin):
     list_editable = ("is_processed",)
     search_fields = ("client_name", "client_phone", "service_name")
     readonly_fields = ("created_at",)
+

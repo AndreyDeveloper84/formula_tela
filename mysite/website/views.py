@@ -707,11 +707,7 @@ def service_detail(request, service_id):
     return _render_service_detail(request, service)
 
 def _render_service_detail(request, service):
-    """
-    Общая логика рендеринга страницы услуги.
-    Используется и для /service/60/ и для /uslugi/klassicheskij-massazh/
-    """
-    
+
     # 2. Варианты услуги (только с yclients_service_id)
     options = service.options.filter(
         is_active=True
@@ -753,6 +749,27 @@ def _render_service_detail(request, service):
     # 6. Контентные блоки (SEO-лендинг)
     blocks = service.blocks.filter(is_active=True).order_by('order')
 
+    media_items = list(service.media.filter(is_active=True).order_by('order'))
+    
+    carousels = {}
+    single_media = []
+    for m in media_items:
+        if m.display_mode == 'carousel' and m.carousel_group:
+            carousels.setdefault(m.carousel_group, []).append(m)
+        else:
+            single_media.append(m)
+
+    media_by_position = {}
+    for m in single_media:
+        media_by_position.setdefault(m.insert_after_order, []).append(
+            {'type': 'single', 'item': m}
+        )
+    for group_name, items in carousels.items():
+        pos = items[0].insert_after_order
+        media_by_position.setdefault(pos, []).append(
+            {'type': 'carousel', 'group': group_name, 'items': items}
+        )
+    
     logger.info(f"Других категорий с фото: {other_categories.count()}")
     
     # 7. SEO — fallback на название услуги если поля пусты
@@ -780,6 +797,11 @@ def _render_service_detail(request, service):
         # Контентные блоки
         'blocks': blocks,
         'has_blocks': blocks.exists(),
+
+        'media_items': media_items,
+        'media_by_position': media_by_position,
+        'carousels': carousels,
+        'has_media': len(media_items) > 0,
     }
     
     return render(request, 'website/service_detail.html', context)
