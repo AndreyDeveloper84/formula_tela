@@ -53,16 +53,39 @@ class YandexMetrikaClient:
 
         Returns:
             {sessions, bounce_rate, goal_reaches, page_depth, top_sources}
+
+        Note: goal_reaches получается отдельным запросом, т.к. Metrika API v1
+        не имеет универсальной метрики «любые цели» — нужны конкретные goal IDs.
+        При отсутствии целей в счётчике возвращается 0.
         """
-        # --- Aggregated totals ---
+        # --- Aggregated totals (3 гарантированно валидные метрики) ---
         params = {
             "id": self.counter_id,
-            "metrics": "ym:s:visits,ym:s:bounceRate,ym:s:goalReachesAny,ym:s:pageDepth",
+            "metrics": "ym:s:visits,ym:s:bounceRate,ym:s:pageDepth",
             "date1": date1,
             "date2": date2,
         }
         data = self._request(params)
         totals = data.get("totals", [])
+
+        # --- Достижение целей (опционально) ---
+        # Используем ym:s:goal_conversions или считаем по всем goals через dimensions
+        goal_reaches = 0
+        try:
+            goal_params = {
+                "id": self.counter_id,
+                "metrics": "ym:s:visits",
+                "dimensions": "ym:s:goal",
+                "date1": date1,
+                "date2": date2,
+                "limit": 1,
+            }
+            goal_data = self._request(goal_params)
+            # Если счётчик имеет цели — суммируем их визиты
+            for row in goal_data.get("data", []):
+                goal_reaches += int(row["metrics"][0]) if row.get("metrics") else 0
+        except Exception as exc:
+            logger.debug("YandexMetrikaClient: цели не получены (счётчик может не иметь целей): %s", exc)
 
         # --- Top traffic sources ---
         top_sources = []
@@ -88,7 +111,7 @@ class YandexMetrikaClient:
         return {
             "sessions":     int(totals[0]) if len(totals) > 0 else 0,
             "bounce_rate":  round(float(totals[1]), 1) if len(totals) > 1 else 0.0,
-            "goal_reaches": int(totals[2]) if len(totals) > 2 else 0,
-            "page_depth":   round(float(totals[3]), 2) if len(totals) > 3 else 0.0,
+            "page_depth":   round(float(totals[2]), 2) if len(totals) > 2 else 0.0,
+            "goal_reaches": goal_reaches,
             "top_sources":  top_sources,
         }

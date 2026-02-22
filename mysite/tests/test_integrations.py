@@ -12,29 +12,33 @@ class TestYandexMetrikaClient:
 
     @patch("agents.integrations.yandex_metrika.requests.get")
     def test_get_summary_parses_totals(self, mock_get):
+        """3 метрики: visits, bounceRate, pageDepth. Все запросы возвращают один мок."""
+        # get_summary делает 3 запроса: main totals, goals (optional), sources (optional)
         mock_get.return_value = MagicMock(
             ok=True,
-            json=lambda: {"totals": [1500, 35.2, 42, 3.1], "data": []},
+            json=lambda: {"totals": [1500, 35.2, 3.1], "data": []},
         )
         from agents.integrations.yandex_metrika import YandexMetrikaClient
         client = YandexMetrikaClient(token="fake", counter_id="12345")
         result = client.get_summary("2026-01-01", "2026-01-31")
         assert result["sessions"] == 1500
         assert result["bounce_rate"] == 35.2
-        assert result["goal_reaches"] == 42
         assert result["page_depth"] == 3.1
+        assert result["goal_reaches"] == 0   # нет целей в data=[]
+        assert result["top_sources"] == []   # нет источников в data=[]
 
     @patch("agents.integrations.yandex_metrika.requests.get")
     def test_get_summary_parses_sources(self, mock_get):
-        """Два запроса: totals + источники трафика."""
-        totals_resp = MagicMock(ok=True, json=lambda: {"totals": [100, 20.0, 5, 2.0], "data": []})
+        """3 запроса: totals → goals (нет данных) → источники трафика."""
+        totals_resp = MagicMock(ok=True, json=lambda: {"totals": [100, 20.0, 2.0], "data": []})
+        goals_resp  = MagicMock(ok=True, json=lambda: {"data": []})   # нет целей
         sources_resp = MagicMock(ok=True, json=lambda: {
             "data": [
                 {"dimensions": [{"name": "organic"}], "metrics": [80]},
                 {"dimensions": [{"name": "direct"}],  "metrics": [20]},
             ]
         })
-        mock_get.side_effect = [totals_resp, sources_resp]
+        mock_get.side_effect = [totals_resp, goals_resp, sources_resp]
         from agents.integrations.yandex_metrika import YandexMetrikaClient
         client = YandexMetrikaClient(token="fake", counter_id="99")
         result = client.get_summary("2026-01-01", "2026-01-31")
