@@ -989,8 +989,7 @@ def api_get_staff(request):
     
     try:
         service_option_id = request.GET.get('service_option_id')
-        api = get_yclients_api()
-        
+
         if service_option_id:
             # Фильтрация по услуге через YClients API
             try:
@@ -998,7 +997,7 @@ def api_get_staff(request):
                     id=int(service_option_id),
                     is_active=True
                 )
-                
+
                 if not option.yclients_service_id:
                     # Услуга без YClients ID - возвращаем пустой список
                     logger.warning(f"⚠️ У ServiceOption {service_option_id} нет yclients_service_id")
@@ -1008,10 +1007,10 @@ def api_get_staff(request):
                         'count': 0,
                         'message': 'Услуга не привязана к YClients'
                     })
-                
+
                 # ✅ ИСПОЛЬЗУЕМ YCLIENTS API С ФИЛЬТРАЦИЕЙ ПО УСЛУГЕ
                 logger.info(f"🔍 Загружаем мастеров для услуги '{option.service.name}' (yclients_service_id={option.yclients_service_id})")
-                
+
                 # Преобразуем yclients_service_id в int (может быть строкой)
                 try:
                     service_id_int = int(option.yclients_service_id)
@@ -1021,7 +1020,10 @@ def api_get_staff(request):
                         'success': False,
                         'error': f'Некорректный ID услуги в YClients: {option.yclients_service_id}'
                     }, status=400)
-                
+
+                # Инициализируем API только здесь, когда он действительно нужен
+                api = get_yclients_api()
+
                 # Получаем мастеров, которые могут оказывать эту услугу
                 staff_list = api.get_staff(service_id=service_id_int)
                 logger.info(f"✅ YClients вернул {len(staff_list)} мастеров для услуги {service_id_int}")
