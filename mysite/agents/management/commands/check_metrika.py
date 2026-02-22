@@ -43,6 +43,59 @@ class Command(BaseCommand):
             help="Конец периода (по умолчанию: сегодня)",
         )
 
+    def _list_available_counters(self, client, S, W, E):
+        """Запросить список счётчиков, доступных токену, через Management API."""
+        import requests as req
+        self.stdout.write("  Запрашиваем счётчики, доступные этому токену...")
+        try:
+            r = req.get(
+                "https://api-metrika.yandex.net/management/v1/counters",
+                headers={"Authorization": f"OAuth {client.token}"},
+                timeout=10,
+            )
+            if r.status_code == 403:
+                # Management API тоже вернул 403 → токен не имеет скоупа metrika
+                self.stdout.write(E("  Токен не имеет доступа к Яндекс.Метрике вообще."))
+                self.stdout.write(W("  Причина: токен выдан без скоупа metrika:read"))
+                self.stdout.write(W("  (например, это токен от Яндекс.Директа или другого сервиса)"))
+                self.stdout.write("")
+                self.stdout.write("  Получить токен С нужным скоупом:")
+                self.stdout.write("  1. Перейдите по ссылке и авторизуйтесь своим аккаунтом Яндекса:")
+                self.stdout.write("     https://oauth.yandex.ru/authorize?response_type=token"
+                                  "&client_id=1d0b9dd4d652455a9eb710d450ff456a")
+                self.stdout.write("  2. Скопируйте access_token из URL после редиректа")
+                self.stdout.write("  3. Обновите YANDEX_METRIKA_TOKEN в .env")
+            elif not r.ok:
+                self.stdout.write(E(f"  Management API вернул {r.status_code}: {r.text[:200]}"))
+            else:
+                counters = r.json().get("counters", [])
+                if not counters:
+                    self.stdout.write(W("  У этого токена нет доступных счётчиков Метрики."))
+                    self.stdout.write(W("  → Токен не принадлежит аккаунту с счётчиком Метрики"))
+                    self.stdout.write(W("  → Используйте токен того аккаунта, который создал счётчик"))
+                else:
+                    self.stdout.write(S(f"  Токен имеет доступ к {len(counters)} счётчику(-ам):"))
+                    for c in counters[:10]:
+                        cid   = c.get("id", "?")
+                        name  = c.get("name", "—")
+                        site  = c.get("site", "")
+                        match = S("[MATCH]") if str(cid) == client.counter_id else "       "
+                        self.stdout.write(f"  {match}  id={cid:<12}  {name}  ({site})")
+                    if len(counters) > 10:
+                        self.stdout.write(f"  ... и ещё {len(counters) - 10}")
+                    self.stdout.write("")
+                    if not any(str(c.get("id")) == client.counter_id for c in counters):
+                        self.stdout.write(W(f"  Счётчик {client.counter_id} НЕ найден в списке доступных."))
+                        self.stdout.write(W("  → Пропишите в .env Counter ID из списка выше"))
+                        if counters:
+                            suggest = counters[0]
+                            self.stdout.write(
+                                W(f"  → Например: YANDEX_METRIKA_COUNTER_ID={suggest.get('id')}"
+                                  f"  # {suggest.get('name', '')}")
+                            )
+        except Exception as exc:
+            self.stdout.write(W(f"  Не удалось получить список счётчиков: {exc}"))
+
     def handle(self, *args, **options):
         from agents.integrations.yandex_metrika import YandexMetrikaClient, YandexMetrikaError
 
@@ -113,8 +166,10 @@ class Command(BaseCommand):
                 self.stdout.write(W("  → Получите новый на oauth.yandex.ru"))
             elif "403" in str(exc):
                 self.stdout.write(W(f"  → Нет доступа к счётчику {client.counter_id}"))
-                self.stdout.write(W("  → Убедитесь, что токен выдан для нужного аккаунта"))
-                self.stdout.write(W("  → Counter ID — число (не строка): Метрика → Настройки"))
+                self.stdout.write(W("  → Возможно токен принадлежит другому Яндекс-аккаунту"))
+                self.stdout.write("")
+                # Показываем все счётчики, доступные этому токену
+                self._list_available_counters(client, S, W, E)
             else:
                 self.stdout.write(W("  → Проверьте интернет-соединение и настройки прокси"))
             return
