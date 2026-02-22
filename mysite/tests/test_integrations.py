@@ -1,5 +1,5 @@
 """
-Тесты для agents/integrations: YandexMetrikaClient, YandexDirectClient.
+Тесты для agents/integrations: YandexMetrikaClient, YandexDirectClient, VkAdsClient.
 Все тесты используют моки — реальные API не вызываются.
 """
 import pytest
@@ -181,3 +181,127 @@ class TestYandexDirectClient:
         client = YandexDirectClient(token="t", client_login="l")
         result = client.get_campaign_stats("2026-01-01", "2026-01-31")
         assert result["ctr"] == 5.0
+
+
+# ─── VkAdsClient ──────────────────────────────────────────────────────────────
+
+class TestVkAdsClient:
+
+    @patch("agents.integrations.vk_ads.requests.request")
+    def test_get_campaign_stats_parses_response(self, mock_req):
+        """Парсит items/rows, суммирует clicks/shows/spent по нескольким планам и дням."""
+        plans_resp = MagicMock(ok=True, json=lambda: {
+            "items": [{"id": 1, "name": "Кампания А"}, {"id": 2, "name": "Кампания Б"}],
+            "count": 2,
+        })
+        stats_resp = MagicMock(ok=True, json=lambda: {
+            "items": [
+                {"id": 1, "rows": [
+                    {"date": "2026-01-10", "base": {"clicks": 100, "shows": 4000, "spent": 8000.0}},
+                    {"date": "2026-01-11", "base": {"clicks": 50,  "shows": 2000, "spent": 3500.0}},
+                ]},
+                {"id": 2, "rows": [
+                    {"date": "2026-01-10", "base": {"clicks": 30,  "shows": 1000, "spent": 1200.0}},
+                ]},
+            ]
+        })
+        mock_req.side_effect = [plans_resp, stats_resp]
+        from agents.integrations.vk_ads import VkAdsClient
+        client = VkAdsClient(token="fake", account_id="999")
+        result = client.get_campaign_stats("2026-01-10", "2026-01-11")
+        assert result["clicks"] == 180
+        assert result["impressions"] == 7000
+        assert result["cost"] == 12700.0
+        assert result["campaigns_count"] == 2
+
+    @patch("agents.integrations.vk_ads.requests.request")
+    def test_ctr_calculation(self, mock_req):
+        """CTR = clicks / shows * 100, округление до 2 знаков."""
+        plans_resp = MagicMock(ok=True, json=lambda: {
+            "items": [{"id": 1}], "count": 1,
+        })
+        stats_resp = MagicMock(ok=True, json=lambda: {
+            "items": [{"id": 1, "rows": [
+                {"date": "2026-01-10", "base": {"clicks": 50, "shows": 1000, "spent": 5000.0}},
+            ]}]
+        })
+        mock_req.side_effect = [plans_resp, stats_resp]
+        from agents.integrations.vk_ads import VkAdsClient
+        client = VkAdsClient(token="fake", account_id="99")
+        result = client.get_campaign_stats("2026-01-10", "2026-01-10")
+        assert result["ctr"] == 5.0
+
+    @patch("agents.integrations.vk_ads.requests.request")
+    def test_empty_plans_returns_zeros(self, mock_req):
+        """Нет кампаний → все метрики 0, второй запрос (статистика) не делается."""
+        mock_req.return_value = MagicMock(ok=True, json=lambda: {"items": [], "count": 0})
+        from agents.integrations.vk_ads import VkAdsClient
+        client = VkAdsClient(token="fake", account_id="99")
+        result = client.get_campaign_stats("2026-01-01", "2026-01-31")
+        assert result["impressions"] == 0
+        assert result["clicks"] == 0
+        assert result["cost"] == 0.0
+        assert result["ctr"] == 0.0
+        assert result["campaigns_count"] == 0
+        assert mock_req.call_count == 1  # только listing, без stats
+
+    @patch("agents.integrations.vk_ads.requests.request")
+    def test_empty_rows_returns_zeros(self, mock_req):
+        """Кампании есть, но за период данных нет → нули, campaigns_count == 0."""
+        plans_resp = MagicMock(ok=True, json=lambda: {
+            "items": [{"id": 1}], "count": 1,
+        })
+        stats_resp = MagicMock(ok=True, json=lambda: {
+            "items": [{"id": 1, "rows": []}]
+        })
+        mock_req.side_effect = [plans_resp, stats_resp]
+        from agents.integrations.vk_ads import VkAdsClient
+        client = VkAdsClient(token="fake", account_id="99")
+        result = client.get_campaign_stats("2026-01-01", "2026-01-31")
+        assert result["clicks"] == 0
+        assert result["campaigns_count"] == 0
+        assert result["ctr"] == 0.0
+
+    @patch("agents.integrations.vk_ads.requests.request")
+    def test_request_raises_on_http_error(self, mock_req):
+        """HTTP 403 → VkAdsError с 'HTTP 403' в сообщении."""
+        mock_req.return_value = MagicMock(ok=False, status_code=403, text="Forbidden")
+        from agents.integrations.vk_ads import VkAdsClient, VkAdsError
+        client = VkAdsClient(token="bad", account_id="1")
+        with pytest.raises(VkAdsError, match="HTTP 403"):
+            client._request("GET", "ad_plans.json")
+
+    @patch("agents.integrations.vk_ads.requests.request")
+    def test_request_raises_on_network_error(self, mock_req):
+        """ConnectionError → VkAdsError с 'Network error'."""
+        import requests as req_lib
+        mock_req.side_effect = req_lib.exceptions.ConnectionError("timeout")
+        from agents.integrations.vk_ads import VkAdsClient, VkAdsError
+        client = VkAdsClient(token="fake", account_id="1")
+        with pytest.raises(VkAdsError, match="Network error"):
+            client._request("GET", "ad_plans.json")
+
+    def test_from_settings_raises_without_token(self, settings):
+        """VK_ADS_TOKEN пустой → VkAdsError."""
+        settings.VK_ADS_TOKEN = ""
+        settings.VK_ADS_ACCOUNT_ID = "12345"
+        from agents.integrations.vk_ads import VkAdsClient, VkAdsError
+        with pytest.raises(VkAdsError):
+            VkAdsClient.from_settings()
+
+    def test_from_settings_raises_without_account_id(self, settings):
+        """VK_ADS_ACCOUNT_ID пустой → VkAdsError."""
+        settings.VK_ADS_TOKEN = "sometoken"
+        settings.VK_ADS_ACCOUNT_ID = ""
+        from agents.integrations.vk_ads import VkAdsClient, VkAdsError
+        with pytest.raises(VkAdsError):
+            VkAdsClient.from_settings()
+
+    def test_from_settings_ok(self, settings):
+        """Корректные настройки → клиент создаётся с нужными полями."""
+        settings.VK_ADS_TOKEN = "mytoken"
+        settings.VK_ADS_ACCOUNT_ID = "777"
+        from agents.integrations.vk_ads import VkAdsClient
+        client = VkAdsClient.from_settings()
+        assert client.token == "mytoken"
+        assert client.account_id == "777"

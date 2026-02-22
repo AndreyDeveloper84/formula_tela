@@ -29,6 +29,8 @@ jobs:
       YANDEX_METRIKA_COUNTER_ID: ""
       YANDEX_DIRECT_TOKEN: ""
       YANDEX_DIRECT_CLIENT_LOGIN: ""
+      VK_ADS_TOKEN: ""
+      VK_ADS_ACCOUNT_ID: ""
 
     steps:
       - uses: actions/checkout@v4

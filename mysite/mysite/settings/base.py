@@ -156,3 +156,7 @@ YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")
 # === Яндекс.Директ ===
 YANDEX_DIRECT_TOKEN        = os.getenv("YANDEX_DIRECT_TOKEN", "")
 YANDEX_DIRECT_CLIENT_LOGIN = os.getenv("YANDEX_DIRECT_CLIENT_LOGIN", "")
+
+# === VK Реклама ===
+VK_ADS_TOKEN      = os.getenv("VK_ADS_TOKEN", "")
+VK_ADS_ACCOUNT_ID = os.getenv("VK_ADS_ACCOUNT_ID", "")

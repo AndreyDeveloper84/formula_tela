@@ -1,6 +1,6 @@
 """
 AnalyticsBudgetAgent — воронка трафика + аналитика бюджета.
-Источники: YClients, BookingRequest, Яндекс.Метрика, Яндекс.Директ.
+Источники: YClients, BookingRequest, Яндекс.Метрика, Яндекс.Директ, VK Реклама.
 Запускается ежедневно в 09:00 через run_daily_agents.
 """
 import datetime
@@ -37,6 +37,16 @@ class AnalyticsBudgetAgent:
             return client.get_campaign_stats(date_from=date_from, date_to=date_to)
         except Exception as exc:
             logger.warning("AnalyticsBudgetAgent: Директ недоступен: %s", exc)
+            return {}
+
+    def _gather_vk(self, date_from: str, date_to: str) -> dict:
+        """Получить данные из VK Рекламы (graceful degradation при ошибке)."""
+        try:
+            from agents.integrations.vk_ads import VkAdsClient
+            client = VkAdsClient.from_settings()
+            return client.get_campaign_stats(date_from=date_from, date_to=date_to)
+        except Exception as exc:
+            logger.warning("AnalyticsBudgetAgent: VK Реклама недоступна: %s", exc)
             return {}
 
     def _gather_yclients(self, start: str, end: str) -> dict:
@@ -89,6 +99,7 @@ class AnalyticsBudgetAgent:
 
         data.update(self._gather_metrika(start_str, end_str))
         data.update(self._gather_direct(start_str, end_str))
+        data.update({"vk_" + k: v for k, v in self._gather_vk(start_str, end_str).items()})
         data.update(self._gather_yclients(start_str, end_str))
 
         return data
@@ -107,6 +118,13 @@ class AnalyticsBudgetAgent:
             f"  - CTR: {data.get('ctr', 'н/д')}%\n"
             f"  - Активных кампаний: {data.get('campaigns_count', 'н/д')}"
         )
+        vk_str = (
+            f"  - Показов: {data.get('vk_impressions', 'н/д')}\n"
+            f"  - Кликов: {data.get('vk_clicks', 'н/д')}\n"
+            f"  - Расход: {data.get('vk_cost', 'н/д')} руб.\n"
+            f"  - CTR: {data.get('vk_ctr', 'н/д')}%\n"
+            f"  - Активных кампаний: {data.get('vk_campaigns_count', 'н/д')}"
+        )
         funnel_str = (
             f"  - Лидов с сайта: {data['leads_total']}\n"
             f"  - Обработано: {data['leads_processed']} ({data['leads_conversion_pct']}%)\n"
@@ -118,6 +136,7 @@ class AnalyticsBudgetAgent:
             f"Данные салона красоты за {data['period']}:\n\n"
             f"ЯН.МЕТРИКА:\n{metrika_str}\n\n"
             f"ЯН.ДИРЕКТ:\n{direct_str}\n\n"
+            f"VK РЕКЛАМА:\n{vk_str}\n\n"
             f"ВОРОНКА ЗАЯВОК:\n{funnel_str}\n\n"
             "Построй воронку: показы → клики → лид → запись → визит → чек → повтор.\n"
             "Найди узкие места (утечки) и предложи конкретные действия.\n\n"

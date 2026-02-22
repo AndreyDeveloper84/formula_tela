@@ -255,15 +255,51 @@ def test_analytics_budget_agent_done(mock_openai_cls, mock_tg):
 @patch("agents.agents.analytics_budget.send_telegram", return_value=True)
 @patch("agents.agents.analytics_budget.OpenAI")
 def test_analytics_budget_graceful_without_yandex(mock_openai_cls, mock_tg, settings):
-    """Агент работает нормально, если Метрика/Директ не настроены."""
+    """Агент работает нормально, если Метрика/Директ/VK не настроены."""
     settings.YANDEX_METRIKA_TOKEN = ""
     settings.YANDEX_DIRECT_TOKEN = ""
+    settings.VK_ADS_TOKEN = ""
+    settings.VK_ADS_ACCOUNT_ID = ""
     mock_openai_cls.return_value = _make_openai_mock(BUDGET_JSON)
     from agents.agents.analytics_budget import AnalyticsBudgetAgent
     from agents.models import AgentTask
     task = AnalyticsBudgetAgent().run()
     # Должен завершиться успешно (graceful degradation)
     assert task.status == AgentTask.DONE
+
+
+@pytest.mark.django_db
+@patch("agents.agents.analytics_budget.send_telegram", return_value=True)
+@patch("agents.agents.analytics_budget.OpenAI")
+@patch("agents.integrations.vk_ads.requests.request")
+def test_analytics_budget_vk_data_in_context(mock_vk_req, mock_openai_cls, mock_tg, settings):
+    """VK-данные появляются в input_context с префиксом vk_."""
+    # Настраиваем VK-токены
+    settings.VK_ADS_TOKEN = "tok"
+    settings.VK_ADS_ACCOUNT_ID = "99"
+    # 1-й вызов: listing планов
+    plans_resp = MagicMock(ok=True, json=lambda: {
+        "items": [{"id": 101, "name": "Тест-кампания"}], "count": 1,
+    })
+    # 2-й вызов: статистика
+    stats_resp = MagicMock(ok=True, json=lambda: {
+        "items": [{"id": 101, "rows": [
+            {"date": "2026-01-15",
+             "base": {"clicks": 77, "shows": 3000, "spent": 5500.0}},
+        ]}]
+    })
+    mock_vk_req.side_effect = [plans_resp, stats_resp]
+    mock_openai_cls.return_value = _make_openai_mock(BUDGET_JSON)
+
+    from agents.agents.analytics_budget import AnalyticsBudgetAgent
+    from agents.models import AgentTask
+    task = AnalyticsBudgetAgent().run()
+
+    assert task.status == AgentTask.DONE
+    assert task.input_context.get("vk_clicks") == 77
+    assert task.input_context.get("vk_impressions") == 3000
+    assert task.input_context.get("vk_cost") == 5500.0
+    assert "vk_campaigns_count" in task.input_context
 
 
 @pytest.mark.django_db
