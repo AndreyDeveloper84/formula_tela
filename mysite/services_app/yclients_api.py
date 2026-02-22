@@ -29,6 +29,8 @@ class YClientsAPI:
             "Accept": "application/vnd.yclients.v2+json",
             "Authorization": f"Bearer {self.partner_token}, User {self.user_token}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "X-Partner-Id": "11958",
         }
     
     def _request(
@@ -59,7 +61,9 @@ class YClientsAPI:
         request_headers = {
             'Accept': 'application/vnd.yclients.v2+json',
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.partner_token}, User {self.user_token}'
+            'Authorization': f'Bearer {self.partner_token}, User {self.user_token}',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'X-Partner-Id': '11958',
         }
         
         if headers:
@@ -142,6 +146,8 @@ class YClientsAPI:
             "Accept": "application/vnd.yclients.v2+json",
             "Authorization": f"Bearer {partner_token}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "X-Partner-Id": "11958",
         }
         
         data = {
@@ -751,6 +757,42 @@ YClients API ожидает service_ids[] (массив), а не service_id
         except YClientsAPIError as e:
             logger.error(f"❌ Ошибка создания записи: {e}")
             raise
+
+    def get_records(
+        self,
+        start_date: str,
+        end_date: str,
+        count: int = 200,
+        page: int = 1,
+    ) -> list:
+        """
+        Получить записи (визиты) за период.
+
+        Args:
+            start_date: Дата начала "YYYY-MM-DD"
+            end_date:   Дата конца  "YYYY-MM-DD"
+            count:      Количество записей за запрос (макс. 200)
+            page:       Номер страницы
+
+        Returns:
+            Список записей. Каждая запись содержит:
+              id, date, datetime, staff (dict), services (list),
+              client (dict), status (dict), sum, deleted, visit_attendance
+        """
+        endpoint = f"/records/{self.company_id}"
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "count": count,
+            "page": page,
+        }
+        try:
+            response = self._request("GET", endpoint, params=params)
+            return response.get("data", [])
+        except YClientsAPIError as e:
+            logger.error("get_records error: %s", e)
+            return []
+
 
 def get_yclients_api() -> YClientsAPI:
     """
