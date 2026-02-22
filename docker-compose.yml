@@ -49,7 +49,7 @@ services:
       - "8000:8000"  # Django будет доступен на localhost:8000
     environment:
       # Переменные окружения для Django
-      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
+      - DJANGO_SETTINGS_MODULE=mysite.settings.local
       - DJANGO_DEBUG=True
       - DB_ENGINE=django.db.backends.postgresql
       - DB_NAME=mysite_db
@@ -60,6 +60,59 @@ services:
     depends_on:
       db:
         condition: service_healthy  # Запускаем только после успешного старта БД
+      redis:
+        condition: service_healthy
+
+  # === CELERY WORKER (выполняет задачи) ===
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: formula_tela_worker
+    command: celery -A mysite worker -l info --concurrency 2
+    volumes:
+      - ./mysite:/app/mysite
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings.local
+      - DJANGO_DEBUG=True
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=mysite_db
+      - DB_USER=mysite_user
+      - DB_PASSWORD=mysite_pass
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # === CELERY BEAT (планировщик, запускает задачи по расписанию) ===
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: formula_tela_beat
+    command: celery -A mysite beat -l info
+    volumes:
+      - ./mysite:/app/mysite
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings.local
+      - DJANGO_DEBUG=True
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=mysite_db
+      - DB_USER=mysite_user
+      - DB_PASSWORD=mysite_pass
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
       redis:
         condition: service_healthy
 

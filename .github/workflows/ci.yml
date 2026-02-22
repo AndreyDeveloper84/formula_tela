@@ -25,6 +25,10 @@ jobs:
       YCLIENTS_COMPANY_ID: ""
       TELEGRAM_BOT_TOKEN: ""
       TELEGRAM_CHAT_ID: ""
+      YANDEX_METRIKA_TOKEN: ""
+      YANDEX_METRIKA_COUNTER_ID: ""
+      YANDEX_DIRECT_TOKEN: ""
+      YANDEX_DIRECT_CLIENT_LOGIN: ""
 
     steps:
       - uses: actions/checkout@v4
