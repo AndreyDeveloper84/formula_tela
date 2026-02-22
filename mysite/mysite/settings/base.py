@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.humanize",
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
+    "agents",
 ]
 
 MIDDLEWARE = [
@@ -124,3 +125,34 @@ LOGGING = {
 YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
 YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
 YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")
+
+# === Celery ===
+from celery.schedules import crontab  # noqa: E402
+
+CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_BEAT_SCHEDULE = {
+    "daily-agents-9am": {
+        "task": "agents.tasks.run_daily_agents",
+        "schedule": crontab(hour=9, minute=0),
+    },
+    "weekly-agents-monday-8am": {
+        "task": "agents.tasks.run_weekly_agents",
+        "schedule": crontab(hour=8, minute=0, day_of_week="monday"),
+    },
+}
+
+# === OpenAI ===
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# === Яндекс.Метрика ===
+YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
+YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")
+
+# === Яндекс.Директ ===
+YANDEX_DIRECT_TOKEN        = os.getenv("YANDEX_DIRECT_TOKEN", "")
+YANDEX_DIRECT_CLIENT_LOGIN = os.getenv("YANDEX_DIRECT_CLIENT_LOGIN", "")
