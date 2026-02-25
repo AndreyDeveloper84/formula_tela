@@ -41,4 +41,4 @@ LOGGING = {
     },
 }
 
-print("🏠 Загружены настройки LOCAL (localhost, без SSL)")
+print("[LOCAL] Настройки: localhost, без SSL")

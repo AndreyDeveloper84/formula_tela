@@ -139,3 +139,73 @@ class ContentPlan(models.Model):
     def __str__(self):
         day_name = dict(self.WEEKDAY_CHOICES).get(self.day_of_week, str(self.day_of_week))
         return f"{self.get_platform_display()} | {day_name} | {self.theme[:60]}"
+
+
+class SeoKeywordCluster(models.Model):
+    """
+    Кластер ключевых запросов, привязанный к целевой странице услуги.
+    Заполняется вручную в Django admin.
+    Пример: "Антицеллюлитный массаж Пенза" → /uslugi/antitsellyulitny-massazh/
+    """
+    name         = models.CharField("Название кластера", max_length=200)
+    service_slug = models.CharField(
+        "Slug услуги", max_length=200, blank=True,
+        help_text="Slug из модели Service для автосвязи с данными Вебмастера"
+    )
+    keywords     = models.JSONField(
+        "Ключевые запросы", default=list, blank=True,
+        help_text='Список запросов, например: ["антицеллюлитный массаж", "массаж пенза"]'
+    )
+    target_url   = models.CharField(
+        "Целевой URL", max_length=500,
+        help_text="Канонический URL страницы, например: /uslugi/antitsellyulitny-massazh/"
+    )
+    is_active    = models.BooleanField("Активен", default=True)
+    created_at   = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "SEO-кластер запросов"
+        verbose_name_plural = "SEO-кластеры запросов"
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} → {self.target_url}"
+
+
+class SeoRankSnapshot(models.Model):
+    """
+    Еженедельный снимок трафиковых метрик по страницам и запросам
+    из Яндекс.Вебмастера.
+
+    Для страниц: page_url заполнен, query пустой.
+    Для запросов: query заполнен, page_url пустой.
+    """
+    week_start   = models.DateField("Начало недели (пн)")
+    page_url     = models.CharField(
+        "URL страницы", max_length=500, blank=True,
+        help_text="Относительный URL, например /uslugi/massazh/"
+    )
+    query        = models.CharField(
+        "Поисковый запрос", max_length=300, blank=True,
+        help_text="Текст запроса из Яндекс.Вебмастера или пусто для page-уровня"
+    )
+    clicks       = models.PositiveIntegerField("Клики", default=0)
+    impressions  = models.PositiveIntegerField("Показы", default=0)
+    ctr          = models.FloatField("CTR (0–1)", default=0.0)
+    avg_position = models.FloatField("Средняя позиция", default=0.0)
+    source       = models.CharField("Источник", max_length=50, default="webmaster")
+    created_at   = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "SEO-снимок позиций"
+        verbose_name_plural = "SEO-снимки позиций"
+        ordering = ["-week_start", "-clicks"]
+        unique_together = [("week_start", "page_url", "query")]
+        indexes = [
+            models.Index(fields=["week_start", "page_url"], name="agents_seo_week_page_idx"),
+            models.Index(fields=["week_start", "query"], name="agents_seo_week_query_idx"),
+        ]
+
+    def __str__(self):
+        label = self.page_url or self.query or "—"
+        return f"{self.week_start} | {label} | {self.clicks} кл."

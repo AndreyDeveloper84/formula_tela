@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import AgentTask, AgentReport, ContentPlan, DailyMetric
+from .models import AgentTask, AgentReport, ContentPlan, DailyMetric, SeoKeywordCluster, SeoRankSnapshot
 
 
 @admin.register(AgentTask)
@@ -76,3 +76,39 @@ class ContentPlanAdmin(admin.ModelAdmin):
     def day_of_week_display(self, obj):
         return obj.get_day_of_week_display()
     day_of_week_display.short_description = "День"
+
+
+@admin.register(SeoKeywordCluster)
+class SeoKeywordClusterAdmin(admin.ModelAdmin):
+    list_display  = ["name", "service_slug", "target_url", "is_active", "created_at"]
+    list_filter   = ["is_active"]
+    list_editable = ["is_active"]
+    search_fields = ["name", "service_slug", "target_url"]
+    ordering      = ["name"]
+
+
+@admin.register(SeoRankSnapshot)
+class SeoRankSnapshotAdmin(admin.ModelAdmin):
+    list_display  = [
+        "week_start", "page_url_display", "query_preview",
+        "clicks", "impressions", "ctr_display", "avg_position", "source",
+    ]
+    list_filter   = ["week_start", "source"]
+    search_fields = ["page_url", "query"]
+    ordering      = ["-week_start", "-clicks"]
+    readonly_fields = [
+        "week_start", "page_url", "query",
+        "clicks", "impressions", "ctr", "avg_position", "source", "created_at",
+    ]
+
+    def page_url_display(self, obj):
+        return obj.page_url or "—"
+    page_url_display.short_description = "URL страницы"
+
+    def query_preview(self, obj):
+        return obj.query[:60] + ("…" if len(obj.query) > 60 else "") if obj.query else "—"
+    query_preview.short_description = "Запрос"
+
+    def ctr_display(self, obj):
+        return f"{obj.ctr:.1%}" if obj.ctr else "0%"
+    ctr_display.short_description = "CTR"

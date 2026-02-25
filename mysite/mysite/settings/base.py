@@ -160,3 +160,11 @@ YANDEX_DIRECT_CLIENT_LOGIN = os.getenv("YANDEX_DIRECT_CLIENT_LOGIN", "")
 # === VK Реклама ===
 VK_ADS_TOKEN      = os.getenv("VK_ADS_TOKEN", "")
 VK_ADS_ACCOUNT_ID = os.getenv("VK_ADS_ACCOUNT_ID", "")
+
+# === Яндекс.Вебмастер ===
+# Токен: https://oauth.yandex.ru/ (scope: webmaster:info)
+# HOST_ID: encoded URL вида https:yourdomain.ru:443
+#   Узнать: python manage.py check_webmaster --list-hosts
+YANDEX_WEBMASTER_TOKEN   = os.getenv("YANDEX_WEBMASTER_TOKEN", "")
+YANDEX_WEBMASTER_USER_ID = os.getenv("YANDEX_WEBMASTER_USER_ID", "")  # авто-получается если пусто
+YANDEX_WEBMASTER_HOST_ID = os.getenv("YANDEX_WEBMASTER_HOST_ID", "")
