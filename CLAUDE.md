@@ -365,6 +365,7 @@ python manage.py shell
 - VK Ads интеграция (agents/integrations/vk_ads.py)
 - Yandex.Direct интеграция (agents/integrations/yandex_direct.py)
 - Management commands: check_metrika, check_webmaster, check_booking, import_price_list
+- seed_seo_clusters: 13 кластеров из семантического ядра v2 (Wordstat Пенза, февраль 2026), группировка по целевому URL
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
@@ -374,7 +375,7 @@ python manage.py shell
 - Supervisor -- оркестратор агентов
 - Telegram уведомления для SEO алертов
 - Technical SEO Watchdog (проверка 404/500 страниц)
-- seed_seo_clusters management command (наполнение SeoKeywordCluster данными)
+- SEO-посадочные страницы: вёрстка шаблонов по готовым документам
 
 ---
 
