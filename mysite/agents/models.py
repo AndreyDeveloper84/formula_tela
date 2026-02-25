@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth import get_user_model
 
 
 class AgentTask(models.Model):
@@ -161,6 +162,14 @@ class SeoKeywordCluster(models.Model):
         help_text="Канонический URL страницы, например: /uslugi/antitsellyulitny-massazh/"
     )
     is_active    = models.BooleanField("Активен", default=True)
+    geo          = models.CharField("Гео", max_length=100, default="Пенза")
+    service_category = models.ForeignKey(
+        "services_app.ServiceCategory",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name="Категория услуги",
+        related_name="seo_clusters",
+    )
     created_at   = models.DateTimeField("Создан", auto_now_add=True)
 
     class Meta:
@@ -209,3 +218,121 @@ class SeoRankSnapshot(models.Model):
     def __str__(self):
         label = self.page_url or self.query or "—"
         return f"{self.week_start} | {label} | {self.clicks} кл."
+
+
+class LandingPage(models.Model):
+    """
+    SEO-посадочная страница, сгенерированная агентом.
+    ВСЕГДА создаётся со status='draft'. Публикация — только вручную через Admin.
+    """
+    STATUS_DRAFT     = "draft"
+    STATUS_REVIEW    = "review"
+    STATUS_PUBLISHED = "published"
+    STATUS_REJECTED  = "rejected"
+    STATUS_CHOICES   = [
+        (STATUS_DRAFT,     "Черновик"),
+        (STATUS_REVIEW,    "На модерации"),
+        (STATUS_PUBLISHED, "Опубликована"),
+        (STATUS_REJECTED,  "Отклонена"),
+    ]
+
+    cluster           = models.ForeignKey(
+        SeoKeywordCluster, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name="SEO кластер",
+        related_name="landing_pages",
+    )
+    slug              = models.SlugField("Slug", max_length=200, unique=True)
+    status            = models.CharField(
+        "Статус", max_length=20,
+        choices=STATUS_CHOICES, default=STATUS_DRAFT
+    )
+    meta_title        = models.CharField("Meta Title", max_length=70)
+    meta_description  = models.CharField("Meta Description", max_length=160)
+    h1                = models.CharField("H1", max_length=200)
+    blocks            = models.JSONField(
+        "Блоки контента", default=dict,
+        help_text=(
+            "Структура: {intro, how_it_works, who_is_it_for, "
+            "contraindications, results, faq:[{question,answer}], "
+            "cta_text, internal_links}"
+        )
+    )
+    generated_by_agent = models.BooleanField("Сгенерировано агентом", default=True)
+    moderated_by      = models.ForeignKey(
+        get_user_model(), on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name="Проверил",
+        related_name="moderated_landings",
+    )
+    created_at        = models.DateTimeField("Создано", auto_now_add=True)
+    published_at      = models.DateTimeField("Опубликовано", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Посадочная страница"
+        verbose_name_plural = "Посадочные страницы"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.h1} [{self.get_status_display()}]"
+
+
+class SeoTask(models.Model):
+    """
+    Задача для SEO-специалиста, сформированная агентом.
+    """
+    TYPE_CREATE_LANDING    = "create_landing"
+    TYPE_UPDATE_META       = "update_meta"
+    TYPE_ADD_FAQ           = "add_faq"
+    TYPE_FIX_TECHNICAL     = "fix_technical"
+    TYPE_REWRITE_CTA       = "rewrite_cta"
+    TYPE_ADD_CONTENT_BLOCK = "add_content_block"
+    TASK_TYPE_CHOICES = [
+        (TYPE_CREATE_LANDING,    "Создать страницу"),
+        (TYPE_UPDATE_META,       "Обновить мета-теги"),
+        (TYPE_ADD_FAQ,           "Добавить FAQ"),
+        (TYPE_FIX_TECHNICAL,     "Технический баг"),
+        (TYPE_REWRITE_CTA,       "Переписать CTA"),
+        (TYPE_ADD_CONTENT_BLOCK, "Добавить блок"),
+    ]
+
+    PRIORITY_HIGH   = "high"
+    PRIORITY_MEDIUM = "medium"
+    PRIORITY_LOW    = "low"
+    PRIORITY_CHOICES = [
+        (PRIORITY_HIGH,   "Высокий"),
+        (PRIORITY_MEDIUM, "Средний"),
+        (PRIORITY_LOW,    "Низкий"),
+    ]
+
+    STATUS_OPEN        = "open"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_DONE        = "done"
+    STATUS_CHOICES = [
+        (STATUS_OPEN,        "Открыта"),
+        (STATUS_IN_PROGRESS, "В работе"),
+        (STATUS_DONE,        "Готово"),
+    ]
+
+    task_type   = models.CharField("Тип задачи", max_length=30, choices=TASK_TYPE_CHOICES)
+    priority    = models.CharField(
+        "Приоритет", max_length=10,
+        choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM
+    )
+    status      = models.CharField(
+        "Статус", max_length=20,
+        choices=STATUS_CHOICES, default=STATUS_OPEN
+    )
+    title       = models.CharField("Заголовок", max_length=300)
+    description = models.TextField("Описание", blank=True)
+    target_url  = models.CharField("Целевой URL", max_length=500, blank=True)
+    payload     = models.JSONField("Данные", default=dict, blank=True)
+    created_at  = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "SEO задача"
+        verbose_name_plural = "SEO задачи"
+        ordering = ["-priority", "-created_at"]
+
+    def __str__(self):
+        return f"[{self.get_priority_display()}] {self.title}"

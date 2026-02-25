@@ -22,15 +22,18 @@ Django Admin.
 
 ## Структура репозитория
 ```
-mysite/                  ← корень git
-├── mysite/              ← корень Django проекта (здесь manage.py)
-│   ├── mysite/          ← пакет настроек проекта
-│   │   └── settings/    ← base.py, dev.py, local.py, staging.py, production.py
-│   ├── services_app/    ← основное приложение: каталог услуг, блоки, медиа, FAQ, отзывы
-│   ├── website/         ← frontend: views, шаблоны, context processors
-│   ├── booking/         ← заявки на запись, синхронизация с YClients
-│   ├── agents/          ← AI-агенты: аналитика и маркетинговая автоматизация
-│   ├── tests/           ← тесты pytest
+mysite/                  <- корень git
+├── mysite/              <- корень Django проекта (здесь manage.py)
+│   ├── mysite/          <- пакет настроек проекта
+│   │   └── settings/    <- base.py, dev.py, local.py, staging.py, production.py
+│   ├── services_app/    <- основное приложение: каталог услуг, блоки, медиа, FAQ, отзывы
+│   ├── website/         <- frontend: views, шаблоны, context processors
+│   ├── booking/         <- заявки на запись, синхронизация с YClients
+│   ├── agents/          <- AI-агенты: аналитика, SEO, маркетинговая автоматизация
+│   │   ├── agents/      <- модули агентов (analytics, seo_landing, smm_growth и др.)
+│   │   ├── integrations/ <- внешние API (yandex_metrika, yandex_webmaster, vk_ads, yandex_direct)
+│   │   └── management/  <- management commands (check_metrika, check_webmaster)
+│   ├── tests/           <- тесты pytest
 │   └── manage.py
 ├── docker-compose.yml
 ├── Dockerfile
@@ -44,7 +47,7 @@ mysite/                  ← корень git
 
 ### services_app (ядро)
 Все бизнес-модели. Основные модели:
-- `Service` — slug, seo_h1, price_from, duration_min, related_services (M2M self-ref), emoji, short_description, is_active, is_popular
+- `Service` — slug, seo_h1, seo_title, seo_description, subtitle, price_from, duration_min, related_services (M2M self-ref), emoji, short_description, is_active, is_popular
 - `ServiceCategory` — категории на основе slug, с image/image_mobile
 - `ServiceOption` — варианты цен для услуги; поля: unit_type (session/zone/visit), units, price, yclients_service_id; вычисляемое `price_per_session`
 - `ServiceBlock` — контентные блоки для SEO-посадочных страниц (12 типов: text, accent, checklist, identification, cta, price_table, accordion, faq, special_formats, subscriptions, navigation, html); поля: heading_level, bg_color, text_color, btn_text, btn_sub, css_class
@@ -59,13 +62,19 @@ mysite/                  ← корень git
 - `SiteSettings` — глобальные настройки (телефон, соцсети JSON, способы оплаты JSON, данные YClients, ссылки на карты)
 
 ### agents (AI-автоматизация)
-Маркетинговая и аналитическая автоматизация через OpenAI + Celery. Основные модели:
+Маркетинговая и аналитическая автоматизация через OpenAI + Celery.
+
+**Основные модели (все в `agents/models.py`):**
 - `AgentTask` — выполнение AI-задач; типы: analytics, offers, offer_packages, smm_growth, seo_landing, analytics_budget; статусы: pending, running, done, error
 - `AgentReport` — OneToOne сводка по AgentTask (recommendations JSON)
 - `ContentPlan` — SMM контент-календарь; платформы: VK, Instagram, Telegram; типы постов: post, story, reel
-- `SeoKeywordCluster` — маппинг ключевых слов на service_slug с keywords JSON
-- `SeoRankSnapshot` — еженедельные метрики Яндекс.Вебмастера (clicks, impressions, ctr, avg_position)
 - `DailyMetric` — дневные агрегаты (total_requests, processed, top_services JSON, masters_load JSON)
+
+**SEO модели (также в `agents/models.py`):**
+- `SeoKeywordCluster` — кластер ключевых запросов; поля: name, service_slug, keywords (JSON), target_url, is_active, geo, service_category (FK к ServiceCategory)
+- `SeoRankSnapshot` — еженедельные метрики Яндекс.Вебмастера; поля: week_start, page_url, query, clicks, impressions, ctr, avg_position, source; unique_together по (week_start, page_url, query)
+- `LandingPage` — SEO-посадочная страница; status: draft/review/published/rejected (default='draft'); поля: cluster (FK), slug, meta_title, meta_description, h1, blocks (JSON), generated_by_agent, moderated_by (FK User), published_at
+- `SeoTask` — задача для SEO-специалиста; task_type: create_landing/update_meta/add_faq/fix_technical/rewrite_cta/add_content_block; priority: high/medium/low; status: open/in_progress/done
 
 Расписание Celery beat:
 - `daily-agents-9am` → `agents.tasks.run_daily_agents` (каждый день в 09:00)
@@ -90,7 +99,7 @@ Frontend views: главная, каталог услуг, детальная с
 - `/contacts/` — контактная информация
 - `/bundles/` — пакеты услуг
 - `/admin/` — Django Admin
-- `/healthz/` — health check → `{"status": "ok"}`
+- `/healthz/` — health check -> `{"status": "ok"}`
 
 **Booking API (в website/urls.py):**
 - `/api/booking/get_staff/` — мастера из YClients
@@ -140,6 +149,7 @@ python manage.py migrate
 python manage.py import_price_list price_list.xlsx [--dry-run] [--no-photos]
 python manage.py check_booking [--staff-id ID] [--yclients-service-id ID] [--date YYYY-MM-DD]
 python manage.py check_metrika   # диагностика Яндекс.Метрики
+python manage.py check_webmaster # диагностика Яндекс.Вебмастера
 ```
 
 ---
@@ -161,7 +171,7 @@ pytest
 ---
 
 ## Переменные окружения
-Скопируй `.env.example` → `.env`. Ключевые переменные:
+Скопируй `.env.example` -> `.env`. Ключевые переменные:
 - `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`
 - `DJANGO_ENV` — выбирает файл настроек (production/staging/local)
 - `DATABASE_URL` или отдельно `DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`
@@ -185,14 +195,14 @@ pytest
 | `staging.py` | Staging-сервер |
 | `production.py` | Продакшн PostgreSQL |
 
-Настройки выбираются автоматически: `__init__.py` читает переменную `DJANGO_ENV` (production → staging → local по умолчанию).
+Настройки выбираются автоматически: `__init__.py` читает переменную `DJANGO_ENV` (production -> staging -> local по умолчанию).
 
 ---
 
 ## Templatetags
 
 ### `services_app/templatetags/service_extras.py`
-- `option_label(opt)` — форматирует ServiceOption как "60 мин × 10 процедур — 14 000 ₽ (1 400 ₽/проц.)"
+- `option_label(opt)` — форматирует ServiceOption как "60 мин x 10 процедур — 14 000 руб. (1 400 руб./проц.)"
 - `discount(price, percent)` — вычисляет цену со скидкой
 
 ### `website/templatetags/faq_tags.py`
@@ -225,17 +235,23 @@ pytest
 ### Поток данных
 ```
 Внешние данные (YClients / Метрика / Вебмастер / VK Ads / Яндекс.Директ)
-    ↓
+    |
+    v
 DailyMetric / SeoRankSnapshot (сохраняем в БД)
-    ↓
+    |
+    v
 AgentTask создаётся (status=pending)
-    ↓
-Celery worker забирает задачу → запускает агента
-    ↓
-Агент читает данные из БД → формирует prompt → GPT-4
-    ↓
+    |
+    v
+Celery worker забирает задачу -> запускает агента
+    |
+    v
+Агент читает данные из БД -> формирует prompt -> GPT-4
+    |
+    v
 AgentReport сохраняется (status=done, recommendations JSON)
-    ↓
+    |
+    v
 Telegram уведомление администратору
 ```
 
@@ -244,7 +260,7 @@ Telegram уведомление администратору
 |---|---|---|
 | analytics | agents/tasks.py | ежедневно 9:00 |
 | analytics_budget | agents/tasks.py | понедельник 8:00 |
-| seo_landing | agents/seo_agent.py | понедельник 8:00 |
+| seo_landing | agents/agents/seo_landing.py | понедельник 8:00 |
 | smm_growth | agents/tasks.py | понедельник 8:00 |
 | offers | agents/tasks.py | ежедневно 9:00 |
 
@@ -262,24 +278,25 @@ Telegram уведомление администратору
 | Решение | Причина |
 |---|---|
 | SQLite локально / PostgreSQL прод | Скорость локальной разработки без Docker |
-| VK Ads → в AnalyticsBudgetAgent | Один промпт видит все каналы → лучше сравнение CPL/ROMI |
+| Все SEO модели в agents/models.py | Единая схема, один app, без дублирования |
+| VK Ads -> в AnalyticsBudgetAgent | Один промпт видит все каналы -> лучше сравнение CPL/ROMI |
 | LandingPage.status = 'draft' по умолчанию | Человек проверяет перед публикацией |
 | @csrf_exempt на booking API | Внешние вызовы от YClients-виджета |
 | Prefetch в views | Предотвращение N+1 запросов |
 | WAF bypass headers для YClients | Без них возвращается 403 |
-| Slug-based URL везде | SEO-приоритет; ID-based → 301 редирект |
+| Slug-based URL везде | SEO-приоритет; ID-based -> 301 редирект |
 
 ---
 
 ## Запрещённые действия (без явного разрешения)
-- ❌ Не изменяй существующие миграции — только создавай новые
-- ❌ Не удаляй поля моделей — только помечай как deprecated
-- ❌ Не трогай `services_app/migrations/` без явной просьбы
-- ❌ Не добавляй инлайн-скрипты в шаблоны (CSP заблокирует)
-- ❌ Не публикуй `LandingPage` автоматически (только draft)
-- ❌ Не коммить `.env` и медиафайлы в git
-- ❌ Не используй ID-based URL — только slug-based
-- ❌ Не создавай новые ветки без явной просьбы
+- Не изменяй существующие миграции — только создавай новые
+- Не удаляй поля моделей — только помечай как deprecated
+- Не трогай `services_app/migrations/` без явной просьбы
+- Не добавляй инлайн-скрипты в шаблоны (CSP заблокирует)
+- Не публикуй `LandingPage` автоматически (только draft)
+- Не коммить `.env` и медиафайлы в git
+- Не используй ID-based URL — только slug-based
+- Не создавай новые ветки без явной просьбы
 
 ---
 
@@ -338,20 +355,26 @@ python manage.py shell
 <!-- Обновляй этот раздел в конце каждой рабочей сессии! -->
 
 ### Сделано
-- ✅ Analytics Agent (agents/tasks.py — run_daily_agents)
-- ✅ SEO модели (SeoKeywordCluster, SeoRankSnapshot)
-- ✅ YClients интеграция с WAF bypass
-- ✅ Celery beat расписание (9:00 daily, 8:00 Monday)
+- Analytics Agent (agents/tasks.py -- run_daily_agents)
+- SEO модели в agents/models.py: SeoKeywordCluster (с geo, service_category), SeoRankSnapshot, LandingPage, SeoTask
+- SEO Admin: 4 ModelAdmin в agents/admin.py (publish actions, read-only snapshots, priority badges)
+- YClients интеграция с WAF bypass
+- Celery beat расписание (9:00 daily, 8:00 Monday)
+- Yandex.Webmaster интеграция (agents/integrations/yandex_webmaster.py)
+- Yandex.Metrika интеграция (agents/integrations/yandex_metrika.py)
+- VK Ads интеграция (agents/integrations/vk_ads.py)
+- Yandex.Direct интеграция (agents/integrations/yandex_direct.py)
+- Management commands: check_metrika, check_webmaster, check_booking, import_price_list
 
 ### В процессе
-- 🔄 SEOLandingAgent — файл agents/seo_agent.py, нужен `_build_weekly_summary()`
-- 🔄 VK Ads — добавляется в AnalyticsBudgetAgent как 3-й канал
+- SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
 
 ### Следующие задачи
-- ⏳ OfferAgent — генерация акций по загрузке мастеров
-- ⏳ Supervisor — оркестратор агентов
-- ⏳ Telegram уведомления для SEO алертов
-- ⏳ Technical SEO Watchdog (проверка 404/500 страниц)
+- OfferAgent -- генерация акций по загрузке мастеров
+- Supervisor -- оркестратор агентов
+- Telegram уведомления для SEO алертов
+- Technical SEO Watchdog (проверка 404/500 страниц)
+- seed_seo_clusters management command (наполнение SeoKeywordCluster данными)
 
 ---
 
@@ -360,75 +383,5 @@ python manage.py shell
 
 ```
 Прочитай CLAUDE.md. Работай в ветке dev, не создавай новые ветки.
-Задача на сегодня: 
-
-Файл: ### Задача 1.1 — Модели БД
-**Статус:** ⏳ Не начата  
-**Файл:** `agents/seo/models.py`
-
-Если папки `agents/seo/` не существует — создать с `__init__.py` внутри.
-
-Создать 4 модели:
-
-**SeoKeywordCluster**
-- `name` = CharField(max_length=200)
-- `geo` = CharField(max_length=100, default='Пенза')
-- `keywords` = JSONField(default=list) — список строк: `["массаж пенза", "массаж цена пенза"]`
-- `target_url` = CharField(max_length=500, blank=True) — `/uslugi/klassicheskiy-massazh/`
-- `service_category` = ForeignKey('services_app.ServiceCategory', on_delete=SET_NULL, null=True, blank=True)
-- `is_active` = BooleanField(default=True)
-- `created_at` = DateTimeField(auto_now_add=True)
-- Meta: `verbose_name = 'SEO кластер'`, `ordering = ['name']`
-- `__str__`: `f"{self.name} ({self.geo})"`
-
-**SeoRankSnapshot**
-- `cluster` = ForeignKey(SeoKeywordCluster, on_delete=CASCADE, related_name='snapshots')
-- `date` = DateField()
-- `avg_position` = FloatField(null=True, blank=True)
-- `top3_count` = IntegerField(default=0)
-- `top10_count` = IntegerField(default=0)
-- `clicks` = IntegerField(default=0)
-- `impressions` = IntegerField(default=0)
-- `ctr` = FloatField(default=0.0) — в процентах: 3.5 = 3.5%
-- `source` = CharField(choices=[('webmaster','Яндекс.Вебмастер'),('tracker','Трекер позиций')], default='webmaster')
-- Meta: `unique_together = ['cluster', 'date']`, `ordering = ['-date']`
-- `__str__`: `f"{self.cluster.name} | {self.date} | pos: {self.avg_position}"`
-
-**LandingPage**
-- `cluster` = ForeignKey(SeoKeywordCluster, on_delete=SET_NULL, null=True, blank=True)
-- `slug` = SlugField(max_length=200, unique=True)
-- `status` = CharField(choices=[('draft','Черновик'),('review','На модерации'),('published','Опубликована'),('rejected','Отклонена')], **default='draft'**)
-- `meta_title` = CharField(max_length=70)
-- `meta_description` = CharField(max_length=160)
-- `h1` = CharField(max_length=200)
-- `blocks` = JSONField(default=dict) — структура: `{intro, how_it_works, who_is_it_for, contraindications, results, faq:[{question,answer}], cta_text, internal_links}`
-- `generated_by_agent` = BooleanField(default=True)
-- `moderated_by` = ForeignKey('auth.User', on_delete=SET_NULL, null=True, blank=True)
-- `created_at` = DateTimeField(auto_now_add=True)
-- `published_at` = DateTimeField(null=True, blank=True)
-- Meta: `verbose_name = 'Посадочная страница'`, `ordering = ['-created_at']`
-- `__str__`: `f"{self.h1} [{self.get_status_display()}]"`
-
-**SeoTask**
-- `task_type` = CharField(choices=[('create_landing','Создать страницу'),('update_meta','Обновить мета-теги'),('add_faq','Добавить FAQ'),('fix_technical','Технический баг'),('rewrite_cta','Переписать CTA'),('add_content_block','Добавить блок')])
-- `priority` = CharField(choices=[('high','Высокий'),('medium','Средний'),('low','Низкий')], default='medium')
-- `status` = CharField(choices=[('open','Открыта'),('in_progress','В работе'),('done','Готово')], default='open')
-- `title` = CharField(max_length=300)
-- `description` = TextField(blank=True)
-- `target_url` = CharField(max_length=500, blank=True)
-- `payload` = JSONField(default=dict)
-- `created_at` = DateTimeField(auto_now_add=True)
-- Meta: `ordering = ['-priority', '-created_at']`
-- `__str__`: `f"[{self.get_priority_display()}] {self.title}"`
-
-**Не трогать:**
-- `services_app/models.py` и `services_app/migrations/`
-- `agents/models.py` (там уже есть AgentTask, AgentReport и др.)
-
-**После создания:**
-```bash
-cd mysite
-python manage.py makemigrations agents
-python manage.py migrate
-python manage.py check  # ожидаем 0 ошибок
+Задача на сегодня: [описание задачи]
 ```
