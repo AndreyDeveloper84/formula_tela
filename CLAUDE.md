@@ -367,6 +367,7 @@ python manage.py shell
 - Management commands: check_metrika, check_webmaster, check_booking, import_price_list
 - seed_seo_clusters: 13 кластеров из семантического ядра v2 (Wordstat Пенза, февраль 2026), группировка по целевому URL
 - get_query_stats() и get_page_stats() в YandexWebmasterClient (graceful wrappers, 5 тестов)
+- get_organic_sessions() и get_page_behavior() в YandexMetrikaClient (graceful wrappers, 9 тестов)
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
