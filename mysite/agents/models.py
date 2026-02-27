@@ -220,6 +220,47 @@ class SeoRankSnapshot(models.Model):
         return f"{self.week_start} | {label} | {self.clicks} кл."
 
 
+class SeoClusterSnapshot(models.Model):
+    """
+    Ежедневный агрегированный снимок позиций по SEO-кластеру.
+    Создаётся задачей collect_rank_snapshots из данных Яндекс.Вебмастера.
+    Агрегирует метрики по всем ключевым запросам кластера.
+    """
+    cluster = models.ForeignKey(
+        SeoKeywordCluster,
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+        verbose_name="Кластер",
+    )
+    date = models.DateField("Дата снимка")
+    total_clicks = models.PositiveIntegerField("Суммарные клики", default=0)
+    total_impressions = models.PositiveIntegerField("Суммарные показы", default=0)
+    avg_ctr = models.FloatField("Средний CTR (0-1)", default=0.0)
+    avg_position = models.FloatField("Средняя позиция", default=0.0)
+    matched_queries = models.PositiveIntegerField(
+        "Совпавших запросов", default=0,
+        help_text="Сколько ключей из кластера нашлось в данных Вебмастера",
+    )
+
+    class Meta:
+        verbose_name = "Снимок кластера"
+        verbose_name_plural = "Снимки кластеров"
+        ordering = ["-date", "cluster"]
+        unique_together = [("cluster", "date")]
+        indexes = [
+            models.Index(
+                fields=["date", "cluster"],
+                name="agents_cls_date_cluster_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.cluster.name} | {self.date} | "
+            f"{self.total_clicks} кл. | поз. {self.avg_position:.1f}"
+        )
+
+
 class LandingPage(models.Model):
     """
     SEO-посадочная страница, сгенерированная агентом.

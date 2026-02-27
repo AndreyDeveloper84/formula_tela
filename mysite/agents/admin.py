@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
     AgentTask, AgentReport, ContentPlan, DailyMetric,
-    SeoKeywordCluster, SeoRankSnapshot, LandingPage, SeoTask,
+    SeoKeywordCluster, SeoRankSnapshot, SeoClusterSnapshot,
+    LandingPage, SeoTask,
 )
 
 
@@ -124,6 +125,33 @@ class SeoRankSnapshotAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False  # снапшоты создаёт только агент
+
+    def has_change_permission(self, request, obj=None):
+        return False  # снапшоты нельзя редактировать вручную
+
+
+@admin.register(SeoClusterSnapshot)
+class SeoClusterSnapshotAdmin(admin.ModelAdmin):
+    list_display = [
+        "cluster", "date", "total_clicks", "total_impressions",
+        "ctr_display", "avg_position", "matched_queries",
+    ]
+    list_filter = ["date", "cluster"]
+    date_hierarchy = "date"
+    search_fields = ["cluster__name"]
+    ordering = ["-date", "-total_clicks"]
+    readonly_fields = [
+        "cluster", "date", "total_clicks", "total_impressions",
+        "avg_ctr", "avg_position", "matched_queries",
+    ]
+
+    def ctr_display(self, obj):
+        return f"{obj.avg_ctr:.1%}" if obj.avg_ctr else "0%"
+    ctr_display.short_description = "CTR"
+    ctr_display.admin_order_field = "avg_ctr"
+
+    def has_add_permission(self, request):
+        return False  # снапшоты создаёт только задача
 
     def has_change_permission(self, request, obj=None):
         return False  # снапшоты нельзя редактировать вручную

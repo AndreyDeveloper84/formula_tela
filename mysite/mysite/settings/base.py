@@ -143,6 +143,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "agents.tasks.run_weekly_agents",
         "schedule": crontab(hour=8, minute=0, day_of_week="monday"),
     },
+    "daily-rank-snapshots-7am": {
+        "task": "agents.tasks.collect_rank_snapshots",
+        "schedule": crontab(hour=7, minute=0),
+    },
 }
 
 # === OpenAI ===
