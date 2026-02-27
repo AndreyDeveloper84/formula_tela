@@ -412,3 +412,191 @@ class TestYandexWebmasterClientNewMethods:
         )
         result = client.get_query_stats("2026-02-01", "2026-02-07")
         assert result == []
+
+
+# ─── Yandex Metrika: get_organic_sessions / get_page_behavior ────────────
+
+
+class TestYandexMetrikaClientNewMethods:
+    """Тесты для get_organic_sessions() и get_page_behavior()."""
+
+    # ── get_organic_sessions ──────────────────────────────────────────
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_organic_sessions_success(self, mock_get):
+        """Organic row найден — возвращаем sessions, bounce_rate, avg_depth."""
+        mock_get.side_effect = [
+            # 1-й вызов: источники трафика
+            MagicMock(ok=True, json=lambda: {
+                "data": [
+                    {
+                        "dimensions": [{"name": "Переходы из поисковых систем"}],
+                        "metrics": [120, 35.5, 2.4],
+                    },
+                    {
+                        "dimensions": [{"name": "Прямые заходы"}],
+                        "metrics": [80, 50.0, 1.1],
+                    },
+                ],
+            }),
+            # 2-й вызов: цели из органики
+            MagicMock(ok=True, json=lambda: {
+                "data": [
+                    {
+                        "dimensions": [{"name": "Переходы из поисковых систем"}, {"name": "Заявка"}],
+                        "metrics": [5],
+                    },
+                    {
+                        "dimensions": [{"name": "Переходы из поисковых систем"}, {"name": "Звонок"}],
+                        "metrics": [3],
+                    },
+                ],
+            }),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_organic_sessions("2026-02-01", "2026-02-07")
+        assert result["sessions"] == 120
+        assert result["bounce_rate"] == 35.5
+        assert result["avg_depth"] == 2.4
+        assert result["goal_conversions"] == 8  # 5 + 3
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_organic_sessions_no_organic_row(self, mock_get):
+        """Нет organic-строки — sessions=0."""
+        mock_get.side_effect = [
+            MagicMock(ok=True, json=lambda: {
+                "data": [
+                    {
+                        "dimensions": [{"name": "Прямые заходы"}],
+                        "metrics": [80, 50.0, 1.1],
+                    },
+                ],
+            }),
+            MagicMock(ok=True, json=lambda: {"data": []}),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_organic_sessions("2026-02-01", "2026-02-07")
+        assert result["sessions"] == 0
+        assert result["goal_conversions"] == 0
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_organic_sessions_api_error(self, mock_get):
+        """Ошибка API — возвращаем нулевой dict."""
+        mock_get.return_value = MagicMock(
+            ok=False, status_code=500, text="Internal Server Error"
+        )
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_organic_sessions("2026-02-01", "2026-02-07")
+        assert result == {
+            "sessions": 0,
+            "bounce_rate": 0.0,
+            "avg_depth": 0.0,
+            "goal_conversions": 0,
+        }
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_organic_sessions_goal_error_graceful(self, mock_get):
+        """Первый запрос ОК, второй (цели) падает — goal_conversions=0, остальное ОК."""
+        mock_get.side_effect = [
+            MagicMock(ok=True, json=lambda: {
+                "data": [
+                    {
+                        "dimensions": [{"name": "Organic search"}],
+                        "metrics": [50, 40.0, 1.8],
+                    },
+                ],
+            }),
+            MagicMock(ok=False, status_code=403, text="Forbidden"),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_organic_sessions("2026-02-01", "2026-02-07")
+        assert result["sessions"] == 50
+        assert result["goal_conversions"] == 0
+
+    # ── get_page_behavior ─────────────────────────────────────────────
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_page_behavior_success(self, mock_get):
+        """Успешный ответ — sessions, bounce_rate, time_on_page, goals."""
+        mock_get.side_effect = [
+            # 1-й вызов: метрики страницы
+            MagicMock(ok=True, json=lambda: {
+                "totals": [45, 28.3, 95.7],
+            }),
+            # 2-й вызов: цели страницы
+            MagicMock(ok=True, json=lambda: {
+                "data": [
+                    {"metrics": [3]},
+                    {"metrics": [2]},
+                ],
+            }),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_page_behavior("/uslugi/massazh/", "2026-02-01", "2026-02-07")
+        assert result["sessions"] == 45
+        assert result["bounce_rate"] == 28.3
+        assert result["time_on_page"] == 95.7
+        assert result["goal_conversions"] == 5  # 3 + 2
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_page_behavior_empty_totals(self, mock_get):
+        """Пустые totals — возвращаем нули."""
+        mock_get.side_effect = [
+            MagicMock(ok=True, json=lambda: {"totals": []}),
+            MagicMock(ok=True, json=lambda: {"data": []}),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_page_behavior("/uslugi/massazh/", "2026-02-01", "2026-02-07")
+        assert result["sessions"] == 0
+        assert result["bounce_rate"] == 0.0
+        assert result["time_on_page"] == 0.0
+        assert result["goal_conversions"] == 0
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_page_behavior_api_error(self, mock_get):
+        """Ошибка API — нулевой dict."""
+        mock_get.return_value = MagicMock(
+            ok=False, status_code=500, text="Error"
+        )
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_page_behavior("/uslugi/massazh/", "2026-02-01", "2026-02-07")
+        assert result == {
+            "sessions": 0,
+            "bounce_rate": 0.0,
+            "time_on_page": 0.0,
+            "goal_conversions": 0,
+        }
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_page_behavior_goal_error_graceful(self, mock_get):
+        """Первый запрос ОК, второй (цели) падает — goals=0, остальное ОК."""
+        mock_get.side_effect = [
+            MagicMock(ok=True, json=lambda: {"totals": [10, 55.0, 30.2]}),
+            MagicMock(ok=False, status_code=403, text="Forbidden"),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        result = client.get_page_behavior("/uslugi/massazh/", "2026-02-01", "2026-02-07")
+        assert result["sessions"] == 10
+        assert result["goal_conversions"] == 0
+
+    @patch("agents.integrations.yandex_metrika.requests.get")
+    def test_page_behavior_filter_contains_url(self, mock_get):
+        """Проверяем что URL передаётся в filters параметр."""
+        mock_get.side_effect = [
+            MagicMock(ok=True, json=lambda: {"totals": [1, 0.0, 0.0]}),
+            MagicMock(ok=True, json=lambda: {"data": []}),
+        ]
+        from agents.integrations.yandex_metrika import YandexMetrikaClient
+        client = YandexMetrikaClient(token="fake", counter_id="123")
+        client.get_page_behavior("/uslugi/massazh/", "2026-02-01", "2026-02-07")
+        first_call_params = mock_get.call_args_list[0]
+        params = first_call_params.kwargs.get("params", {})
+        assert "/uslugi/massazh/" in params.get("filters", "")

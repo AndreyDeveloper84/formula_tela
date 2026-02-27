@@ -115,3 +115,163 @@ class YandexMetrikaClient:
             "goal_reaches": goal_reaches,
             "top_sources":  top_sources,
         }
+
+    def get_organic_sessions(self, date_from: str, date_to: str) -> dict:
+        """
+        Возвращает метрики органического трафика (источник = поисковые системы).
+        Используется SEO-агентом для оценки SEO-эффективности в целом.
+
+        Args:
+            date_from: "YYYY-MM-DD"
+            date_to:   "YYYY-MM-DD"
+
+        Returns:
+            {
+                "sessions":          int,
+                "bounce_rate":       float,
+                "avg_depth":         float,
+                "goal_conversions":  int,
+            }
+            При любой ошибке API — возвращает нулевой словарь, не бросает исключение.
+        """
+        try:
+            params = {
+                "id": self.counter_id,
+                "metrics": "ym:s:visits,ym:s:bounceRate,ym:s:pageDepth",
+                "dimensions": "ym:s:trafficSource",
+                "date1": date_from,
+                "date2": date_to,
+                "sort": "-ym:s:visits",
+                "limit": 10,
+            }
+            data = self._request(params)
+
+            sessions = 0
+            bounce_rate = 0.0
+            avg_depth = 0.0
+
+            for row in data.get("data", []):
+                dims = row.get("dimensions", [])
+                source_name = dims[0].get("name", "").lower() if dims else ""
+                if any(kw in source_name for kw in ("поисков", "organic", "search")):
+                    metrics = row.get("metrics", [])
+                    sessions = int(metrics[0]) if len(metrics) > 0 else 0
+                    bounce_rate = round(float(metrics[1]), 1) if len(metrics) > 1 else 0.0
+                    avg_depth = round(float(metrics[2]), 2) if len(metrics) > 2 else 0.0
+                    break
+
+            goal_conversions = 0
+            try:
+                goal_params = {
+                    "id": self.counter_id,
+                    "metrics": "ym:s:visits",
+                    "dimensions": "ym:s:trafficSource,ym:s:goal",
+                    "date1": date_from,
+                    "date2": date_to,
+                    "limit": 20,
+                }
+                goal_data = self._request(goal_params)
+                for row in goal_data.get("data", []):
+                    dims = row.get("dimensions", [])
+                    source_name = dims[0].get("name", "").lower() if dims else ""
+                    if any(kw in source_name for kw in ("поисков", "organic", "search")):
+                        metrics = row.get("metrics", [])
+                        goal_conversions += int(metrics[0]) if metrics else 0
+            except Exception as exc:
+                logger.debug(
+                    "YandexMetrikaClient.get_organic_sessions: цели не получены — %s", exc
+                )
+
+            return {
+                "sessions": sessions,
+                "bounce_rate": bounce_rate,
+                "avg_depth": avg_depth,
+                "goal_conversions": goal_conversions,
+            }
+
+        except YandexMetrikaError as exc:
+            logger.warning(
+                "YandexMetrikaClient.get_organic_sessions: ошибка API — %s", exc
+            )
+            return {
+                "sessions": 0,
+                "bounce_rate": 0.0,
+                "avg_depth": 0.0,
+                "goal_conversions": 0,
+            }
+
+    def get_page_behavior(self, url: str, date_from: str, date_to: str) -> dict:
+        """
+        Возвращает поведенческие метрики для конкретной страницы.
+        Используется SEO-агентом для анализа качества отдельных лендингов.
+
+        Args:
+            url:       относительный путь страницы, например "/uslugi/massazh/"
+            date_from: "YYYY-MM-DD"
+            date_to:   "YYYY-MM-DD"
+
+        Returns:
+            {
+                "sessions":         int,
+                "bounce_rate":      float,
+                "time_on_page":     float,
+                "goal_conversions": int,
+            }
+            При любой ошибке API — возвращает нулевой словарь, не бросает исключение.
+        """
+        try:
+            params = {
+                "id": self.counter_id,
+                "metrics": (
+                    "ym:s:visits,"
+                    "ym:s:bounceRate,"
+                    "ym:s:avgVisitDurationSeconds"
+                ),
+                "filters": f"ym:s:startURL=='{url}'",
+                "date1": date_from,
+                "date2": date_to,
+            }
+            data = self._request(params)
+            totals = data.get("totals", [])
+
+            sessions = int(totals[0]) if len(totals) > 0 else 0
+            bounce_rate = round(float(totals[1]), 1) if len(totals) > 1 else 0.0
+            time_on_page = round(float(totals[2]), 1) if len(totals) > 2 else 0.0
+
+            goal_conversions = 0
+            try:
+                goal_params = {
+                    "id": self.counter_id,
+                    "metrics": "ym:s:visits",
+                    "dimensions": "ym:s:goal",
+                    "filters": f"ym:s:startURL=='{url}'",
+                    "date1": date_from,
+                    "date2": date_to,
+                    "limit": 10,
+                }
+                goal_data = self._request(goal_params)
+                for row in goal_data.get("data", []):
+                    metrics = row.get("metrics", [])
+                    goal_conversions += int(metrics[0]) if metrics else 0
+            except Exception as exc:
+                logger.debug(
+                    "YandexMetrikaClient.get_page_behavior: цели не получены — %s", exc
+                )
+
+            return {
+                "sessions": sessions,
+                "bounce_rate": bounce_rate,
+                "time_on_page": time_on_page,
+                "goal_conversions": goal_conversions,
+            }
+
+        except YandexMetrikaError as exc:
+            logger.warning(
+                "YandexMetrikaClient.get_page_behavior: ошибка API — %s", exc
+            )
+            return {
+                "sessions": 0,
+                "bounce_rate": 0.0,
+                "time_on_page": 0.0,
+                "goal_conversions": 0,
+            }
