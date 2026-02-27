@@ -168,3 +168,7 @@ VK_ADS_ACCOUNT_ID = os.getenv("VK_ADS_ACCOUNT_ID", "")
 YANDEX_WEBMASTER_TOKEN   = os.getenv("YANDEX_WEBMASTER_TOKEN", "")
 YANDEX_WEBMASTER_USER_ID = os.getenv("YANDEX_WEBMASTER_USER_ID", "")  # авто-получается если пусто
 YANDEX_WEBMASTER_HOST_ID = os.getenv("YANDEX_WEBMASTER_HOST_ID", "")
+
+# Базовый URL сайта (без trailing slash)
+# Используется TechnicalSEOWatchdog для проверки страниц
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela.ru")
