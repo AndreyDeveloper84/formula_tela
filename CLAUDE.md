@@ -368,6 +368,7 @@ python manage.py shell
 - seed_seo_clusters: 13 кластеров из семантического ядра v2 (Wordstat Пенза, февраль 2026), группировка по целевому URL
 - get_query_stats() и get_page_stats() в YandexWebmasterClient (graceful wrappers, 5 тестов)
 - get_organic_sessions() и get_page_behavior() в YandexMetrikaClient (graceful wrappers, 9 тестов)
+- TechnicalSEOWatchdog (agents/integrations/site_crawler.py): проверка страниц, sitemap, get_or_create SeoTask, management-команда check_crawler, 25 тестов
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
@@ -376,7 +377,6 @@ python manage.py shell
 - OfferAgent -- генерация акций по загрузке мастеров
 - Supervisor -- оркестратор агентов
 - Telegram уведомления для SEO алертов
-- Technical SEO Watchdog (проверка 404/500 страниц)
 - SEO-посадочные страницы: вёрстка шаблонов по готовым документам
 
 ---
