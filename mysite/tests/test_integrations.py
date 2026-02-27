@@ -309,3 +309,106 @@ class TestVkAdsClient:
         client = VkAdsClient.from_settings()
         assert client.token == "mytoken"
         assert client.account_id == "777"
+
+
+# ─── YandexWebmasterClient — новые методы ───────────────────────────────────
+
+
+class TestYandexWebmasterClientNewMethods:
+    """
+    Тесты для get_query_stats() и get_page_stats().
+    Оба метода — graceful wrappers над get_top_queries/get_top_pages:
+    при YandexWebmasterError возвращают [] вместо исключения.
+    """
+
+    @patch("agents.integrations.yandex_webmaster.requests.request")
+    def test_get_query_stats_returns_list(self, mock_req):
+        """Успешный ответ — возвращает список запросов с нужными полями."""
+        # user_id="42" передан в конструктор → get_user_id() не вызывает API
+        mock_req.return_value = MagicMock(ok=True, json=lambda: {
+            "queries": [
+                {
+                    "query_text": "массаж пенза",
+                    "indicators": [
+                        {"query_indicator": "TOTAL_CLICKS",      "value": 150},
+                        {"query_indicator": "TOTAL_SHOWS",       "value": 3000},
+                        {"query_indicator": "AVG_SHOW_POSITION", "value": 4.2},
+                    ],
+                }
+            ]
+        })
+        from agents.integrations.yandex_webmaster import YandexWebmasterClient
+        client = YandexWebmasterClient(
+            token="fake", user_id="42", host_id="https:example.ru:443"
+        )
+        result = client.get_query_stats("2026-02-01", "2026-02-07")
+        assert len(result) == 1
+        assert result[0]["query"] == "массаж пенза"
+        assert result[0]["clicks"] == 150
+        assert result[0]["impressions"] == 3000
+        assert result[0]["ctr"] == round(150 / 3000, 4)
+        assert result[0]["avg_position"] == 4.2
+
+    @patch("agents.integrations.yandex_webmaster.requests.request")
+    def test_get_query_stats_returns_empty_on_api_error(self, mock_req):
+        """При ошибке API — возвращает [], не бросает исключение."""
+        mock_req.return_value = MagicMock(
+            ok=False, status_code=500, text="Internal Server Error"
+        )
+        from agents.integrations.yandex_webmaster import YandexWebmasterClient
+        client = YandexWebmasterClient(
+            token="fake", user_id="42", host_id="https:example.ru:443"
+        )
+        result = client.get_query_stats("2026-02-01", "2026-02-07")
+        assert result == []
+
+    @patch("agents.integrations.yandex_webmaster.requests.request")
+    def test_get_page_stats_returns_list(self, mock_req):
+        """Успешный ответ — возвращает список страниц с url и метриками."""
+        mock_req.return_value = MagicMock(ok=True, json=lambda: {
+            "queries": [
+                {
+                    "url": "/massazh-spiny/",
+                    "query_text": "/massazh-spiny/",
+                    "indicators": [
+                        {"query_indicator": "TOTAL_CLICKS",      "value": 80},
+                        {"query_indicator": "TOTAL_SHOWS",       "value": 1200},
+                        {"query_indicator": "AVG_SHOW_POSITION", "value": 6.1},
+                    ],
+                }
+            ]
+        })
+        from agents.integrations.yandex_webmaster import YandexWebmasterClient
+        client = YandexWebmasterClient(
+            token="fake", user_id="42", host_id="https:example.ru:443"
+        )
+        result = client.get_page_stats("2026-02-01", "2026-02-07")
+        assert len(result) == 1
+        assert result[0]["clicks"] == 80
+        assert result[0]["impressions"] == 1200
+
+    @patch("agents.integrations.yandex_webmaster.requests.request")
+    def test_get_page_stats_returns_empty_on_api_error(self, mock_req):
+        """При ошибке API — возвращает [], не бросает исключение."""
+        mock_req.return_value = MagicMock(
+            ok=False, status_code=403, text="Forbidden"
+        )
+        from agents.integrations.yandex_webmaster import YandexWebmasterClient
+        client = YandexWebmasterClient(
+            token="fake", user_id="42", host_id="https:example.ru:443"
+        )
+        result = client.get_page_stats("2026-02-01", "2026-02-07")
+        assert result == []
+
+    @patch("agents.integrations.yandex_webmaster.requests.request")
+    def test_get_query_stats_empty_queries(self, mock_req):
+        """API вернул пустой список queries — возвращаем []."""
+        mock_req.return_value = MagicMock(
+            ok=True, json=lambda: {"queries": []}
+        )
+        from agents.integrations.yandex_webmaster import YandexWebmasterClient
+        client = YandexWebmasterClient(
+            token="fake", user_id="42", host_id="https:example.ru:443"
+        )
+        result = client.get_query_stats("2026-02-01", "2026-02-07")
+        assert result == []

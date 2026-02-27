@@ -213,3 +213,47 @@ class YandexWebmasterClient:
                 "avg_position": avg_pos,
             })
         return pages
+
+    def get_query_stats(
+        self,
+        date_from: str,
+        date_to: str,
+        limit: int = 500,
+    ) -> list[dict]:
+        """
+        Топ поисковых запросов за период с расширенным лимитом.
+        Используется SEO-агентом для сопоставления запросов с кластерами.
+
+        Параметры date_from/date_to: "YYYY-MM-DD".
+        Возвращает: [{query, clicks, impressions, ctr, avg_position}, ...]
+        При ошибке API — логирует warning, возвращает [].
+        """
+        try:
+            return self.get_top_queries(date_from, date_to, limit=limit)
+        except YandexWebmasterError as exc:
+            logger.warning(
+                "YandexWebmasterClient.get_query_stats: ошибка — %s", exc
+            )
+            return []
+
+    def get_page_stats(
+        self,
+        date_from: str,
+        date_to: str,
+        limit: int = 100,
+    ) -> list[dict]:
+        """
+        Топ страниц по кликам за период.
+        Используется SEO-агентом для анализа эффективности страниц.
+
+        Параметры date_from/date_to: "YYYY-MM-DD".
+        Возвращает: [{url, clicks, impressions, ctr, avg_position}, ...]
+        При ошибке API — логирует warning, возвращает [].
+        """
+        try:
+            return self.get_top_pages(date_from, date_to, limit=limit)
+        except YandexWebmasterError as exc:
+            logger.warning(
+                "YandexWebmasterClient.get_page_stats: ошибка — %s", exc
+            )
+            return []
