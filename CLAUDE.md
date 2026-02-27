@@ -369,6 +369,10 @@ python manage.py shell
 - get_query_stats() и get_page_stats() в YandexWebmasterClient (graceful wrappers, 5 тестов)
 - get_organic_sessions() и get_page_behavior() в YandexMetrikaClient (graceful wrappers, 9 тестов)
 - TechnicalSEOWatchdog (agents/integrations/site_crawler.py): проверка страниц, sitemap, get_or_create SeoTask, management-команда check_crawler, 25 тестов
+- SeoClusterSnapshot модель (agents/models.py): ежедневный агрегированный снимок по кластеру, unique_together (cluster, date)
+- collect_rank_snapshots: Celery-таск (ежедневно 07:00), Вебмастер → агрегация по кластерам → SeoClusterSnapshot
+- send_seo_alert() в agents/telegram.py (HTML-форматирование, группировка click_drop/position_drop)
+- analyze_rank_changes: пороги -20% кликов / 3 позиции, создаёт SeoTask + шлёт Telegram, 18 тестов
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
@@ -376,7 +380,6 @@ python manage.py shell
 ### Следующие задачи
 - OfferAgent -- генерация акций по загрузке мастеров
 - Supervisor -- оркестратор агентов
-- Telegram уведомления для SEO алертов
 - SEO-посадочные страницы: вёрстка шаблонов по готовым документам
 
 ---
