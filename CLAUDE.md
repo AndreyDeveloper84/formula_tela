@@ -373,6 +373,7 @@ python manage.py shell
 - collect_rank_snapshots: Celery-таск (ежедневно 07:00), Вебмастер → агрегация по кластерам → SeoClusterSnapshot
 - send_seo_alert() в agents/telegram.py (HTML-форматирование, группировка click_drop/position_drop)
 - analyze_rank_changes: пороги -20% кликов / 3 позиции, создаёт SeoTask + шлёт Telegram, 18 тестов
+- notify_new_landing() + send_weekly_seo_report() в agents/telegram.py (task 3.3, 19 тестов)
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
