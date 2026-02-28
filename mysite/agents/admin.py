@@ -1,4 +1,6 @@
-from django.contrib import admin
+from django import forms
+from django.contrib import admin, messages
+from django.shortcuts import redirect, render
 from django.utils.html import format_html
 from .models import (
     AgentTask, AgentReport, ContentPlan, DailyMetric,
@@ -157,13 +159,39 @@ class SeoClusterSnapshotAdmin(admin.ModelAdmin):
         return False  # снапшоты нельзя редактировать вручную
 
 
+class MarkdownUploadForm(forms.Form):
+    """Форма загрузки .md файла для генерации лендинга."""
+    markdown_file = forms.FileField(
+        label="Маркдаун-бриф (.md или .txt)",
+        help_text="Файл с брифом редактора. Максимум 100 КБ.",
+    )
+
+    def clean_markdown_file(self):
+        f = self.cleaned_data["markdown_file"]
+        if f.size > 100 * 1024:
+            raise forms.ValidationError("Файл слишком большой. Максимум 100 КБ.")
+        if not (f.name.lower().endswith(".md") or f.name.lower().endswith(".txt")):
+            raise forms.ValidationError("Принимаются только .md и .txt файлы.")
+        return f
+
+
 @admin.register(LandingPage)
 class LandingPageAdmin(admin.ModelAdmin):
-    list_display    = ["h1", "slug", "status_badge", "cluster", "generated_by_agent", "created_at"]
+    list_display    = [
+        "h1", "slug", "status_badge", "cluster",
+        "has_markdown", "generated_by_agent", "created_at",
+    ]
     list_filter     = ["status", "generated_by_agent"]
     search_fields   = ["h1", "slug", "meta_title"]
-    readonly_fields = ["generated_by_agent", "created_at", "published_at"]
-    actions         = ["action_publish", "action_send_to_review", "action_reject"]
+    readonly_fields = [
+        "generated_by_agent", "created_at", "published_at", "source_markdown",
+    ]
+    actions         = [
+        "action_publish",
+        "action_send_to_review",
+        "action_reject",
+        "action_generate_from_markdown",
+    ]
 
     def status_badge(self, obj):
         colors = {
@@ -174,12 +202,19 @@ class LandingPageAdmin(admin.ModelAdmin):
         }
         color = colors.get(obj.status, "#888")
         return format_html(
-            '<span style="color: white; background: {}; padding: 2px 8px; border-radius: 3px;">{}</span>',
-            color,
-            obj.get_status_display(),
+            '<span style="color:white;background:{};padding:2px 8px;'
+            'border-radius:3px;">{}</span>',
+            color, obj.get_status_display(),
         )
     status_badge.short_description = "Статус"
     status_badge.admin_order_field = "status"
+
+    def has_markdown(self, obj):
+        """Колонка MD: check if source_markdown is populated."""
+        if obj.source_markdown:
+            return format_html('<span style="color:#5cb85c">\u2713</span>')
+        return format_html('<span style="color:#ccc">\u2014</span>')
+    has_markdown.short_description = "MD"
 
     @admin.action(description="Opublikovat")
     def action_publish(self, request, queryset):
@@ -202,6 +237,95 @@ class LandingPageAdmin(admin.ModelAdmin):
     def action_reject(self, request, queryset):
         count = queryset.exclude(status="published").update(status="rejected")
         self.message_user(request, f"Rejected: {count}.")
+
+    @admin.action(description="\U0001f916 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0438\u0437 \u043c\u0430\u0440\u043a\u0434\u0430\u0443\u043d\u0430")
+    def action_generate_from_markdown(self, request, queryset):
+        """
+        Двухшаговый action с промежуточной страницей загрузки файла.
+
+        GET  -> показывает форму загрузки .md
+        POST -> читает файл, вызывает generate_from_markdown(), редиректит назад
+
+        Требования: выбрать ровно 1 запись с cluster != None.
+        """
+        with_cluster = queryset.filter(cluster__isnull=False)
+        without_cluster = queryset.filter(cluster__isnull=True)
+
+        if without_cluster.exists():
+            self.message_user(
+                request,
+                f"Пропущено {without_cluster.count()} записей без кластера.",
+                level=messages.WARNING,
+            )
+
+        if not with_cluster.exists():
+            self.message_user(
+                request,
+                "Выберите хотя бы одну запись с привязанным кластером.",
+                level=messages.ERROR,
+            )
+            return
+
+        if with_cluster.count() > 1:
+            self.message_user(
+                request,
+                "Выберите только одну запись для генерации из маркдауна.",
+                level=messages.ERROR,
+            )
+            return
+
+        cluster = with_cluster.first().cluster
+
+        if request.method == "POST":
+            form = MarkdownUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                md_file = form.cleaned_data["markdown_file"]
+                try:
+                    markdown_text = md_file.read().decode("utf-8")
+                except UnicodeDecodeError:
+                    self.message_user(
+                        request,
+                        "Не удалось прочитать файл. Убедитесь что файл в UTF-8.",
+                        level=messages.ERROR,
+                    )
+                    return redirect(request.get_full_path())
+
+                from agents.agents.landing_generator import (
+                    LandingPageGenerator,
+                    LandingGeneratorError,
+                )
+                try:
+                    gen = LandingPageGenerator()
+                    new_landing = gen.generate_from_markdown(cluster, markdown_text)
+                    self.message_user(
+                        request,
+                        f"\u2705 Черновик создан: \u00ab{new_landing.h1}\u00bb "
+                        f"(slug: {new_landing.slug}). Проверьте перед публикацией.",
+                        level=messages.SUCCESS,
+                    )
+                except LandingGeneratorError as exc:
+                    self.message_user(
+                        request,
+                        f"\u274c Ошибка генерации: {exc}",
+                        level=messages.ERROR,
+                    )
+                return redirect("..")
+        else:
+            form = MarkdownUploadForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title":    f"Генерация из маркдауна: {cluster.name}",
+            "form":     form,
+            "cluster":  cluster,
+            "opts":     self.model._meta,
+            "queryset": with_cluster,
+        }
+        return render(
+            request,
+            "admin/agents/landingpage/generate_from_markdown.html",
+            context,
+        )
 
 
 @admin.register(SeoTask)

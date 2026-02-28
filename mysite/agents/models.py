@@ -300,6 +300,11 @@ class LandingPage(models.Model):
         )
     )
     generated_by_agent = models.BooleanField("Сгенерировано агентом", default=True)
+    source_markdown   = models.TextField(
+        "Исходный маркдаун",
+        blank=True,
+        help_text="Маркдаун-бриф, переданный при генерации. Хранится для аудита.",
+    )
     moderated_by      = models.ForeignKey(
         get_user_model(), on_delete=models.SET_NULL,
         null=True, blank=True,

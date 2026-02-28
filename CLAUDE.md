@@ -374,6 +374,7 @@ python manage.py shell
 - send_seo_alert() в agents/telegram.py (HTML-форматирование, группировка click_drop/position_drop)
 - analyze_rank_changes: пороги -20% кликов / 3 позиции, создаёт SeoTask + шлёт Telegram, 18 тестов
 - notify_new_landing() + send_weekly_seo_report() в agents/telegram.py (task 3.3, 19 тестов)
+- LandingPageGenerator (agents/agents/landing_generator.py): generate_landing() — генерация из БД; generate_from_markdown() — маркдаун как редакторский бриф; _get_services_context(), _build_prompt(), _build_prompt_with_markdown(), _check_markdown_vs_db(), _make_slug() (dedup -v2/-v3); LandingPage.source_markdown (TextField, миграция 0006); admin action «Сгенерировать из маркдауна» + MarkdownUploadForm + HTML-шаблон; 33 теста в test_landing_generator.py
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
