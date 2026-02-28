@@ -20,6 +20,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 
+from agents.views import landing_page_view
+
 def healthz(_request):
     return JsonResponse({"status": "ok"})
 
@@ -28,6 +30,10 @@ urlpatterns = [
     path('booking/', include('booking.urls')),  # Added trailing slash
     path('', include('website.urls')),
     path('healthz/', healthz, name='healthz'),
+
+    # Посадочные страницы — слаг-маршрут должен быть последним,
+    # чтобы не перехватывать admin/, booking/, healthz/ и т.д.
+    path('<slug:slug>/', landing_page_view, name='landing_page'),
 ]
 
 if settings.DEBUG:

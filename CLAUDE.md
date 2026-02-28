@@ -99,6 +99,7 @@ Frontend views: главная, каталог услуг, детальная с
 - `/contacts/` — контактная информация
 - `/bundles/` — пакеты услуг
 - `/admin/` — Django Admin
+- `/<slug>/` — SEO-посадочная страница (только published, catch-all последним в urlpatterns)
 - `/healthz/` — health check -> `{"status": "ok"}`
 
 **Booking API (в website/urls.py):**
@@ -204,6 +205,10 @@ pytest
 ### `services_app/templatetags/service_extras.py`
 - `option_label(opt)` — форматирует ServiceOption как "60 мин x 10 процедур — 14 000 руб. (1 400 руб./проц.)"
 - `discount(price, percent)` — вычисляет цену со скидкой
+
+### `agents/templatetags/landing_tags.py`
+- `split_lines(value)` — разбивает строку по `\n`, убирает маркеры (•, -, *, 1., 2.)
+- `slugify_to_title(value)` — slug → читаемый заголовок (`massazh-spiny` → `Massazh spiny`)
 
 ### `website/templatetags/faq_tags.py`
 - `faq_items(content)` — парсит контент блока FAQ (пары Q&A, разделённые `---`)
@@ -375,6 +380,7 @@ python manage.py shell
 - analyze_rank_changes: пороги -20% кликов / 3 позиции, создаёт SeoTask + шлёт Telegram, 18 тестов
 - notify_new_landing() + send_weekly_seo_report() в agents/telegram.py (task 3.3, 19 тестов)
 - LandingPageGenerator (agents/agents/landing_generator.py): generate_landing() — генерация из БД; generate_from_markdown() — маркдаун как редакторский бриф; _get_services_context(), _build_prompt(), _build_prompt_with_markdown(), _check_markdown_vs_db(), _make_slug() (dedup -v2/-v3); LandingPage.source_markdown (TextField, миграция 0006); admin action «Сгенерировать из маркдауна» + MarkdownUploadForm + HTML-шаблон; 33 теста в test_landing_generator.py
+- Landing page view + URL + шаблон + templatetags (task 4.2): agents/views.py (landing_page_view), URL `<slug:slug>/` последним в urlpatterns, шаблон agents/landing_page.html (hero, intro, how_it_works, who_is_it_for, contraindications, results, CTA, FAQ-аккордеон, internal_links), templatetags landing_tags.py (split_lines, slugify_to_title), 27 тестов
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
@@ -382,7 +388,6 @@ python manage.py shell
 ### Следующие задачи
 - OfferAgent -- генерация акций по загрузке мастеров
 - Supervisor -- оркестратор агентов
-- SEO-посадочные страницы: вёрстка шаблонов по готовым документам
 
 ---
 
