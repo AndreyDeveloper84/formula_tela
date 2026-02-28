@@ -289,15 +289,15 @@ class LandingPage(models.Model):
         choices=STATUS_CHOICES, default=STATUS_DRAFT
     )
     meta_title        = models.CharField("Meta Title", max_length=70)
-    meta_description  = models.CharField("Meta Description", max_length=160)
-    h1                = models.CharField("H1", max_length=200)
+    meta_description  = models.CharField("Meta Description", max_length=160, blank=True)
+    h1                = models.CharField("H1", max_length=200, blank=True)
     blocks            = models.JSONField(
         "Блоки контента", default=dict,
         help_text=(
             "Структура: {intro, how_it_works, who_is_it_for, "
             "contraindications, results, faq:[{question,answer}], "
             "cta_text, internal_links}"
-        )
+        ), blank=True
     )
     generated_by_agent = models.BooleanField("Сгенерировано агентом", default=True)
     source_markdown   = models.TextField(
