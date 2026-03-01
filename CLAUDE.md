@@ -381,6 +381,7 @@ python manage.py shell
 - notify_new_landing() + send_weekly_seo_report() в agents/telegram.py (task 3.3, 19 тестов)
 - LandingPageGenerator (agents/agents/landing_generator.py): generate_landing() — генерация из БД; generate_from_markdown() — маркдаун как редакторский бриф; _get_services_context(), _build_prompt(), _build_prompt_with_markdown(), _check_markdown_vs_db(), _make_slug() (dedup -v2/-v3); LandingPage.source_markdown (TextField, миграция 0006); admin action «Сгенерировать из маркдауна» + MarkdownUploadForm + HTML-шаблон; 33 теста в test_landing_generator.py
 - Landing page view + URL + шаблон + templatetags (task 4.2): agents/views.py (landing_page_view), URL `<slug:slug>/` последним в urlpatterns, шаблон agents/landing_page.html (hero, intro, how_it_works, who_is_it_for, contraindications, results, CTA, FAQ-аккордеон, internal_links), templatetags landing_tags.py (split_lines, slugify_to_title), 27 тестов
+- landing_page.html CTA-кнопки: href="#book_service" → data-bs-toggle="modal" data-bs-target="#exampleModal", открывают ту же модалку что и остальные страницы
 
 ### В процессе
 - SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`

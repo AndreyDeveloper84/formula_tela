@@ -116,7 +116,7 @@
       {% if blocks.intro %}
         <p>{{ blocks.intro|truncatewords:30 }}</p>
       {% endif %}
-      <a href="#cta" class="btn-cta" style="margin-top:24px;">
+      <a href="#" class="btn-cta" style="margin-top:24px;" data-bs-toggle="modal" data-bs-target="#exampleModal">
         Записаться онлайн
       </a>
     </div>
@@ -190,7 +190,7 @@
       <h2 style="color:white;">
         {% if blocks.cta_text %}{{ blocks.cta_text }}{% else %}Запишитесь на процедуру{% endif %}
       </h2>
-      <a href="{% url 'website:book_service' %}" class="btn-cta">
+      <a href="#" class="btn-cta" data-bs-toggle="modal" data-bs-target="#exampleModal">
         Записаться онлайн
       </a>
       <p style="margin-top:14px; opacity:0.7; font-size:0.95rem;">
