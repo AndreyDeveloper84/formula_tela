@@ -13,6 +13,8 @@ def split_lines(value):
     """
     if not value:
         return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if item]
     import re
     lines = value.split("\n")
     cleaned = []
