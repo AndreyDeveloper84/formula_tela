@@ -568,7 +568,7 @@ class TestCreateBlocks:
     @patch("agents.agents.landing_generator.notify_new_landing")
     @patch("agents.agents.landing_generator.OpenAI")
     def test_intro_becomes_accent(self, mock_openai_cls, mock_notify, cluster):
-        """intro → block_type='accent', title='Ключевая выгода'."""
+        """intro → block_type='accent', title пустой (не выводится на фронте)."""
         mock_openai_cls.return_value = _make_openai_mock()
 
         landing = LandingPageGenerator().generate_landing(cluster)
@@ -576,7 +576,7 @@ class TestCreateBlocks:
         block = LandingBlock.objects.get(
             landing_page=landing, block_type="accent", order=1
         )
-        assert block.title == "Ключевая выгода"
+        assert block.title == ""
         assert "Боль в спине" in block.content
 
     @pytest.mark.django_db
@@ -732,3 +732,123 @@ class TestCreateBlocks:
             LandingBlock.objects.filter(landing_page=landing, is_active=True).count()
             == LandingBlock.objects.filter(landing_page=landing).count()
         )
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_checklist_content_normalized(self, mock_openai_cls, mock_notify, cluster):
+        """Пункты чеклиста нормализованы к sentence case."""
+        resp = json.loads(VALID_GPT_RESPONSE)
+        resp["how_it_works"] = "КОНСУЛЬТАЦИЯ\nМАССАЖ\nРЕКОМЕНДАЦИИ"
+        mock_openai_cls.return_value = _make_openai_mock(json.dumps(resp))
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="checklist", title="Что вы почувствуете"
+        )
+        assert block.content == "Консультация\nМассаж\nРекомендации"
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_cta_btn_text_normalized(self, mock_openai_cls, mock_notify, cluster):
+        """Текст CTA-кнопки нормализован к sentence case."""
+        resp = json.loads(VALID_GPT_RESPONSE)
+        resp["cta_text"] = "ЗАПИШИТЕСЬ ОНЛАЙН ПРЯМО СЕЙЧАС"
+        mock_openai_cls.return_value = _make_openai_mock(json.dumps(resp))
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(landing_page=landing, block_type="cta")
+        assert block.btn_text == "Запишитесь онлайн прямо сейчас"
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_faq_content_normalized(self, mock_openai_cls, mock_notify, cluster):
+        """Вопросы и ответы FAQ нормализованы к sentence case."""
+        resp = json.loads(VALID_GPT_RESPONSE)
+        resp["faq"] = [
+            {"question": "СКОЛЬКО СЕАНСОВ НУЖНО?", "answer": "КУРС 10 СЕАНСОВ"},
+        ]
+        mock_openai_cls.return_value = _make_openai_mock(json.dumps(resp))
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(landing_page=landing, block_type="faq")
+        assert "Сколько сеансов нужно?" in block.content
+        assert "Курс 10 сеансов" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_html_block_not_normalized(self, mock_openai_cls, mock_notify, cluster):
+        """HTML-блоки (price_table и др.) не нормализуются."""
+        resp = json.loads(VALID_GPT_RESPONSE)
+        resp["price_table"] = "<table><tr><td>МАССАЖ 60 МИН</td></tr></table>"
+        mock_openai_cls.return_value = _make_openai_mock(json.dumps(resp))
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(landing_page=landing, block_type="price_table")
+        assert "МАССАЖ 60 МИН" in block.content
+
+
+# ── _sentence_case ───────────────────────────────────────────────────────────
+
+class TestSentenceCase:
+    """Тесты нормализации регистра текста."""
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_basic(self, mock_openai_cls):
+        """РАССЛАБЛЕНИЕ МЫШЦ → Расслабление мышц."""
+        result = LandingPageGenerator._sentence_case("РАССЛАБЛЕНИЕ МЫШЦ")
+        assert result == "Расслабление мышц"
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_multiline(self, mock_openai_cls):
+        """Каждая строка нормализуется отдельно."""
+        result = LandingPageGenerator._sentence_case("ПУНКТ ОДИН\nПУНКТ ДВА")
+        assert result == "Пункт один\nПункт два"
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_preserves_separator(self, mock_openai_cls):
+        """Разделитель --- не трогаем."""
+        result = LandingPageGenerator._sentence_case("ВОПРОС?\nОТВЕТ\n---\nВОПРОС 2?\nОТВЕТ 2")
+        assert "---" in result
+        assert result.split("\n")[2] == "---"
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_skips_html(self, mock_openai_cls):
+        """Строки с HTML-тегами не трогаем."""
+        text = "<table><tr><td>ЗАГОЛОВОК</td></tr></table>"
+        assert LandingPageGenerator._sentence_case(text) == text
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_strips_markers(self, mock_openai_cls):
+        """Эмодзи-маркеры убираются, текст нормализуется."""
+        result = LandingPageGenerator._sentence_case("\u2705 РАССЛАБЛЕНИЕ МЫШЦ")
+        assert result == "Расслабление мышц"
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_empty_string(self, mock_openai_cls):
+        """Пустая строка → пустая строка."""
+        assert LandingPageGenerator._sentence_case("") == ""
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_none(self, mock_openai_cls):
+        """None → None."""
+        assert LandingPageGenerator._sentence_case(None) is None
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_already_sentence_case(self, mock_openai_cls):
+        """Уже в sentence case → не меняем."""
+        result = LandingPageGenerator._sentence_case("Расслабление мышц")
+        assert result == "Расслабление мышц"
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_numbered_markers(self, mock_openai_cls):
+        """Нумерованные маркеры убираются."""
+        result = LandingPageGenerator._sentence_case("1. КОНСУЛЬТАЦИЯ\n2. МАССАЖ")
+        assert result == "Консультация\nМассаж"

@@ -23,6 +23,8 @@ def split_lines(value):
         # Убираем маркеры списка: bullet, -, *, 1., 2.
         line = re.sub(r"^[\u2022\-\*]\s*", "", line)
         line = re.sub(r"^\d+\.\s*", "", line)
+        # Убираем эмодзи-маркеры: ✅ ✓ ☑ ▸ 🔹 🔸 💚 и др.
+        line = re.sub(r"^[\u2705\u2713\u2714\u2611\u25B8\U0001F539\U0001F538\U0001F49A\U0001F7E2\U0001F4A0]+\s*", "", line)
         if line:
             cleaned.append(line)
     return cleaned

@@ -51,7 +51,7 @@ def published_landing(db):
         "agents.LandingBlock",
         landing_page=landing,
         block_type="accent",
-        title="Ключевая выгода",
+        title="",
         content="Боль в спине? Мы поможем.",
         order=1,
         is_active=True,
@@ -252,11 +252,10 @@ class TestLandingPageContent:
 
     @pytest.mark.django_db
     def test_accent_block_rendered(self, client, published_landing):
-        """Акцентный блок (intro) присутствует в HTML."""
+        """Акцентный блок (intro) присутствует в HTML без заголовка."""
         response = client.get(f"/{published_landing.slug}/")
         content = response.content.decode("utf-8")
         assert "Боль в спине" in content
-        assert "Ключевая выгода" in content
 
     @pytest.mark.django_db
     def test_checklist_block_rendered(self, client, published_landing):
@@ -428,6 +427,12 @@ class TestLandingTags:
         """split_lines убирает маркеры bullet, -, *."""
         from agents.templatetags.landing_tags import split_lines
         result = split_lines("\u2022 Пункт 1\n- Пункт 2\n* Пункт 3")
+        assert result == ["Пункт 1", "Пункт 2", "Пункт 3"]
+
+    def test_split_lines_removes_emoji_checkmarks(self):
+        """split_lines убирает эмодзи-маркеры ✅, ✓, 💚."""
+        from agents.templatetags.landing_tags import split_lines
+        result = split_lines("\u2705 Пункт 1\n\u2713 Пункт 2\n\U0001F49A Пункт 3")
         assert result == ["Пункт 1", "Пункт 2", "Пункт 3"]
 
     def test_split_lines_removes_numbers(self):

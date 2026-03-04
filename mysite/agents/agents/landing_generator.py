@@ -54,7 +54,7 @@ class LandingPageGenerator:
     # Маппинг GPT JSON → LandingBlock (порядок = порядок на странице)
     BLOCK_MAPPING = [
         # (json_key,            block_type,        default_title)
-        ("intro",               "accent",          "Ключевая выгода"),
+        ("intro",               "accent",          ""),
         ("how_it_works",        "checklist",       "Что вы почувствуете"),
         ("who_is_it_for",       "identification",  "Ваш случай?"),
         ("price_table",         "price_table",     "Цены"),
@@ -601,12 +601,50 @@ class LandingPageGenerator:
 
         return warnings
 
+    # Типы блоков, для которых нормализуем регистр (plain-текст)
+    NORMALIZE_TYPES = {"accent", "checklist", "identification", "text"}
+
+    @staticmethod
+    def _sentence_case(text: str) -> str:
+        """
+        Нормализует каждую строку текста к формату предложения.
+
+        - Первая буква заглавная, остальные строчные
+        - Убирает эмодзи-маркеры (✅, ✓, 💚, •, - и т.п.) перед нормализацией
+        - Пропускает пустые строки, разделители (---), строки с HTML (<)
+        """
+        import re
+        if not text:
+            return text
+
+        marker_re = re.compile(
+            r'^([\u2022\-\*\u2705\u2713\u2714\u2611\u25B8'
+            r'\U0001F539\U0001F538\U0001F49A\U0001F7E2\U0001F4A0]+\s*'
+            r'|\d+\.\s*)'
+        )
+
+        lines = text.split("\n")
+        result = []
+        for line in lines:
+            stripped = line.strip()
+            # Пустые строки, разделители и HTML — не трогаем
+            if not stripped or stripped == "---" or "<" in stripped:
+                result.append(line)
+                continue
+            # Убираем маркер, нормализуем, маркер не возвращаем
+            cleaned = marker_re.sub("", stripped)
+            if cleaned:
+                cleaned = cleaned[0].upper() + cleaned[1:].lower()
+            result.append(cleaned)
+        return "\n".join(result)
+
     def _create_blocks(self, landing: LandingPage, data: dict) -> None:
         """
         Создаёт LandingBlock записи из GPT-ответа.
 
         Маппинг GPT JSON → LandingBlock определяется BLOCK_MAPPING.
         Дополнительно: cta → блок CTA, faq → блок FAQ, internal_links → навигация.
+        Для plain-текстовых блоков нормализует регистр к sentence case.
         """
         order = 0
 
@@ -614,6 +652,8 @@ class LandingPageGenerator:
             value = data.get(json_key, "")
             if not value:
                 continue
+            if block_type in self.NORMALIZE_TYPES:
+                value = self._sentence_case(value)
             order += 1
             LandingBlock.objects.create(
                 landing_page=landing,
@@ -631,7 +671,7 @@ class LandingPageGenerator:
                 landing_page=landing,
                 block_type="cta",
                 title="",
-                btn_text=cta_text,
+                btn_text=self._sentence_case(cta_text),
                 order=order,
             )
 
@@ -640,7 +680,8 @@ class LandingPageGenerator:
         if faq_list:
             order += 1
             faq_content = "\n---\n".join(
-                f"{item['question']}\n{item['answer']}" for item in faq_list
+                f"{self._sentence_case(item['question'])}\n{self._sentence_case(item['answer'])}"
+                for item in faq_list
             )
             LandingBlock.objects.create(
                 landing_page=landing,

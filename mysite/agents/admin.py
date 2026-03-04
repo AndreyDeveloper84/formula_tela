@@ -227,6 +227,26 @@ class LandingPageAdmin(admin.ModelAdmin):
     readonly_fields = [
         "generated_by_agent", "created_at", "published_at", "source_markdown",
     ]
+    fieldsets = (
+        (None, {
+            "fields": (
+                "cluster", "slug", "status",
+                "meta_title", "meta_description", "h1",
+                "blocks",
+            ),
+        }),
+        ("Исходный маркдаун", {
+            "classes": ("collapse",),
+            "fields": ("source_markdown",),
+        }),
+        ("Служебная информация", {
+            "classes": ("collapse",),
+            "fields": (
+                "generated_by_agent", "moderated_by",
+                "created_at", "published_at",
+            ),
+        }),
+    )
     actions         = [
         "action_publish",
         "action_send_to_review",
