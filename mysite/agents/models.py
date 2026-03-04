@@ -283,6 +283,15 @@ class LandingPage(models.Model):
         verbose_name="SEO кластер",
         related_name="landing_pages",
     )
+    service           = models.ForeignKey(
+        "services_app.Service",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="landing_pages",
+        verbose_name="Базовая услуга",
+        help_text="Если указана, лендинг использует медиа этой услуги.",
+    )
     slug              = models.SlugField("Slug", max_length=200, unique=True)
     status            = models.CharField(
         "Статус", max_length=20,
@@ -291,14 +300,6 @@ class LandingPage(models.Model):
     meta_title        = models.CharField("Meta Title", max_length=70)
     meta_description  = models.CharField("Meta Description", max_length=160, blank=True)
     h1                = models.CharField("H1", max_length=200, blank=True)
-    blocks            = models.JSONField(
-        "Блоки контента", default=dict,
-        help_text=(
-            "Структура: {intro, how_it_works, who_is_it_for, "
-            "contraindications, results, faq:[{question,answer}], "
-            "cta_text, internal_links}"
-        ), blank=True
-    )
     generated_by_agent = models.BooleanField("Сгенерировано агентом", default=True)
     source_markdown   = models.TextField(
         "Исходный маркдаун",
@@ -321,6 +322,74 @@ class LandingPage(models.Model):
 
     def __str__(self):
         return f"{self.h1} [{self.get_status_display()}]"
+
+
+LANDING_BLOCK_TYPE_CHOICES = [
+    ("text", "Текстовый блок"),
+    ("accent", "Акцентный блок (цветной фон)"),
+    ("checklist", "Чеклист"),
+    ("identification", "Блок идентификации"),
+    ("cta", "CTA-кнопка"),
+    ("price_table", "Таблица цен"),
+    ("accordion", "Аккордеон"),
+    ("faq", "FAQ"),
+    ("special_formats", "Особые форматы"),
+    ("subscriptions", "Абонементы"),
+    ("navigation", "Навигация"),
+    ("html", "Произвольный HTML"),
+]
+
+LANDING_HEADING_LEVEL_CHOICES = [
+    ("h2", "H2"),
+    ("h3", "H3"),
+]
+
+
+class LandingBlock(models.Model):
+    """Контентный блок посадочной страницы (структура как у ServiceBlock)."""
+
+    landing_page = models.ForeignKey(
+        LandingPage,
+        on_delete=models.CASCADE,
+        related_name="landing_blocks",
+        verbose_name="Лендинг",
+    )
+    block_type = models.CharField(
+        max_length=30,
+        choices=LANDING_BLOCK_TYPE_CHOICES,
+        verbose_name="Тип блока",
+    )
+    title = models.CharField(max_length=200, blank=True, verbose_name="Заголовок блока")
+    heading_level = models.CharField(
+        max_length=2,
+        choices=LANDING_HEADING_LEVEL_CHOICES,
+        default="h2",
+        verbose_name="Уровень заголовка",
+    )
+    content = models.TextField(blank=True, verbose_name="Содержимое")
+    bg_color = models.CharField(max_length=20, blank=True, verbose_name="Цвет фона")
+    text_color = models.CharField(max_length=20, blank=True, verbose_name="Цвет текста")
+    btn_text = models.CharField(max_length=100, blank=True, verbose_name="Текст кнопки")
+    btn_sub = models.CharField(max_length=200, blank=True, verbose_name="Подпись под кнопкой")
+    css_class = models.CharField(max_length=100, blank=True, verbose_name="CSS-класс")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    class Meta:
+        verbose_name = "Контентный блок лендинга"
+        verbose_name_plural = "Контентные блоки лендинга"
+        ordering = ["order"]
+        indexes = [
+            models.Index(
+                fields=["landing_page", "is_active", "order"],
+                name="agents_land_landing_618250_idx",
+            ),
+        ]
+
+    def __str__(self):
+        type_label = dict(LANDING_BLOCK_TYPE_CHOICES).get(self.block_type, self.block_type)
+        suffix = f" - {self.title}" if self.title else ""
+        return f"[{type_label}]{suffix}"
 
 
 class SeoTask(models.Model):

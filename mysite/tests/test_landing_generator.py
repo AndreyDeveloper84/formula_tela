@@ -103,6 +103,27 @@ class TestGenerateLanding:
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
     @patch("agents.agents.landing_generator.OpenAI")
+    def test_applies_default_block_styles(self, mock_openai_cls, mock_notify, cluster):
+        """Генератор проставляет дефолтные css/bg/text стили по типу блока."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        text_block = landing.landing_blocks.filter(block_type="text").first()
+        cta_block = landing.landing_blocks.filter(block_type="cta").first()
+        nav_block = landing.landing_blocks.filter(block_type="navigation").first()
+
+        assert text_block is not None
+        assert text_block.css_class == "lb-text"
+        assert cta_block is not None
+        assert cta_block.css_class == "lb-cta"
+        assert nav_block is not None
+        assert nav_block.css_class == "lb-navigation"
+        assert nav_block.bg_color == "#f5f5f5"
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
     def test_creates_draft(self, mock_openai_cls, mock_notify, cluster):
         """Создаётся LandingPage со status='draft'."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -126,9 +147,9 @@ class TestGenerateLanding:
 
         assert landing.meta_title == "Массаж спины в Пензе — цены от 1500 руб."
         assert landing.h1 == "Массаж спины в Пензе"
-        assert "intro" in landing.blocks
-        assert "faq" in landing.blocks
-        assert len(landing.blocks["faq"]) == 8
+        assert landing.landing_blocks.filter(block_type="text").exists()
+        assert landing.landing_blocks.filter(block_type="faq").exists()
+        assert landing.landing_blocks.count() >= 6
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
@@ -187,7 +208,12 @@ class TestGenerateLanding:
     @patch("agents.agents.landing_generator.OpenAI")
     def test_returns_existing_draft(self, mock_openai_cls, mock_notify, cluster):
         """Если draft уже есть — GPT не вызывается."""
-        existing = baker.make("agents.LandingPage", cluster=cluster, status="draft")
+        existing = baker.make(
+            "agents.LandingPage",
+            cluster=cluster,
+            status="draft",
+            source_markdown="already generated",
+        )
 
         result = LandingPageGenerator().generate_landing(cluster)
 
@@ -271,6 +297,157 @@ class TestGenerateFromMarkdown:
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
     @patch("agents.agents.landing_generator.OpenAI")
+    def test_hard_section_filter_skips_technical_sections(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Служебные секции SEO/TZ отфильтровываются и не попадают в контентный план."""
+        mock_openai_cls.return_value = _make_openai_mock()
+        gen = LandingPageGenerator()
+        markdown = """
+## МЕТА-ТЕГИ
+<meta name="description" content="x">
+
+## Service (основная)
+{"@context":"https://schema.org"}
+
+## Что вы получите
+✅ Снятие боли
+
+## [CTA-КНОПКА №1]
+Запишитесь на массаж
+
+## Технические требования
+- [ ] Title до 70
+"""
+        plan = gen._build_markdown_block_plan(markdown)
+        titles = [row[1] for row in plan]
+
+        assert "МЕТА-ТЕГИ" not in titles
+        assert "Service (основная)" not in titles
+        assert "Технические требования" not in titles
+        assert "Что вы получите" in titles
+        assert "Запись" in titles
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_quality_warnings_saved_to_task_payload(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Результат quality-аудита сохраняется в payload SeoTask."""
+        mock_openai_cls.return_value = _make_openai_mock()
+        from agents.models import SeoTask
+
+        markdown = """
+## Что вы получите
+Текст.
+"""
+        landing = LandingPageGenerator().generate_from_markdown(cluster, markdown)
+        task = SeoTask.objects.get(payload__landing_id=landing.id)
+
+        assert "quality_ok" in task.payload
+        assert "quality_warnings" in task.payload
+        assert isinstance(task.payload["quality_warnings"], list)
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_cta_positioning_adds_middle_and_final_cta(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Стратегия CTA: добавляется промежуточный CTA и финальный CTA."""
+        mock_openai_cls.return_value = _make_openai_mock()
+        markdown = """
+## [БЛОК 3] УЗНАЁТЕ СЕБЯ?
+💻 Работа за компьютером
+
+## Противопоказания
+- Температура
+"""
+
+        landing = LandingPageGenerator().generate_from_markdown(cluster, markdown)
+        cta_blocks = list(landing.landing_blocks.filter(block_type="cta").order_by("order"))
+
+        assert len(cta_blocks) >= 2
+        last_block = landing.landing_blocks.order_by("order").last()
+        assert last_block.block_type == "cta"
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_keeps_markdown_emoji_when_gpt_drops_them(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Если в markdown есть эмодзи, а GPT их убрал, сохраняем markdown-вариант."""
+        resp = json.loads(VALID_GPT_RESPONSE)
+        resp["how_it_works"] = "1. Консультация\n2. Массаж\n3. Рекомендации"
+        mock_openai_cls.return_value = _make_openai_mock(json.dumps(resp))
+        markdown = """
+## Как проходит процедура
+💆 Консультация
+🧘 Массаж
+"""
+
+        landing = LandingPageGenerator().generate_from_markdown(cluster, markdown)
+        block = landing.landing_blocks.filter(block_type="checklist").first()
+
+        assert block is not None
+        assert "💆" in block.content
+        assert "🧘" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_two_stage_plan_preserves_markdown_structure(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Этап A задаёт структуру секций, этап B только улучшает тексты внутри неё."""
+        mock_openai_cls.return_value = _make_openai_mock()
+        markdown = """
+# Массаж спины
+## [БЛОК 3] УЗНАЁТЕ СЕБЯ?
+💻 Работа за компьютером
+## Противопоказания
+- Температура
+## CTA
+Запишитесь на удобное время
+"""
+        landing = LandingPageGenerator().generate_from_markdown(cluster, markdown)
+        block_types = list(landing.landing_blocks.order_by("order").values_list("block_type", flat=True))
+
+        assert "identification" in block_types
+        assert "cta" in block_types
+        # В двухэтапном режиме не подмешивается шаблонный блок "Похожие процедуры",
+        # если его нет в markdown плане.
+        assert block_types.count("navigation") == 0
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_contract_mapping_adds_identification_block(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Секция '[БЛОК 3] Узнаёте себя?' конвертируется в LandingBlock.identification."""
+        mock_openai_cls.return_value = _make_openai_mock()
+        markdown = """
+## [БЛОК 3] УЗНАЁТЕ СЕБЯ?
+**H2:** Узнаёте себя?
+
+💻 Работаете за компьютером целый день
+🤕 Болит поясница к вечеру
+"""
+
+        landing = LandingPageGenerator().generate_from_markdown(cluster, markdown)
+
+        block = landing.landing_blocks.filter(block_type="identification").first()
+        assert block is not None
+        assert block.title == "Узнаёте себя?"
+        assert "💻" in block.content
+        assert "🤕" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
     def test_saves_source_markdown(self, mock_openai_cls, mock_notify, cluster):
         """LandingPage.source_markdown = переданный текст."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -321,12 +498,40 @@ class TestGenerateFromMarkdown:
     @patch("agents.agents.landing_generator.OpenAI")
     def test_returns_existing_draft(self, mock_openai_cls, mock_notify, cluster):
         """Если draft уже есть — GPT не вызывается."""
-        existing = baker.make("agents.LandingPage", cluster=cluster, status="draft")
+        existing = baker.make(
+            "agents.LandingPage",
+            cluster=cluster,
+            status="draft",
+            source_markdown="already generated",
+        )
 
         result = LandingPageGenerator().generate_from_markdown(cluster, SAMPLE_MARKDOWN)
 
         assert result.pk == existing.pk
         mock_openai_cls.return_value.chat.completions.create.assert_not_called()
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_regenerates_when_existing_draft_is_empty(
+        self, mock_openai_cls, mock_notify, cluster
+    ):
+        """Пустой draft (без markdown/блоков) не возвращается, а перегенерируется."""
+        mock_openai_cls.return_value = _make_openai_mock()
+        existing = baker.make(
+            "agents.LandingPage",
+            cluster=cluster,
+            status="draft",
+            source_markdown="",
+            h1="Пустой",
+        )
+
+        result = LandingPageGenerator().generate_from_markdown(cluster, SAMPLE_MARKDOWN)
+
+        assert result.pk == existing.pk
+        assert result.source_markdown == SAMPLE_MARKDOWN
+        assert result.landing_blocks.filter(is_active=True).exists()
+        assert mock_openai_cls.return_value.chat.completions.create.called
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
@@ -491,19 +696,38 @@ class TestCheckMarkdownVsDb:
 
     @patch("agents.agents.landing_generator.OpenAI")
     def test_prompt_truncates_long_markdown(self, mock_openai_cls):
-        """Маркдаун > 3000 символов обрезается в промпте."""
+        """Длинный markdown сокращается, но структура секций в промпте сохраняется."""
         cluster = MagicMock()
         cluster.geo = "Пенза"
         cluster.keywords = ["тест"]
         cluster.target_url = "/test"
 
-        prompt = LandingPageGenerator()._build_prompt_with_markdown(
-            cluster, "контекст", "x" * 5000
+        markdown = (
+            "## Блок 1\n"
+            + ("x" * 8000)
+            + "\n\n## [БЛОК 3] УЗНАЁТЕ СЕБЯ?\n"
+            + "💻 Работаю за компьютером\n"
+            + ("y" * 8000)
         )
+        prompt = LandingPageGenerator()._build_prompt_with_markdown(cluster, "контекст", markdown)
         md_section = prompt[prompt.find("БРИФ РЕДАКТОРА"):prompt.find("ДАННЫЕ ОБ УСЛУГЕ")]
 
-        assert "x" * 3001 not in md_section
+        assert "УЗНАЁТЕ СЕБЯ" in md_section
         assert "обрезан" in prompt
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_prepare_markdown_brief_preserves_late_titles(self, mock_openai_cls):
+        """Поздние заголовки секций сохраняются даже при большом markdown."""
+        markdown = (
+            "## Блок 1\n"
+            + ("x" * 9000)
+            + "\n\n## [БЛОК 3] УЗНАЁТЕ СЕБЯ?\n"
+            + "🤕 Болит поясница\n"
+        )
+        brief, truncated = LandingPageGenerator()._prepare_markdown_brief_for_prompt(markdown)
+
+        assert truncated is True
+        assert "УЗНАЁТЕ СЕБЯ" in brief
 
 
 # ── _make_slug ────────────────────────────────────────────────────────────────

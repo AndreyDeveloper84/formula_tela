@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from .models import (
     AgentTask, AgentReport, ContentPlan, DailyMetric,
     SeoKeywordCluster, SeoRankSnapshot, SeoClusterSnapshot,
-    LandingPage, SeoTask,
+    LandingPage, LandingBlock, SeoTask,
 )
 
 
@@ -175,17 +175,48 @@ class MarkdownUploadForm(forms.Form):
         return f
 
 
+class LandingBlockInline(admin.StackedInline):
+    model = LandingBlock
+    extra = 0
+    ordering = ("order",)
+    classes = ("collapse",)
+    verbose_name = "Контентный блок"
+    verbose_name_plural = "📝 Контентные блоки (лендинг)"
+
+    fieldsets = (
+        (None, {
+            "fields": ("order", "is_active", "block_type", "heading_level", "title")
+        }),
+        ("Содержимое", {
+            "fields": ("content",),
+            "description": (
+                "<b>Форматы заполнения:</b><br>"
+                "• <b>Текст / Акцент / HTML / Форматы / Абонементы:</b> HTML-контент<br>"
+                "• <b>Чеклист / Идентификация:</b> каждый пункт с новой строки<br>"
+                "• <b>FAQ:</b> Вопрос?<br>Текст ответа.<br>---<br>Вопрос?<br>Текст ответа.<br>"
+                "• <b>CTA:</b> текст в поле «Подпись под кнопкой»<br>"
+                "• <b>Навигация:</b> slug каждой ссылки с новой строки"
+            ),
+        }),
+        ("Оформление", {
+            "fields": ("bg_color", "text_color", "btn_text", "btn_sub", "css_class"),
+            "classes": ("collapse",),
+        }),
+    )
+
+
 @admin.register(LandingPage)
 class LandingPageAdmin(admin.ModelAdmin):
     list_display    = [
-        "h1", "slug", "status_badge", "cluster",
+        "h1", "slug", "status_badge", "cluster", "service",
         "has_markdown", "generated_by_agent", "created_at",
     ]
     list_filter     = ["status", "generated_by_agent"]
-    search_fields   = ["h1", "slug", "meta_title"]
+    search_fields   = ["h1", "slug", "meta_title", "service__name"]
     readonly_fields = [
         "generated_by_agent", "created_at", "published_at", "source_markdown",
     ]
+    inlines         = [LandingBlockInline]
     actions         = [
         "action_publish",
         "action_send_to_review",
@@ -212,21 +243,46 @@ class LandingPageAdmin(admin.ModelAdmin):
     def has_markdown(self, obj):
         """Колонка MD: check if source_markdown is populated."""
         if obj.source_markdown:
-            return format_html('<span style="color:#5cb85c">\u2713</span>')
-        return format_html('<span style="color:#ccc">\u2014</span>')
+            return format_html('<span style="color:#5cb85c">{}</span>', "\u2713")
+        return format_html('<span style="color:#ccc">{}</span>', "\u2014")
     has_markdown.short_description = "MD"
 
     @admin.action(description="Opublikovat")
     def action_publish(self, request, queryset):
         from django.utils import timezone
-        to_publish = queryset.filter(status="review")
-        count = to_publish.update(
-            status="published",
-            published_at=timezone.now(),
-            moderated_by=request.user,
-        )
+        from agents.agents.landing_generator import LandingPageGenerator
+
+        to_check = list(queryset.filter(status="review"))
+        if not to_check:
+            self.message_user(request, "Published: 0. Skipped: 0.")
+            return
+
+        gen = LandingPageGenerator()
+        publish_ids = []
+        blocked = []
+        for landing in to_check:
+            quality_warnings = gen.audit_existing_landing(landing)
+            if quality_warnings:
+                blocked.append((landing, quality_warnings))
+            else:
+                publish_ids.append(landing.id)
+
+        count = 0
+        if publish_ids:
+            count = queryset.model.objects.filter(id__in=publish_ids).update(
+                status="published",
+                published_at=timezone.now(),
+                moderated_by=request.user,
+            )
+
         skipped = queryset.count() - count
         self.message_user(request, f"Published: {count}. Skipped: {skipped}.")
+        for landing, warnings in blocked[:5]:
+            self.message_user(
+                request,
+                f"[{landing.slug}] quality gate: {'; '.join(warnings[:3])}",
+                level=messages.WARNING,
+            )
 
     @admin.action(description="Send to review")
     def action_send_to_review(self, request, queryset):

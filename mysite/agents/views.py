@@ -6,6 +6,7 @@ import logging
 from django.shortcuts import get_object_or_404, render
 
 from agents.models import LandingPage
+from website.templatetags.faq_tags import faq_items
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ def landing_page_view(request, slug: str):
     Логирует каждый просмотр для мониторинга.
     """
     landing = get_object_or_404(
-        LandingPage,
+        LandingPage.objects.select_related("service"),
         slug=slug,
         status=LandingPage.STATUS_PUBLISHED,
     )
@@ -30,11 +31,23 @@ def landing_page_view(request, slug: str):
     )
 
     # Безопасные значения по умолчанию если блоки не заполнены
-    blocks = landing.blocks or {}
+    blocks = list(landing.landing_blocks.filter(is_active=True).order_by("order"))
+    intro_block = next((b for b in blocks if b.block_type == "text"), None)
+
+    faq = []
+    for block in blocks:
+        if block.block_type == "faq":
+            faq.extend(faq_items(block.content))
+
+    media_items = []
+    if landing.service_id:
+        media_items = list(landing.service.media.filter(is_active=True).order_by("order"))
 
     context = {
         "landing": landing,
-        "blocks":  blocks,
-        "faq":     blocks.get("faq", []),
+        "blocks": blocks,
+        "faq": faq,
+        "intro_block": intro_block,
+        "media_items": media_items,
     }
     return render(request, "agents/landing_page.html", context)
