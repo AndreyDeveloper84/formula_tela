@@ -1,13 +1,13 @@
 """
-Тесты задачи 4.2: view и URL для посадочных страниц.
+Тесты задачи 4.2 / 5.1: view и URL для посадочных страниц.
 
 Что проверяем:
 - 200 для опубликованной страницы
 - 404 для черновика, модерации, отклонённой
 - 404 для несуществующего slug
 - Контент: h1, meta_title, meta_description в ответе
-- FAQ рендерится если есть
-- Блоки рендерятся если заполнены
+- LandingBlock-блоки рендерятся (новый подход)
+- JSON fallback для старых записей (обратная совместимость)
 - Пустые блоки не вызывают ошибок
 - URL резолвится правильно
 """
@@ -16,7 +16,7 @@ from django.urls import reverse, resolve
 from model_bakery import baker
 
 
-# ── Фикстуры ─────────────────────────────────────────────────────────────────
+# ── Фикстуры JSON (для fallback-теста) ──────────────────────────────────────
 
 SAMPLE_BLOCKS = {
     "intro":             "Боль в спине?\n\nМы поможем.",
@@ -35,17 +35,91 @@ SAMPLE_BLOCKS = {
 
 @pytest.fixture
 def published_landing(db):
-    """Опубликованная посадочная страница."""
-    return baker.make(
+    """Опубликованная страница с LandingBlock-блоками (новый подход)."""
+    landing = baker.make(
         "agents.LandingPage",
         slug="massazh-spiny",
         status="published",
         meta_title="Массаж спины в Пензе \u2014 от 1500 руб.",
         meta_description="Записывайтесь на массаж спины в Пензе.",
         h1="Массаж спины в Пензе",
-        blocks=SAMPLE_BLOCKS,
+        blocks={},
         generated_by_agent=True,
     )
+    # Создаём LandingBlock записи
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="accent",
+        title="Ключевая выгода",
+        content="Боль в спине? Мы поможем.",
+        order=1,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="checklist",
+        title="Что вы почувствуете",
+        content="Консультация\nМассаж\nРекомендации",
+        order=2,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="identification",
+        title="Ваш случай?",
+        content="При болях в спине\nПри стрессе",
+        order=3,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="checklist",
+        title="Противопоказания",
+        content="Острые воспаления\nОнкология",
+        order=4,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="text",
+        title="Результат",
+        content="Облегчение после первого сеанса",
+        order=5,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="cta",
+        title="",
+        btn_text="Запишитесь на массаж спины",
+        order=6,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="faq",
+        title="Частые вопросы",
+        content="Больно ли?\nНет, подбираем интенсивность.\n---\nКак часто?\nКурс 5-10 сеансов.",
+        order=7,
+        is_active=True,
+    )
+    baker.make(
+        "agents.LandingBlock",
+        landing_page=landing,
+        block_type="navigation",
+        title="Похожие процедуры",
+        content="massazh-shvz\nklassicheskij-massazh",
+        order=8,
+        is_active=True,
+    )
+    return landing
 
 
 @pytest.fixture
@@ -59,6 +133,21 @@ def draft_landing(db):
         meta_description="Черновик",
         h1="Черновик",
         blocks={},
+    )
+
+
+@pytest.fixture
+def json_fallback_landing(db):
+    """Старая запись с JSON blocks, без LandingBlock (fallback)."""
+    return baker.make(
+        "agents.LandingPage",
+        slug="json-fallback",
+        status="published",
+        meta_title="Массаж шеи в Пензе",
+        meta_description="Запишитесь на массаж шеи.",
+        h1="Массаж шеи в Пензе",
+        blocks=SAMPLE_BLOCKS,
+        generated_by_agent=True,
     )
 
 
@@ -137,7 +226,7 @@ class TestLandingPageView:
         assert response.status_code == 404
 
 
-# ── Контент страницы ──────────────────────────────────────────────────────────
+# ── Контент страницы (LandingBlock) ──────────────────────────────────────────
 
 class TestLandingPageContent:
 
@@ -162,36 +251,83 @@ class TestLandingPageContent:
         assert "Записывайтесь на массаж спины" in content
 
     @pytest.mark.django_db
-    def test_faq_rendered(self, client, published_landing):
+    def test_accent_block_rendered(self, client, published_landing):
+        """Акцентный блок (intro) присутствует в HTML."""
+        response = client.get(f"/{published_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Боль в спине" in content
+        assert "Ключевая выгода" in content
+
+    @pytest.mark.django_db
+    def test_checklist_block_rendered(self, client, published_landing):
+        """Чеклист-блок рендерится с галочками."""
+        response = client.get(f"/{published_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Что вы почувствуете" in content
+        assert "Консультация" in content
+
+    @pytest.mark.django_db
+    def test_identification_block_rendered(self, client, published_landing):
+        """Блок идентификации рендерится."""
+        response = client.get(f"/{published_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Ваш случай?" in content
+        assert "При болях в спине" in content
+
+    @pytest.mark.django_db
+    def test_text_block_rendered(self, client, published_landing):
+        """Текстовый блок (results) рендерится."""
+        response = client.get(f"/{published_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Результат" in content
+        assert "Облегчение после первого сеанса" in content
+
+    @pytest.mark.django_db
+    def test_cta_block_rendered(self, client, published_landing):
+        """CTA-кнопка рендерится с модалкой."""
+        response = client.get(f"/{published_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Запишитесь на массаж спины" in content
+        assert 'data-bs-toggle="modal"' in content
+        assert 'data-bs-target="#exampleModal"' in content
+
+    @pytest.mark.django_db
+    def test_faq_block_rendered(self, client, published_landing):
         """FAQ вопросы и ответы присутствуют в HTML."""
         response = client.get(f"/{published_landing.slug}/")
         content = response.content.decode("utf-8")
         assert "Больно ли?" in content
         assert "Нет, подбираем интенсивность." in content
+        assert "Частые вопросы" in content
 
     @pytest.mark.django_db
-    def test_intro_in_response(self, client, published_landing):
-        """Блок intro присутствует в HTML."""
-        response = client.get(f"/{published_landing.slug}/")
-        assert "Боль в спине" in response.content.decode("utf-8")
-
-    @pytest.mark.django_db
-    def test_cta_text_in_response(self, client, published_landing):
-        """CTA текст присутствует в HTML."""
-        response = client.get(f"/{published_landing.slug}/")
-        assert "Запишитесь на массаж спины" in response.content.decode("utf-8")
-
-    @pytest.mark.django_db
-    def test_internal_links_rendered(self, client, published_landing):
+    def test_navigation_block_rendered(self, client, published_landing):
         """Ссылки на связанные услуги присутствуют в HTML."""
         response = client.get(f"/{published_landing.slug}/")
         content = response.content.decode("utf-8")
         assert "massazh-shvz" in content
         assert "klassicheskij-massazh" in content
+        assert "Похожие процедуры" in content
+
+    @pytest.mark.django_db
+    def test_inactive_block_not_rendered(self, client, published_landing):
+        """Неактивный блок не рендерится."""
+        baker.make(
+            "agents.LandingBlock",
+            landing_page=published_landing,
+            block_type="text",
+            title="Скрытый блок",
+            content="Этот текст не должен показываться",
+            order=99,
+            is_active=False,
+        )
+        response = client.get(f"/{published_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Этот текст не должен показываться" not in content
 
     @pytest.mark.django_db
     def test_empty_blocks_no_error(self, client, db):
-        """Страница с пустыми блоками рендерится без ошибок."""
+        """Страница без блоков рендерится без ошибок."""
         baker.make(
             "agents.LandingPage",
             slug="empty-blocks",
@@ -220,10 +356,62 @@ class TestLandingPageContent:
         assert response.context["landing"] == published_landing
 
     @pytest.mark.django_db
-    def test_context_contains_faq(self, client, published_landing):
-        """Контекст содержит список faq."""
+    def test_context_has_blocks_true(self, client, published_landing):
+        """Контекст has_blocks=True когда есть LandingBlock."""
         response = client.get(f"/{published_landing.slug}/")
-        assert len(response.context["faq"]) == 2
+        assert response.context["has_blocks"] is True
+
+    @pytest.mark.django_db
+    def test_context_blocks_queryset(self, client, published_landing):
+        """Контекст blocks содержит LandingBlock queryset."""
+        response = client.get(f"/{published_landing.slug}/")
+        assert response.context["blocks"].count() == 8
+
+
+# ── JSON fallback (обратная совместимость) ───────────────────────────────────
+
+class TestLandingPageJsonFallback:
+
+    @pytest.mark.django_db
+    def test_json_fallback_renders(self, client, json_fallback_landing):
+        """Старая запись без LandingBlock → рендер через JSON fallback."""
+        response = client.get(f"/{json_fallback_landing.slug}/")
+        assert response.status_code == 200
+
+    @pytest.mark.django_db
+    def test_json_fallback_has_blocks_false(self, client, json_fallback_landing):
+        """Контекст has_blocks=False для старой записи."""
+        response = client.get(f"/{json_fallback_landing.slug}/")
+        assert response.context["has_blocks"] is False
+
+    @pytest.mark.django_db
+    def test_json_fallback_intro(self, client, json_fallback_landing):
+        """JSON intro рендерится в fallback."""
+        response = client.get(f"/{json_fallback_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Боль в спине" in content
+
+    @pytest.mark.django_db
+    def test_json_fallback_faq(self, client, json_fallback_landing):
+        """JSON FAQ рендерится в fallback."""
+        response = client.get(f"/{json_fallback_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Больно ли?" in content
+        assert "Нет, подбираем интенсивность." in content
+
+    @pytest.mark.django_db
+    def test_json_fallback_cta(self, client, json_fallback_landing):
+        """JSON CTA рендерится в fallback."""
+        response = client.get(f"/{json_fallback_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "Запишитесь на массаж спины" in content
+
+    @pytest.mark.django_db
+    def test_json_fallback_internal_links(self, client, json_fallback_landing):
+        """JSON internal_links рендерятся в fallback."""
+        response = client.get(f"/{json_fallback_landing.slug}/")
+        content = response.content.decode("utf-8")
+        assert "massazh-shvz" in content
 
 
 # ── Templatetags ──────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from .models import (
     AgentTask, AgentReport, ContentPlan, DailyMetric,
     SeoKeywordCluster, SeoRankSnapshot, SeoClusterSnapshot,
-    LandingPage, SeoTask,
+    LandingPage, LandingBlock, SeoTask,
 )
 
 
@@ -175,8 +175,49 @@ class MarkdownUploadForm(forms.Form):
         return f
 
 
+class LandingBlockInline(admin.StackedInline):
+    """Inline-редактор контентных блоков посадочной страницы."""
+    model = LandingBlock
+    extra = 0
+    ordering = ("order",)
+    classes = ("collapse",)
+    verbose_name = "Контентный блок"
+    verbose_name_plural = "📝 Контентные блоки (лендинг)"
+
+    fieldsets = (
+        (None, {
+            "fields": ("order", "is_active", "block_type", "heading_level", "title")
+        }),
+        ("Содержимое", {
+            "fields": ("content",),
+            "description": (
+                "<b>Форматы заполнения:</b><br>"
+                "• <b>Текст / Акцент / HTML / Форматы / Абонементы:</b> HTML-контент<br>"
+                "• <b>Чеклист / Идентификация:</b> каждый пункт с новой строки<br>"
+                "• <b>FAQ:</b> Вопрос?<br>Текст ответа.<br>---<br>Вопрос?<br>Текст ответа.<br>"
+                "&nbsp;&nbsp;(разделитель между вопросами — строка из трёх дефисов: <code>---</code>)<br>"
+                "• <b>CTA:</b> оставьте пустым (используется только кнопка)<br>"
+                "• <b>Таблица цен:</b> HTML-таблица<br>"
+                "• <b>Аккордеон:</b> HTML-контент (раскрывается по клику на заголовок)"
+            ),
+        }),
+        ("Оформление", {
+            "fields": ("bg_color", "text_color", "btn_text", "btn_sub", "css_class"),
+            "classes": ("collapse",),
+            "description": (
+                "<b>Какие поля для какого типа:</b><br>"
+                "• <b>Акцентный блок:</b> Цвет фона (#9BAE9E), Цвет текста (#fff)<br>"
+                "• <b>CTA-кнопка:</b> Текст кнопки, Подпись под кнопкой<br>"
+                "• <b>Навигация:</b> Цвет фона (#F5F5F5)<br>"
+                "• <b>Остальные:</b> можно не заполнять"
+            ),
+        }),
+    )
+
+
 @admin.register(LandingPage)
 class LandingPageAdmin(admin.ModelAdmin):
+    inlines = [LandingBlockInline]
     list_display    = [
         "h1", "slug", "status_badge", "cluster",
         "has_markdown", "generated_by_agent", "created_at",

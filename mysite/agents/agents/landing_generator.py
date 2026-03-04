@@ -24,7 +24,7 @@ import logging
 from django.conf import settings
 from openai import OpenAI
 
-from agents.models import LandingPage, SeoKeywordCluster, SeoTask
+from agents.models import LandingBlock, LandingPage, SeoKeywordCluster, SeoTask
 from agents.telegram import notify_new_landing
 
 logger = logging.getLogger(__name__)
@@ -48,10 +48,24 @@ class LandingPageGenerator:
 
     REQUIRED_JSON_FIELDS = {
         "meta_title", "meta_description", "h1",
-        "intro", "how_it_works", "who_is_it_for",
-        "contraindications", "results", "faq",
-        "cta_text", "internal_links",
+        "intro", "faq", "cta_text", "internal_links",
     }
+
+    # Маппинг GPT JSON → LandingBlock (порядок = порядок на странице)
+    BLOCK_MAPPING = [
+        # (json_key,            block_type,        default_title)
+        ("intro",               "accent",          "Ключевая выгода"),
+        ("how_it_works",        "checklist",       "Что вы почувствуете"),
+        ("who_is_it_for",       "identification",  "Ваш случай?"),
+        ("price_table",         "price_table",     "Цены"),
+        ("price_notes",         "text",            "Пояснения к форматам"),
+        ("subscriptions",       "subscriptions",   "Абонементы"),
+        ("special_formats",     "special_formats", "Особые форматы"),
+        ("premium",             "accent",          "Премиум"),
+        ("navigation_formats",  "navigation",      "Не знаете, что выбрать?"),
+        ("contraindications",   "checklist",       "Противопоказания"),
+        ("results",             "text",            "Результат"),
+    ]
 
     def __init__(self):
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -116,9 +130,12 @@ class LandingPageGenerator:
             generated_by_agent=True,
             source_markdown="",
         )
+        self._create_blocks(landing, data)
         logger.info(
-            "generate_landing: LandingPage создан (id=%s, slug='%s')",
+            "generate_landing: LandingPage создан (id=%s, slug='%s'), "
+            "%d блоков",
             landing.pk, landing.slug,
+            landing.landing_blocks.count(),
         )
 
         SeoTask.objects.create(
@@ -207,9 +224,12 @@ class LandingPageGenerator:
             generated_by_agent=True,
             source_markdown=markdown_text,
         )
+        self._create_blocks(landing, data)
         logger.info(
-            "generate_from_markdown: LandingPage создан (id=%s, slug='%s')",
+            "generate_from_markdown: LandingPage создан (id=%s, slug='%s'), "
+            "%d блоков",
             landing.pk, landing.slug,
+            landing.landing_blocks.count(),
         )
 
         SeoTask.objects.create(
@@ -367,20 +387,27 @@ class LandingPageGenerator:
             "1. meta_title: до 60 символов, ключ + город\n"
             "2. meta_description: до 160 символов, ключ + CTA\n"
             "3. h1: естественный заголовок с ключом, не копируй meta_title\n"
-            "4. intro: 2-3 абзаца: боль \u2192 решение \u2192 почему Формула тела\n"
-            "5. how_it_works: 3-5 конкретных шагов процедуры\n"
-            "6. who_is_it_for: список кому подходит (4-6 пунктов)\n"
-            "7. contraindications: список противопоказаний (3-5 пунктов)\n"
-            "8. results: результат через N сеансов \u2014 ТОЛЬКО если есть данные\n"
-            "9. faq: ровно 8-10 вопросов/ответов, реальные вопросы клиентов\n"
-            "10. cta_text: призыв к записи (1-2 предложения)\n"
-            "11. internal_links: slug\u2019и 2-3 связанных услуг\n\n"
+            "4. intro: ключевая выгода (2-3 абзаца: боль \u2192 решение \u2192 почему Формула тела)\n"
+            "5. how_it_works: \u00abЧто вы почувствуете\u00bb \u2014 3-5 конкретных пунктов\n"
+            "6. who_is_it_for: \u00abВаш случай?\u00bb \u2014 список кому подходит (4-6 пунктов)\n"
+            "7. price_table: HTML-таблица цен (все форматы/длительности из ДАННЫХ ОБ УСЛУГЕ)\n"
+            "8. price_notes: пояснения к форматам (текст, если есть что пояснить)\n"
+            "9. subscriptions: абонементы/экономия (HTML, если в данных есть пакеты)\n"
+            "10. special_formats: особые форматы (парный массаж, 4 руки и т.д., если применимо)\n"
+            "11. premium: описание премиум-опции (если есть в данных)\n"
+            "12. navigation_formats: навигация по форматам \u2014 slug\u2019и через \\n\n"
+            "13. contraindications: список противопоказаний (3-5 пунктов)\n"
+            "14. results: результат через N сеансов \u2014 ТОЛЬКО если есть данные\n"
+            "15. faq: ровно 8-10 вопросов/ответов, реальные вопросы клиентов\n"
+            "16. cta_text: призыв к записи (1-2 предложения)\n"
+            "17. internal_links: slug\u2019и 2-3 связанных услуг\n\n"
 
             "СТРОГИЕ ПРАВИЛА:\n"
             "- Если цены не указаны \u2192 пиши 'НУЖНО УТОЧНИТЬ: цена'\n"
             "- Не выдумывай цены, сроки, количество процедур\n"
             "- Не используй шаблонные фразы вроде 'высококвалифицированные специалисты'\n"
-            "- Пиши живым языком\n\n"
+            "- Пиши живым языком\n"
+            "- Необязательные поля (price_table..navigation_formats) \u2014 пустая строка если нет данных\n\n"
 
             "Отвечай СТРОГО валидным JSON без markdown:\n"
             "{\n"
@@ -388,8 +415,14 @@ class LandingPageGenerator:
             '  "meta_description": "до 160 символов",\n'
             '  "h1": "заголовок",\n'
             '  "intro": "2-3 абзаца через \\n\\n",\n'
-            '  "how_it_works": "шаги через \\n",\n'
+            '  "how_it_works": "пункты через \\n",\n'
             '  "who_is_it_for": "список через \\n",\n'
+            '  "price_table": "<table>...</table> или пустая строка",\n'
+            '  "price_notes": "пояснения или пустая строка",\n'
+            '  "subscriptions": "HTML или пустая строка",\n'
+            '  "special_formats": "HTML или пустая строка",\n'
+            '  "premium": "текст или пустая строка",\n'
+            '  "navigation_formats": "slug\\nslug или пустая строка",\n'
             '  "contraindications": "список через \\n",\n'
             '  "results": "текст или НУЖНО УТОЧНИТЬ",\n'
             '  "faq": [{"question": "...", "answer": "..."}, ...],\n'
@@ -441,17 +474,24 @@ class LandingPageGenerator:
             "   Если в брифе другие цены \u2014 игнорируй их\n"
             "6. Если цен в БД нет \u2014 пиши 'НУЖНО УТОЧНИТЬ: цена'\n"
             "7. faq: 8-10 вопросов, можешь брать из брифа или дополнять\n"
-            "8. Улучшай SEO-формулировки брифа, но не меняй факты\n\n"
+            "8. Улучшай SEO-формулировки брифа, но не меняй факты\n"
+            "9. Необязательные поля (price_table..navigation_formats) \u2014 пустая строка если нет данных\n\n"
 
             "Отвечай СТРОГО валидным JSON без markdown:\n"
             "{\n"
             '  "meta_title": "до 60 символов",\n'
             '  "meta_description": "до 160 символов",\n'
             '  "h1": "заголовок",\n'
-            '  "intro": "2-3 абзаца",\n'
-            '  "how_it_works": "шаги",\n'
-            '  "who_is_it_for": "список",\n'
-            '  "contraindications": "список",\n'
+            '  "intro": "ключевая выгода",\n'
+            '  "how_it_works": "пункты через \\n",\n'
+            '  "who_is_it_for": "список через \\n",\n'
+            '  "price_table": "<table>...</table> или пустая строка",\n'
+            '  "price_notes": "пояснения или пустая строка",\n'
+            '  "subscriptions": "HTML или пустая строка",\n'
+            '  "special_formats": "HTML или пустая строка",\n'
+            '  "premium": "текст или пустая строка",\n'
+            '  "navigation_formats": "slug\\nslug или пустая строка",\n'
+            '  "contraindications": "список через \\n",\n'
             '  "results": "текст",\n'
             '  "faq": [{"question": "...", "answer": "..."}],\n'
             '  "cta_text": "призыв",\n'
@@ -560,6 +600,67 @@ class LandingPageGenerator:
             )
 
         return warnings
+
+    def _create_blocks(self, landing: LandingPage, data: dict) -> None:
+        """
+        Создаёт LandingBlock записи из GPT-ответа.
+
+        Маппинг GPT JSON → LandingBlock определяется BLOCK_MAPPING.
+        Дополнительно: cta → блок CTA, faq → блок FAQ, internal_links → навигация.
+        """
+        order = 0
+
+        for json_key, block_type, default_title in self.BLOCK_MAPPING:
+            value = data.get(json_key, "")
+            if not value:
+                continue
+            order += 1
+            LandingBlock.objects.create(
+                landing_page=landing,
+                block_type=block_type,
+                title=default_title,
+                content=value,
+                order=order,
+            )
+
+        # CTA-кнопка
+        cta_text = data.get("cta_text", "")
+        if cta_text:
+            order += 1
+            LandingBlock.objects.create(
+                landing_page=landing,
+                block_type="cta",
+                title="",
+                btn_text=cta_text,
+                order=order,
+            )
+
+        # FAQ → блок типа "faq"
+        faq_list = data.get("faq", [])
+        if faq_list:
+            order += 1
+            faq_content = "\n---\n".join(
+                f"{item['question']}\n{item['answer']}" for item in faq_list
+            )
+            LandingBlock.objects.create(
+                landing_page=landing,
+                block_type="faq",
+                title="Частые вопросы",
+                content=faq_content,
+                order=order,
+            )
+
+        # internal_links → блок "navigation"
+        links = data.get("internal_links", [])
+        if links:
+            order += 1
+            LandingBlock.objects.create(
+                landing_page=landing,
+                block_type="navigation",
+                title="Похожие процедуры",
+                content="\n".join(links),
+                order=order,
+            )
 
     def _make_slug(self, cluster: SeoKeywordCluster) -> str:
         """

@@ -1,7 +1,8 @@
 """
-Тесты задачи 4.1: LandingPageGenerator.
+Тесты задачи 4.1 / 5.1: LandingPageGenerator.
 Покрывает generate_landing, generate_from_markdown,
-_get_services_context, _check_markdown_vs_db, _make_slug.
+_get_services_context, _check_markdown_vs_db, _make_slug,
+_create_blocks (LandingBlock создание).
 Все OpenAI и Telegram вызовы замоканы.
 """
 import json
@@ -10,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from model_bakery import baker
 
 from agents.agents.landing_generator import LandingPageGenerator, LandingGeneratorError
+from agents.models import LandingBlock
 
 
 # ── Константы ─────────────────────────────────────────────────────────────────
@@ -542,3 +544,191 @@ class TestMakeSlug:
         baker.make("agents.LandingPage", slug="test")
         baker.make("agents.LandingPage", slug="test-v2")
         assert LandingPageGenerator()._make_slug(cluster) == "test-v3"
+
+
+# ── _create_blocks (LandingBlock) ────────────────────────────────────────────
+
+class TestCreateBlocks:
+    """Тесты создания LandingBlock записей из GPT-ответа."""
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_blocks_created_count(self, mock_openai_cls, mock_notify, cluster):
+        """generate_landing создаёт ожидаемое количество LandingBlock."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        # VALID_GPT_RESPONSE содержит: intro, how_it_works, who_is_it_for,
+        # contraindications, results (5 из BLOCK_MAPPING) + cta + faq + navigation = 8
+        assert LandingBlock.objects.filter(landing_page=landing).count() == 8
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_intro_becomes_accent(self, mock_openai_cls, mock_notify, cluster):
+        """intro → block_type='accent', title='Ключевая выгода'."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="accent", order=1
+        )
+        assert block.title == "Ключевая выгода"
+        assert "Боль в спине" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_how_it_works_becomes_checklist(self, mock_openai_cls, mock_notify, cluster):
+        """how_it_works → block_type='checklist'."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="checklist", title="Что вы почувствуете"
+        )
+        assert "Консультация" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_who_is_it_for_becomes_identification(self, mock_openai_cls, mock_notify, cluster):
+        """who_is_it_for → block_type='identification'."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="identification"
+        )
+        assert block.title == "Ваш случай?"
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_results_becomes_text(self, mock_openai_cls, mock_notify, cluster):
+        """results → block_type='text', title='Результат'."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="text", title="Результат"
+        )
+        assert "Облегчение" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_cta_block_created(self, mock_openai_cls, mock_notify, cluster):
+        """cta_text → block_type='cta', btn_text заполнен."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="cta"
+        )
+        assert block.btn_text == "Запишитесь онлайн прямо сейчас"
+        assert block.title == ""
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_faq_block_created(self, mock_openai_cls, mock_notify, cluster):
+        """faq → block_type='faq', content содержит вопросы через ---."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="faq"
+        )
+        assert block.title == "Частые вопросы"
+        assert "---" in block.content
+        assert "Сколько сеансов нужно?" in block.content
+        assert "Курс 10 сеансов" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_navigation_block_created(self, mock_openai_cls, mock_notify, cluster):
+        """internal_links → block_type='navigation'."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        block = LandingBlock.objects.get(
+            landing_page=landing, block_type="navigation"
+        )
+        assert block.title == "Похожие процедуры"
+        assert "klassicheskij-massazh" in block.content
+        assert "sportivnyj-massazh" in block.content
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_block_order_sequential(self, mock_openai_cls, mock_notify, cluster):
+        """Порядок блоков последовательный (1, 2, 3, ...)."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        orders = list(
+            LandingBlock.objects.filter(landing_page=landing)
+            .order_by("order")
+            .values_list("order", flat=True)
+        )
+        assert orders == list(range(1, len(orders) + 1))
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_empty_fields_skip_blocks(self, mock_openai_cls, mock_notify, cluster):
+        """Пустые поля GPT-ответа не создают блоков."""
+        minimal = json.dumps({
+            "meta_title":        "Тест",
+            "meta_description":  "Тест",
+            "h1":                "Тест",
+            "intro":             "Введение",
+            "faq":               [],
+            "cta_text":          "",
+            "internal_links":    [],
+        })
+        mock_openai_cls.return_value = _make_openai_mock(minimal)
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        # Только intro → accent
+        assert LandingBlock.objects.filter(landing_page=landing).count() == 1
+        block = LandingBlock.objects.get(landing_page=landing)
+        assert block.block_type == "accent"
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_generate_from_markdown_creates_blocks(self, mock_openai_cls, mock_notify, cluster):
+        """generate_from_markdown тоже создаёт LandingBlock записи."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_from_markdown(cluster, SAMPLE_MARKDOWN)
+
+        assert LandingBlock.objects.filter(landing_page=landing).count() == 8
+
+    @pytest.mark.django_db
+    @patch("agents.agents.landing_generator.notify_new_landing")
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_blocks_all_active(self, mock_openai_cls, mock_notify, cluster):
+        """Все созданные блоки is_active=True по умолчанию."""
+        mock_openai_cls.return_value = _make_openai_mock()
+
+        landing = LandingPageGenerator().generate_landing(cluster)
+
+        assert (
+            LandingBlock.objects.filter(landing_page=landing, is_active=True).count()
+            == LandingBlock.objects.filter(landing_page=landing).count()
+        )

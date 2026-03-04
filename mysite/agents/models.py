@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+from services_app.models import BLOCK_TYPE_CHOICES, HEADING_LEVEL_CHOICES
+
 
 class AgentTask(models.Model):
     ANALYTICS        = "analytics"
@@ -321,6 +323,89 @@ class LandingPage(models.Model):
 
     def __str__(self):
         return f"{self.h1} [{self.get_status_display()}]"
+
+
+class LandingBlock(models.Model):
+    """
+    Контентный блок посадочной страницы — аналог ServiceBlock для лендингов.
+    Те же 12 типов блоков, те же поля оформления.
+    Редактируется через inline в LandingPageAdmin.
+    """
+    landing_page = models.ForeignKey(
+        LandingPage,
+        on_delete=models.CASCADE,
+        related_name="landing_blocks",
+        verbose_name="Посадочная страница",
+    )
+    block_type = models.CharField(
+        max_length=30,
+        choices=BLOCK_TYPE_CHOICES,
+        verbose_name="Тип блока",
+    )
+    title = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Заголовок блока",
+        help_text="Заголовок (H2 или H3). Можно оставить пустым.",
+    )
+    heading_level = models.CharField(
+        max_length=2,
+        choices=HEADING_LEVEL_CHOICES,
+        default="h2",
+        verbose_name="Уровень заголовка",
+        help_text="H2 — основной заголовок блока. H3 — подзаголовок внутри блока.",
+    )
+    content = models.TextField(
+        blank=True,
+        verbose_name="Содержимое",
+        help_text=(
+            "HTML разрешён. "
+            "Для чеклиста/идентификации — каждый пункт с новой строки. "
+            "Для FAQ — формат: Вопрос?\\nОтвет текст.\\n---\\nВопрос?\\nОтвет текст."
+        ),
+    )
+
+    # --- Настройки оформления ---
+    bg_color = models.CharField(
+        max_length=20, blank=True,
+        verbose_name="Цвет фона",
+        help_text="Для акцентного/навигационного блока. Пример: #9BAE9E",
+    )
+    text_color = models.CharField(
+        max_length=20, blank=True,
+        verbose_name="Цвет текста",
+        help_text="Пример: #fff или #333333",
+    )
+    btn_text = models.CharField(
+        max_length=100, blank=True,
+        verbose_name="Текст кнопки",
+        help_text="Для CTA-блока. По умолчанию: Записаться онлайн",
+    )
+    btn_sub = models.CharField(
+        max_length=200, blank=True,
+        verbose_name="Подпись под кнопкой",
+        help_text="Мелкий текст под кнопкой.",
+    )
+    css_class = models.CharField(
+        max_length=100, blank=True,
+        verbose_name="CSS-класс",
+        help_text="Дополнительный класс для стилизации блока.",
+    )
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    class Meta:
+        verbose_name = "Блок посадочной страницы"
+        verbose_name_plural = "Блоки посадочных страниц"
+        ordering = ["order"]
+        indexes = [
+            models.Index(fields=["landing_page", "is_active", "order"]),
+        ]
+
+    def __str__(self):
+        type_label = dict(BLOCK_TYPE_CHOICES).get(self.block_type, self.block_type)
+        title_str = f" — {self.title}" if self.title else ""
+        return f"[{type_label}]{title_str}"
 
 
 class SeoTask(models.Model):

@@ -29,12 +29,18 @@ def landing_page_view(request, slug: str):
         "landing_page_view: slug='%s', landing_id=%s", slug, landing.pk
     )
 
-    # Безопасные значения по умолчанию если блоки не заполнены
-    blocks = landing.blocks or {}
+    # LandingBlock записи (новый подход)
+    blocks = landing.landing_blocks.filter(is_active=True).order_by("order")
+    has_blocks = blocks.exists()
+
+    # Fallback: JSON-поле для старых записей без LandingBlock
+    json_blocks = landing.blocks or {}
 
     context = {
-        "landing": landing,
-        "blocks":  blocks,
-        "faq":     blocks.get("faq", []),
+        "landing":     landing,
+        "blocks":      blocks,
+        "has_blocks":  has_blocks,
+        "json_blocks": json_blocks,
+        "faq":         json_blocks.get("faq", []),
     }
     return render(request, "agents/landing_page.html", context)
