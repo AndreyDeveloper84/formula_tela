@@ -253,8 +253,8 @@ class LandingPageAdmin(admin.ModelAdmin):
     def has_markdown(self, obj):
         """Колонка MD: check if source_markdown is populated."""
         if obj.source_markdown:
-            return format_html('<span style="color:#5cb85c">\u2713</span>')
-        return format_html('<span style="color:#ccc">\u2014</span>')
+            return format_html('<span style="color:{}">{}</span>', '#5cb85c', '\u2713')
+        return format_html('<span style="color:{}">{}</span>', '#ccc', '\u2014')
     has_markdown.short_description = "MD"
 
     @admin.action(description="Opublikovat")
