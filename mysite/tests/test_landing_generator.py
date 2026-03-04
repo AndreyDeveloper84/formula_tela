@@ -848,6 +848,18 @@ class TestSentenceCase:
         assert result == "Расслабление мышц"
 
     @patch("agents.agents.landing_generator.OpenAI")
+    def test_preserves_proper_nouns(self, mock_openai_cls):
+        """Смешанный регистр с именами собственными → не трогаем."""
+        result = LandingPageGenerator._sentence_case("Массаж спины в Пензе")
+        assert result == "Массаж спины в Пензе"
+
+    @patch("agents.agents.landing_generator.OpenAI")
+    def test_lowercase_start_capitalized(self, mock_openai_cls):
+        """Строка с маленькой первой буквой → заглавная, остальное не трогаем."""
+        result = LandingPageGenerator._sentence_case("шея и плечи «каменные» от работы")
+        assert result == "Шея и плечи «каменные» от работы"
+
+    @patch("agents.agents.landing_generator.OpenAI")
     def test_numbered_markers(self, mock_openai_cls):
         """Нумерованные маркеры убираются."""
         result = LandingPageGenerator._sentence_case("1. КОНСУЛЬТАЦИЯ\n2. МАССАЖ")

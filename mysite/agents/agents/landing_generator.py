@@ -116,7 +116,7 @@ class LandingPageGenerator:
             status=LandingPage.STATUS_DRAFT,
             meta_title=data["meta_title"][:70],
             meta_description=data["meta_description"][:160],
-            h1=data["h1"][:200],
+            h1=self._sentence_case(data["h1"][:200]),
             blocks={
                 "intro":             data.get("intro", ""),
                 "how_it_works":      data.get("how_it_works", ""),
@@ -210,7 +210,7 @@ class LandingPageGenerator:
             status=LandingPage.STATUS_DRAFT,
             meta_title=data["meta_title"][:70],
             meta_description=data["meta_description"][:160],
-            h1=data["h1"][:200],
+            h1=self._sentence_case(data["h1"][:200]),
             blocks={
                 "intro":             data.get("intro", ""),
                 "how_it_works":      data.get("how_it_works", ""),
@@ -609,8 +609,11 @@ class LandingPageGenerator:
         """
         Нормализует каждую строку текста к формату предложения.
 
-        - Первая буква заглавная, остальные строчные
-        - Убирает эмодзи-маркеры (✅, ✓, 💚, •, - и т.п.) перед нормализацией
+        Логика:
+        - ALL CAPS строка → первая буква заглавная, остальные строчные
+        - Строка с маленькой первой буквой → первую делаем заглавной
+        - Смешанный регистр (уже правильный) → не трогаем
+        - Убирает эмодзи-маркеры (✅, ✓, 💚, •, - и т.п.)
         - Пропускает пустые строки, разделители (---), строки с HTML (<)
         """
         import re
@@ -631,10 +634,20 @@ class LandingPageGenerator:
             if not stripped or stripped == "---" or "<" in stripped:
                 result.append(line)
                 continue
-            # Убираем маркер, нормализуем, маркер не возвращаем
+            # Убираем маркер
             cleaned = marker_re.sub("", stripped)
-            if cleaned:
+            if not cleaned:
+                result.append(cleaned)
+                continue
+            # Проверяем: строка ALL CAPS? (все буквы заглавные)
+            alpha_chars = [c for c in cleaned if c.isalpha()]
+            is_all_caps = alpha_chars and all(c.isupper() for c in alpha_chars)
+            if is_all_caps:
+                # ALL CAPS → sentence case
                 cleaned = cleaned[0].upper() + cleaned[1:].lower()
+            elif cleaned[0].isalpha() and cleaned[0].islower():
+                # Первая буква строчная → делаем заглавной
+                cleaned = cleaned[0].upper() + cleaned[1:]
             result.append(cleaned)
         return "\n".join(result)
 
@@ -658,7 +671,7 @@ class LandingPageGenerator:
             LandingBlock.objects.create(
                 landing_page=landing,
                 block_type=block_type,
-                title=default_title,
+                title=self._sentence_case(default_title),
                 content=value,
                 order=order,
             )
