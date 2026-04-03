@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.humanize",
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
+    "agents",
 ]
 
 MIDDLEWARE = [
@@ -124,3 +125,54 @@ LOGGING = {
 YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
 YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
 YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")
+
+# === Celery ===
+from celery.schedules import crontab  # noqa: E402
+
+CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_BEAT_SCHEDULE = {
+    "daily-agents-9am": {
+        "task": "agents.tasks.run_daily_agents",
+        "schedule": crontab(hour=9, minute=0),
+    },
+    "weekly-agents-monday-8am": {
+        "task": "agents.tasks.run_weekly_agents",
+        "schedule": crontab(hour=8, minute=0, day_of_week="monday"),
+    },
+    "daily-rank-snapshots-7am": {
+        "task": "agents.tasks.collect_rank_snapshots",
+        "schedule": crontab(hour=7, minute=0),
+    },
+}
+
+# === OpenAI ===
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# === Яндекс.Метрика ===
+YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
+YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")
+
+# === Яндекс.Директ ===
+YANDEX_DIRECT_TOKEN        = os.getenv("YANDEX_DIRECT_TOKEN", "")
+YANDEX_DIRECT_CLIENT_LOGIN = os.getenv("YANDEX_DIRECT_CLIENT_LOGIN", "")
+
+# === VK Реклама ===
+VK_ADS_TOKEN      = os.getenv("VK_ADS_TOKEN", "")
+VK_ADS_ACCOUNT_ID = os.getenv("VK_ADS_ACCOUNT_ID", "")
+
+# === Яндекс.Вебмастер ===
+# Токен: https://oauth.yandex.ru/ (scope: webmaster:info)
+# HOST_ID: encoded URL вида https:yourdomain.ru:443
+#   Узнать: python manage.py check_webmaster --list-hosts
+YANDEX_WEBMASTER_TOKEN   = os.getenv("YANDEX_WEBMASTER_TOKEN", "")
+YANDEX_WEBMASTER_USER_ID = os.getenv("YANDEX_WEBMASTER_USER_ID", "")  # авто-получается если пусто
+YANDEX_WEBMASTER_HOST_ID = os.getenv("YANDEX_WEBMASTER_HOST_ID", "")
+
+# Базовый URL сайта (без trailing slash)
+# Используется TechnicalSEOWatchdog для проверки страниц
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela.ru")

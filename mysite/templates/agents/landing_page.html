@@ -1,0 +1,246 @@
+{% extends "website/base.html" %}
+{% load static %}
+{% load landing_tags %}
+
+{% block title %}{{ landing.meta_title }}{% endblock %}
+{% block description %}{{ landing.meta_description }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* -- Типографика -- */
+  .landing-page { color: #333; }
+  .landing-page h1 { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; }
+  .landing-page h2 { font-size: 1.4rem; font-weight: 600; margin: 2rem 0 1rem; color: #333; }
+
+  /* -- Hero -- */
+  .landing-hero {
+    background: linear-gradient(135deg, #9BAE9E 0%, #6b8f71 100%);
+    color: white;
+    padding: 60px 0 50px;
+  }
+  .landing-hero h1 { color: white; font-size: 2.4rem; }
+  .landing-hero p { font-size: 1.15rem; opacity: 0.92; margin-top: 0.5rem; }
+
+  /* -- Блоки контента -- */
+  .landing-section { padding: 40px 0; }
+  .landing-section:nth-child(even) { background: #f8f9fa; }
+
+  /* -- Список с иконками -- */
+  .icon-list { list-style: none; padding: 0; }
+  .icon-list li { padding: 6px 0 6px 28px; position: relative; line-height: 1.5; }
+  .icon-list li::before {
+    content: "\2713";
+    position: absolute;
+    left: 0;
+    color: #9BAE9E;
+    font-weight: 700;
+  }
+
+  /* -- FAQ аккордеон -- */
+  .faq-item {
+    border-bottom: 1px solid #e0e0e0;
+    padding: 16px 0;
+  }
+  .faq-question {
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .faq-question::after {
+    content: "+";
+    font-size: 1.4rem;
+    color: #9BAE9E;
+    flex-shrink: 0;
+    transition: transform 0.2s;
+  }
+  .faq-item.open .faq-question::after { transform: rotate(45deg); }
+  .faq-answer {
+    display: none;
+    padding-top: 10px;
+    color: #555;
+    line-height: 1.7;
+  }
+  .faq-item.open .faq-answer { display: block; }
+
+  /* -- CTA кнопка -- */
+  .cta-section {
+    background: #333;
+    color: white;
+    padding: 50px 0;
+    text-align: center;
+  }
+  .btn-cta {
+    background: #9BAE9E;
+    color: white;
+    border: none;
+    padding: 14px 36px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 16px;
+    transition: background 0.2s;
+  }
+  .btn-cta:hover { background: #7a9680; color: white; }
+
+  /* -- Внутренние ссылки -- */
+  .internal-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .internal-link-card {
+    border: 1px solid #9BAE9E;
+    border-radius: 6px;
+    padding: 10px 18px;
+    color: #9BAE9E;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .internal-link-card:hover {
+    background: #9BAE9E;
+    color: white;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="landing-page">
+
+  {# -- HERO -- #}
+  <section class="landing-hero">
+    <div class="container">
+      <h1>{{ landing.h1 }}</h1>
+      {% if blocks.intro %}
+        <p>{{ blocks.intro|truncatewords:30 }}</p>
+      {% endif %}
+      <a href="#" class="btn-cta" style="margin-top:24px;" data-bs-toggle="modal" data-bs-target="#exampleModal">
+        Записаться онлайн
+      </a>
+    </div>
+  </section>
+
+  {# -- INTRO -- #}
+  {% if blocks.intro %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>О процедуре</h2>
+      <div style="line-height:1.8; white-space:pre-line;">{{ blocks.intro }}</div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# -- КАК ЭТО РАБОТАЕТ -- #}
+  {% if blocks.how_it_works %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>Как проходит процедура</h2>
+      <ul class="icon-list">
+        {% for line in blocks.how_it_works|split_lines %}
+          {% if line %}<li>{{ line }}</li>{% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+
+  {# -- КОМУ ПОДХОДИТ -- #}
+  {% if blocks.who_is_it_for %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>Кому подходит</h2>
+      <ul class="icon-list">
+        {% for line in blocks.who_is_it_for|split_lines %}
+          {% if line %}<li>{{ line }}</li>{% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+
+  {# -- ПРОТИВОПОКАЗАНИЯ -- #}
+  {% if blocks.contraindications %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>Противопоказания</h2>
+      <ul class="icon-list">
+        {% for line in blocks.contraindications|split_lines %}
+          {% if line %}<li>{{ line }}</li>{% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+
+  {# -- РЕЗУЛЬТАТЫ -- #}
+  {% if blocks.results %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>Результат</h2>
+      <p style="font-size:1.1rem; line-height:1.8;">{{ blocks.results }}</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {# -- CTA -- #}
+  <section class="cta-section" id="cta">
+    <div class="container">
+      <h2 style="color:white;">
+        {% if blocks.cta_text %}{{ blocks.cta_text }}{% else %}Запишитесь на процедуру{% endif %}
+      </h2>
+      <a href="#" class="btn-cta" data-bs-toggle="modal" data-bs-target="#exampleModal">
+        Записаться онлайн
+      </a>
+      <p style="margin-top:14px; opacity:0.7; font-size:0.95rem;">
+        Или позвоните: <a href="tel:+78412393433" style="color:#9BAE9E;">8 (8412) 39-34-33</a>
+      </p>
+    </div>
+  </section>
+
+  {# -- FAQ -- #}
+  {% if faq %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>Частые вопросы</h2>
+      <div class="faq-list">
+        {% for item in faq %}
+        <div class="faq-item">
+          <div class="faq-question" onclick="toggleFaq(this)">
+            {{ item.question }}
+          </div>
+          <div class="faq-answer">{{ item.answer }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# -- СВЯЗАННЫЕ УСЛУГИ -- #}
+  {% if blocks.internal_links %}
+  <section class="landing-section">
+    <div class="container">
+      <h2>Похожие процедуры</h2>
+      <div class="internal-links">
+        {% for link_slug in blocks.internal_links %}
+          <a href="/{{ link_slug }}/" class="internal-link-card">
+            {{ link_slug|slugify_to_title }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleFaq(el) {
+  el.parentElement.classList.toggle('open');
+}
+</script>
+{% endblock %}

@@ -59,13 +59,6 @@ class Service(models.Model):
         verbose_name="SEO Description",
         help_text="Для <meta description>. До 160 символов."
     )
-    seo_h1 = models.CharField(
-        max_length=200,
-        blank=True,
-        verbose_name="H1 заголовок",
-        help_text="Если пусто — используется название услуги."
-    )
-    
     subtitle = models.CharField(
         max_length=300,
         blank=True,

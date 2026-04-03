@@ -1,0 +1,222 @@
+import logging
+
+import requests
+from django.conf import settings
+from django.urls import reverse
+
+logger = logging.getLogger(__name__)
+
+
+def send_telegram(text: str) -> bool:
+    """Отправить сообщение в Telegram-чат. Возвращает True при успехе."""
+    token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        logger.warning("send_telegram: TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не настроены")
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        r = requests.post(
+            url,
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=10,
+        )
+        if not r.ok:
+            logger.error("send_telegram HTTP %s: %s", r.status_code, r.text[:200])
+        return r.ok
+    except requests.RequestException as exc:
+        logger.error("send_telegram error: %s", exc)
+        return False
+
+
+def send_seo_alert(alerts: list[dict]) -> bool:
+    """
+    Отправляет Telegram-алерт о просадках SEO-кластеров.
+
+    Каждый алерт имеет формат:
+    {
+        "cluster": str,                        # название кластера
+        "type": "click_drop" | "position_drop",
+        "change": float,   # % для click_drop, кол-во мест для position_drop
+        "current": float,  # текущее значение (клики или позиция)
+        "previous": float, # предыдущее значение
+        "url": str,        # target_url кластера
+    }
+
+    Формирует одно сообщение со всеми алертами, сгруппированными по типу.
+    Возвращает True если сообщение отправлено успешно.
+    Если алертов нет — не отправляет ничего, возвращает True.
+    """
+    if not alerts:
+        return True
+
+    click_drops = [a for a in alerts if a["type"] == "click_drop"]
+    pos_drops   = [a for a in alerts if a["type"] == "position_drop"]
+
+    lines = ["\U0001f53b <b>SEO-алерт: просадки позиций</b>"]
+
+    # ── Просадки кликов ───────────────────────────────────────────────
+    if click_drops:
+        lines.append(
+            f"\n\U0001f4c9 <b>Падение кликов \u226520%</b> ({len(click_drops)} кластеров):"
+        )
+        for a in sorted(click_drops, key=lambda x: x["change"]):
+            lines.append(
+                f"\u2022 <b>{a['cluster']}</b> \u2014 {a['change']:+.1f}%"
+                f" ({int(a['previous'])} \u2192 {int(a['current'])} кл.)"
+                f"\n  <code>{a['url']}</code>"
+            )
+
+    # ── Просадки позиций ──────────────────────────────────────────────
+    if pos_drops:
+        lines.append(
+            f"\n\U0001f4cd <b>Ухудшение позиций \u22653 места</b> ({len(pos_drops)} кластеров):"
+        )
+        for a in sorted(pos_drops, key=lambda x: x["change"], reverse=True):
+            lines.append(
+                f"\u2022 <b>{a['cluster']}</b> \u2014 +{a['change']:.1f} мест"
+                f" (поз. {a['previous']:.1f} \u2192 {a['current']:.1f})"
+                f"\n  <code>{a['url']}</code>"
+            )
+
+    # ── Что делать ────────────────────────────────────────────────────
+    lines.append(
+        "\n<b>Что делать:</b>\n"
+        "1. Проверь изменения на страницах за неделю\n"
+        "2. Обнови Title/Description под запросы\n"
+        "3. Проверь индексацию в Яндекс.Вебмастере"
+    )
+
+    text = "\n".join(lines)
+    return send_telegram(text)
+
+
+def notify_new_landing(landing) -> bool:
+    """
+    Уведомляет в Telegram о новой SEO-посадочной странице для модерации.
+
+    Параметр landing — объект LandingPage (duck typing, без импорта модели).
+    Используемые атрибуты: pk, slug, h1, cluster (опционально, может быть None).
+
+    Формирует ссылку на admin-панель:
+    - Если SITE_BASE_URL настроен — полный URL
+    - Иначе — относительный путь /admin/agents/landingpage/<pk>/change/
+
+    Возвращает True если сообщение отправлено успешно.
+    """
+    # Admin URL
+    admin_path = reverse("admin:agents_landingpage_change", args=[landing.pk])
+    base_url = getattr(settings, "SITE_BASE_URL", "")
+    if base_url:
+        admin_url = f"{base_url.rstrip('/')}{admin_path}"
+    else:
+        admin_url = admin_path
+
+    # Название кластера (graceful)
+    cluster_name = ""
+    if hasattr(landing, "cluster") and landing.cluster:
+        cluster_name = landing.cluster.name
+
+    lines = [
+        "\U0001f4dd <b>Новая SEO-страница на модерацию</b>",
+    ]
+
+    if cluster_name:
+        lines.append(f"\n\U0001f3af <b>Кластер:</b> {cluster_name}")
+
+    lines.append(f"\n<b>H1:</b> {landing.h1}")
+    lines.append(f"<b>Slug:</b> <code>{landing.slug}</code>")
+    lines.append(f"\n\U0001f517 <a href=\"{admin_url}\">Открыть в админке</a>")
+
+    # Чеклист модерации
+    lines.append(
+        "\n<b>Чеклист модерации:</b>\n"
+        "\u2610 Title \u2264 70 символов\n"
+        "\u2610 Description \u2264 160 символов\n"
+        "\u2610 H1 содержит ключевой запрос\n"
+        "\u2610 Контент уникален и полезен\n"
+        "\u2610 Внутренние ссылки корректны"
+    )
+
+    text = "\n".join(lines)
+    return send_telegram(text)
+
+
+def send_weekly_seo_report(report: dict) -> bool:
+    """
+    Отправляет еженедельный SEO-отчёт в Telegram.
+
+    Структура report:
+    {
+        "period": str,                    # "17.02 – 23.02.2026"
+        "total_clusters": int,
+        "total_clicks": int,
+        "total_impressions": int,
+        "avg_position": float,
+        "top_growth": [{"cluster": str, "change": float, "url": str}],
+        "top_drops": [{"cluster": str, "change": float, "url": str}],
+        "opportunities": [str],           # текстовые рекомендации
+        "weekly_plan": [str],             # задачи на неделю
+    }
+
+    Все поля опциональны (используется report.get с дефолтами).
+    Пустой словарь → возвращает True, send_telegram НЕ вызывается.
+    """
+    if not report:
+        return True
+
+    period = report.get("period", "—")
+    total_clusters = report.get("total_clusters", 0)
+    total_clicks = report.get("total_clicks", 0)
+    total_impressions = report.get("total_impressions", 0)
+    avg_position = report.get("avg_position", 0.0)
+
+    lines = [
+        f"\U0001f4ca <b>SEO-отчёт за неделю: {period}</b>",
+    ]
+
+    # ── Общие метрики ────────────────────────────────────────────────
+    lines.append(
+        f"\n\U0001f4c8 <b>Общие метрики:</b>\n"
+        f"\u2022 Кластеров: {total_clusters}\n"
+        f"\u2022 Клики: {total_clicks}\n"
+        f"\u2022 Показы: {total_impressions}\n"
+        f"\u2022 Средняя позиция: {avg_position:.1f}"
+    )
+
+    # ── Лидеры роста ─────────────────────────────────────────────────
+    top_growth = report.get("top_growth", [])
+    if top_growth:
+        lines.append(f"\n\U0001f7e2 <b>Лидеры роста</b> ({len(top_growth)}):")
+        for item in top_growth:
+            lines.append(
+                f"\u2022 <b>{item['cluster']}</b> \u2014 {item['change']:+.1f}%"
+                f"\n  <code>{item['url']}</code>"
+            )
+
+    # ── Просадки ─────────────────────────────────────────────────────
+    top_drops = report.get("top_drops", [])
+    if top_drops:
+        lines.append(f"\n\U0001f534 <b>Просадки</b> ({len(top_drops)}):")
+        for item in top_drops:
+            lines.append(
+                f"\u2022 <b>{item['cluster']}</b> \u2014 {item['change']:+.1f}%"
+                f"\n  <code>{item['url']}</code>"
+            )
+
+    # ── Возможности ──────────────────────────────────────────────────
+    opportunities = report.get("opportunities", [])
+    if opportunities:
+        lines.append(f"\n\U0001f4a1 <b>Возможности:</b>")
+        for i, opp in enumerate(opportunities, 1):
+            lines.append(f"{i}. {opp}")
+
+    # ── План на неделю ───────────────────────────────────────────────
+    weekly_plan = report.get("weekly_plan", [])
+    if weekly_plan:
+        lines.append(f"\n\U0001f4cb <b>План на неделю:</b>")
+        for i, task in enumerate(weekly_plan, 1):
+            lines.append(f"{i}. {task}")
+
+    text = "\n".join(lines)
+    return send_telegram(text)
