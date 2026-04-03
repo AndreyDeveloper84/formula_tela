@@ -3,6 +3,7 @@
 Использование: DJANGO_SETTINGS_MODULE=mysite.settings.production
 """
 from .base import *
+from .base import _csv, _bool, _scheme  # private helpers not exported by import *
 
 # ⚠️ DEBUG всегда выключен в production
 DEBUG = False
