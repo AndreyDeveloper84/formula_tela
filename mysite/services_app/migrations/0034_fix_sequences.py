@@ -1,6 +1,5 @@
 from django.db import migrations
 
-# Tables whose PostgreSQL sequences need resetting (INSERT returns 500 due to duplicate PK)
 TABLES_TO_FIX = [
     'services_app_serviceblock',
     'services_app_review',
@@ -18,7 +17,6 @@ RESET_SQL = (
 
 
 def fix_sequences(apps, schema_editor):
-    """Reset PostgreSQL sequences to max(id)+1 so new INSERTs don't fail."""
     if schema_editor.connection.vendor != 'postgresql':
         return
     with schema_editor.connection.cursor() as cursor:
