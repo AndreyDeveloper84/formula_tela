@@ -41,4 +41,3 @@ LOGGING = {
     },
 }
 
-print("[LOCAL] Настройки: localhost, без SSL")
