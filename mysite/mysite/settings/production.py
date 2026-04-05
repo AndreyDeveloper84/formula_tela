@@ -37,4 +37,5 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 assert not DEBUG, "❌ DEBUG must be False in production!"
 assert ALLOWED_HOSTS, "❌ ALLOWED_HOSTS must be set in production!"
 
-print("🚀 Загружены настройки PRODUCTION (максимальная безопасность)")
+import logging as _logging
+_logging.getLogger(__name__).info("Загружены настройки PRODUCTION")

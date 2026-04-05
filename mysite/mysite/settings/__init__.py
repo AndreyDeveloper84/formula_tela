@@ -25,10 +25,7 @@ env = _os.getenv("DJANGO_ENV", "local").lower()
 # Выбираем правильный файл настроек
 if env == "production" or env == "prod":
     from .production import *  # noqa
-    print("[ENV] PRODUCTION")
 elif env == "staging" or env == "stg":
     from .staging import *  # noqa
-    print("[ENV] STAGING")
 else:
     from .local import *  # noqa
-    print("[ENV] LOCAL (localhost)")
