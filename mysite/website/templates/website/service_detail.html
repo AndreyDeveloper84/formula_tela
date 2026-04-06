@@ -3,11 +3,9 @@
 
 {% block title %}{{ seo_title|default:service.name }} | {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 
-{% block extra_head %}
-    {% if seo_description %}
-    <meta name="description" content="{{ seo_description }}">
-    {% endif %}
+{% block description %}{% if seo_description %}{{ seo_description }}{% else %}{{ service.description|default:"" }}{% endif %}{% endblock %}
 
+{% block extra_head %}
     {# --- Canonical --- #}
     {% if service.slug %}
     <link rel="canonical" href="https://formulatela58.ru/uslugi/{{ service.slug }}/">
