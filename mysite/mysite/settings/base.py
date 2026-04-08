@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
     "django.contrib.humanize",
+    "django.contrib.sitemaps",
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
@@ -177,4 +178,4 @@ YANDEX_WEBMASTER_HOST_ID = os.getenv("YANDEX_WEBMASTER_HOST_ID", "")
 
 # Базовый URL сайта (без trailing slash)
 # Используется TechnicalSEOWatchdog для проверки страниц
-SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela.ru")
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela58.ru")

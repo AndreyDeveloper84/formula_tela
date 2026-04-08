@@ -15,21 +15,53 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 
 from agents.views import landing_page_view
+from website.sitemaps import (
+    CategorySitemap,
+    LandingPageSitemap,
+    ServiceSitemap,
+    StaticViewSitemap,
+)
+
+sitemaps = {
+    "static": StaticViewSitemap,
+    "services": ServiceSitemap,
+    "categories": CategorySitemap,
+    "landings": LandingPageSitemap,
+}
+
 
 def healthz(_request):
     return JsonResponse({"status": "ok"})
+
+
+def robots_txt(_request):
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin/",
+        "Disallow: /api/",
+        "",
+        f"Sitemap: {settings.SITE_BASE_URL}/sitemap.xml",
+        f"Host: {settings.SITE_BASE_URL.replace('https://', '').replace('http://', '')}",
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('booking/', include('booking.urls')),  # Added trailing slash
     path('', include('website.urls')),
     path('healthz/', healthz, name='healthz'),
+    path('robots.txt', robots_txt, name='robots_txt'),
+    path('sitemap.xml', sitemap, {"sitemaps": sitemaps},
+         name='django.contrib.sitemaps.views.sitemap'),
 
     # Посадочные страницы — слаг-маршрут должен быть последним,
     # чтобы не перехватывать admin/, booking/, healthz/ и т.д.
