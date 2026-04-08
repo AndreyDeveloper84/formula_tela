@@ -774,7 +774,7 @@ def _render_service_detail(request, service):
     
     # 7. SEO — fallback на название услуги если поля пусты
     seo_title = service.seo_title or f"{service.name} — {service.category.name if service.category else ''}"
-    seo_description = service.seo_description or service.description[:160] if service.description else ""
+    seo_description = service.seo_description or (service.description[:160] if service.description else "")
     seo_h1 = service.seo_h1 or service.name
     
     related_services = service.related_services.filter(
