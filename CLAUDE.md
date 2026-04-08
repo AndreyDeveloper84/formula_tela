@@ -77,6 +77,7 @@ mysite/                  <- корень git
 - `SeoTask` — задача для SEO-специалиста; task_type: create_landing/update_meta/add_faq/fix_technical/rewrite_cta/add_content_block; priority: high/medium/low; status: open/in_progress/done
 
 Расписание Celery beat:
+- `daily-rank-snapshots-7am` → `agents.tasks.collect_rank_snapshots` (каждый день в 07:00)
 - `daily-agents-9am` → `agents.tasks.run_daily_agents` (каждый день в 09:00)
 - `weekly-agents-monday-8am` → `agents.tasks.run_weekly_agents` (понедельник в 08:00)
 
@@ -164,7 +165,11 @@ pytest
 # DJANGO_SETTINGS_MODULE = mysite.settings
 # pythonpath = mysite
 # testpaths = mysite/tests
-# addopts = -q
+# addopts = -q -m "not live"
+# markers: live — тесты с реальным YClients API (исключены из CI)
+
+# Запуск live-тестов вручную:
+pytest mysite/tests/test_booking_live.py -v -s
 ```
 
 Тестовые файлы в `mysite/tests/`. Используй `model-bakery` (`baker.make(...)`) для фикстур.
@@ -196,7 +201,7 @@ pytest
 | `staging.py` | Staging-сервер |
 | `production.py` | Продакшн PostgreSQL |
 
-Настройки выбираются автоматически: `__init__.py` читает переменную `DJANGO_ENV` (production -> staging -> local по умолчанию).
+Настройки выбираются автоматически: `__init__.py` загружает `.env` через `python-dotenv` **до** чтения `DJANGO_ENV` (production -> staging -> local по умолчанию). Это гарантирует, что `.env` файл имеет приоритет над системным окружением.
 
 ---
 
@@ -263,11 +268,24 @@ Telegram уведомление администратору
 ### Типы AgentTask и их файлы
 | task_type | файл | расписание |
 |---|---|---|
-| analytics | agents/tasks.py | ежедневно 9:00 |
-| analytics_budget | agents/tasks.py | понедельник 8:00 |
+| analytics | agents/agents/analytics.py | ежедневно 9:00 (через SupervisorAgent) |
+| analytics_budget | agents/agents/analytics_budget.py | ежедневно 9:00 (всегда) |
 | seo_landing | agents/agents/seo_landing.py | понедельник 8:00 |
-| smm_growth | agents/tasks.py | понедельник 8:00 |
-| offers | agents/tasks.py | ежедневно 9:00 |
+| smm_growth | agents/agents/smm_growth.py | понедельник 8:00 |
+| offers | agents/agents/offers.py | ежедневно 9:00 (через SupervisorAgent) |
+| offer_packages | agents/agents/offer_packages.py | понедельник 8:00 |
+
+### Трёхуровневое расписание
+```
+07:00 ежедневно  → collect_rank_snapshots (Вебмастер → SeoClusterSnapshot → analyze_rank_changes)
+08:00 понедельник → run_weekly_agents (OfferPackages → SMMGrowth → SEOLanding → Supervisor.weekly_run)
+09:00 ежедневно  → run_daily_agents (Supervisor.decide → Analytics/Offers → AnalyticsBudget)
+```
+
+### SupervisorAgent (оркестратор)
+- `decide()` — LLM-роутер, определяет какие ежедневные агенты запустить (analytics если >1 день, offers по Пн/Чт или >3 дней)
+- `run()` — запускает AnalyticsAgent и/или OfferAgent по результату decide()
+- `weekly_run()` — собирает последние DONE-отчёты всех 6 агентов, синтезирует бэклог через GPT, шлёт Telegram с приоритизированными задачами
 
 ### Правила агентов — СТРОГО СОБЛЮДАТЬ
 - Агенты **НИКОГДА** не публикуют контент автоматически
@@ -290,6 +308,10 @@ Telegram уведомление администратору
 | Prefetch в views | Предотвращение N+1 запросов |
 | WAF bypass headers для YClients | Без них возвращается 403 |
 | Slug-based URL везде | SEO-приоритет; ID-based -> 301 редирект |
+| Django>=5.2,<6.0 пин в requirements | Предотвращение ломающего апгрейда |
+| .env загружается до DJANGO_ENV | Гарантия что .env имеет приоритет над systemd env |
+| SupervisorAgent как LLM-роутер | Автоматический выбор нужных ежедневных агентов по контексту |
+| 3-уровневое расписание (7/8/9) | Данные собираются до запуска агентов |
 
 ---
 
@@ -331,28 +353,46 @@ git pull origin dev
 ---
 
 ## Быстрый справочник команд
-```bash
-# Запуск локально
-cd mysite && python manage.py runserver
 
-# Celery (оба нужны для агентов)
-celery -A mysite worker -l info
-celery -A mysite beat -l info
+### Makefile (рекомендуемый способ)
+```bash
+make db              # PostgreSQL + Redis в фоне
+make db-stop         # Остановить PostgreSQL + Redis
+make run             # Django dev server (требует make db)
+make migrate         # Применить миграции
+make makemigrations  # Создать миграции
+make shell           # Django shell
+make docker          # Весь стек в Docker (db + redis + web)
+make logs            # Логи контейнеров БД и Redis
+make psql            # psql в контейнере БД
+make worker          # Celery worker (локально)
+make beat            # Celery beat планировщик
+make agent-analytics # Запустить Analytics Agent вручную
+make agent-offers    # Запустить Offer Agent вручную
+```
+
+### Ручные команды
+```bash
+# Запуск локально (без Makefile)
+cd mysite && python manage.py runserver
 
 # После изменения моделей
 python manage.py makemigrations && python manage.py migrate
 
 # Тесты
-pytest  # из корня репозитория
+pytest                                              # все (кроме live)
+pytest mysite/tests/test_booking_live.py -v -s      # live-тесты с реальным YClients API
 
 # Проверка что ничего не сломано
 python manage.py check
-
-# Запустить агента вручную (для теста)
-python manage.py shell
->>> from agents.tasks import run_daily_agents
->>> run_daily_agents()
 ```
+
+---
+
+## CI/CD
+- **CI** (`.github/workflows/ci.yml`): pytest на Python 3.12, push/PR в dev/main, API ключи заглушены
+- **Deploy** (`.github/workflows/deploy.yml`): push в main → SSH deploy на продакшн, бэкап PostgreSQL перед deploy, восстановление .env после git pull
+- **Deploy staging** (`.github/workflows/deploy-staging.yml`): staging-деплой
 
 ---
 
@@ -360,42 +400,63 @@ python manage.py shell
 <!-- Обновляй этот раздел в конце каждой рабочей сессии! -->
 
 ### Сделано
-- Analytics Agent (agents/tasks.py -- run_daily_agents)
-- SEO модели в agents/models.py: SeoKeywordCluster (с geo, service_category), SeoRankSnapshot, LandingPage, SeoTask
-- SEO Admin: 4 ModelAdmin в agents/admin.py (publish actions, read-only snapshots, priority badges)
-- YClients интеграция с WAF bypass
-- Celery beat расписание (9:00 daily, 8:00 Monday)
-- Yandex.Webmaster интеграция (agents/integrations/yandex_webmaster.py)
-- Yandex.Metrika интеграция (agents/integrations/yandex_metrika.py)
-- VK Ads интеграция (agents/integrations/vk_ads.py)
-- Yandex.Direct интеграция (agents/integrations/yandex_direct.py)
-- Management commands: check_metrika, check_webmaster, check_booking, import_price_list
-- seed_seo_clusters: 13 кластеров из семантического ядра v2 (Wordstat Пенза, февраль 2026), группировка по целевому URL
-- get_query_stats() и get_page_stats() в YandexWebmasterClient (graceful wrappers, 5 тестов)
-- get_organic_sessions() и get_page_behavior() в YandexMetrikaClient (graceful wrappers, 9 тестов)
-- TechnicalSEOWatchdog (agents/integrations/site_crawler.py): проверка страниц, sitemap, get_or_create SeoTask, management-команда check_crawler, 25 тестов
-- SeoClusterSnapshot модель (agents/models.py): ежедневный агрегированный снимок по кластеру, unique_together (cluster, date)
-- collect_rank_snapshots: Celery-таск (ежедневно 07:00), Вебмастер → агрегация по кластерам → SeoClusterSnapshot
-- send_seo_alert() в agents/telegram.py (HTML-форматирование, группировка click_drop/position_drop)
-- analyze_rank_changes: пороги -20% кликов / 3 позиции, создаёт SeoTask + шлёт Telegram, 18 тестов
-- notify_new_landing() + send_weekly_seo_report() в agents/telegram.py (task 3.3, 19 тестов)
-- LandingPageGenerator (agents/agents/landing_generator.py): generate_landing() — генерация из БД; generate_from_markdown() — маркдаун как редакторский бриф; _get_services_context(), _build_prompt(), _build_prompt_with_markdown(), _check_markdown_vs_db(), _make_slug() (dedup -v2/-v3); LandingPage.source_markdown (TextField, миграция 0006); admin action «Сгенерировать из маркдауна» + MarkdownUploadForm + HTML-шаблон; 33 теста в test_landing_generator.py
-- Landing page view + URL + шаблон + templatetags (task 4.2): agents/views.py (landing_page_view), URL `<slug:slug>/` последним в urlpatterns, шаблон agents/landing_page.html (hero, intro, how_it_works, who_is_it_for, contraindications, results, CTA, FAQ-аккордеон, internal_links), templatetags landing_tags.py (split_lines, slugify_to_title), 27 тестов
-- landing_page.html CTA-кнопки: href="#book_service" → data-bs-toggle="modal" data-bs-target="#exampleModal", открывают ту же модалку что и остальные страницы
 
-### В процессе
-- SEOLandingAgent -- файл agents/agents/seo_landing.py, нужен `_build_weekly_summary()`
+#### Ядро (services_app + website + booking)
+- Полный каталог услуг с SEO (slug-based URL, Schema.org, BreadcrumbList)
+- Форма-мастер записи через YClients API с WAF bypass
+- Профили мастеров, пакеты услуг, акции с промокодами
+- Meta description override через `{% block description %}` на страницах услуг
+
+#### Интеграции (agents/integrations/)
+- YClients интеграция с WAF bypass
+- Yandex.Webmaster (yandex_webmaster.py): get_query_stats(), get_page_stats() (graceful wrappers, 5 тестов)
+- Yandex.Metrika (yandex_metrika.py): get_organic_sessions(), get_page_behavior() (graceful wrappers, 9 тестов)
+- VK Ads (vk_ads.py)
+- Yandex.Direct (yandex_direct.py)
+- TechnicalSEOWatchdog (site_crawler.py): проверка страниц, sitemap, get_or_create SeoTask, management-команда check_crawler, 25 тестов
+
+#### SEO система
+- SEO модели в agents/models.py: SeoKeywordCluster (с geo, service_category), SeoRankSnapshot, LandingPage, SeoTask, SeoClusterSnapshot
+- SEO Admin: 4 ModelAdmin (publish actions, read-only snapshots, priority badges)
+- seed_seo_clusters: 13 кластеров из семантического ядра v2 (Wordstat Пенза, февраль 2026)
+- collect_rank_snapshots: Celery-таск (ежедневно 07:00), Вебмастер → агрегация по кластерам → SeoClusterSnapshot
+- analyze_rank_changes: пороги -20% кликов / 3 позиции, создаёт SeoTask + шлёт Telegram, 18 тестов
+- Telegram-уведомления: send_seo_alert(), notify_new_landing(), send_weekly_seo_report() (19 тестов)
+
+#### Landing page система
+- LandingPageGenerator (agents/agents/landing_generator.py): generate_landing() + generate_from_markdown(); admin action «Сгенерировать из маркдауна»; 33 теста
+- Landing page view + URL + шаблон (agents/views.py, agents/landing_page.html): hero, intro, how_it_works, who_is_it_for, contraindications, results, CTA, FAQ-аккордеон, internal_links; 27 тестов
+- CTA-кнопки на лендингах открывают ту же модалку записи что и остальные страницы
+
+#### AI-агенты (все реализованы)
+- **AnalyticsAgent** (agents/agents/analytics.py) — ежедневная аналитика
+- **AnalyticsBudgetAgent** (agents/agents/analytics_budget.py) — бюджетная аналитика (Метрика + Директ + VK Ads)
+- **OfferAgent** (agents/agents/offers.py) — генерация акций
+- **OfferPackagesAgent** (agents/agents/offer_packages.py) — генерация пакетов
+- **SMMGrowthAgent** (agents/agents/smm_growth.py) — SMM контент-план
+- **SEOLandingAgent** (agents/agents/seo_landing.py) — аудит лендингов, детекция WoW click drops
+- **SupervisorAgent** (agents/agents/supervisor.py) — оркестратор: decide() для ежедневных агентов, weekly_run() для недельного бэклога
+
+#### Инфраструктура
+- Celery beat: 3 задачи (07:00 ежедневно, 09:00 ежедневно, 08:00 понедельник)
+- Management commands: check_metrika, check_webmaster, check_booking, check_crawler, import_price_list, seed_seo_clusters
+- Makefile с 12 целями для быстрого запуска
+- CI/CD: GitHub Actions (тесты, deploy prod, deploy staging)
+- Django>=5.2,<6.0 (пин для предотвращения ломающего апгрейда)
+- Фикс последовательностей PostgreSQL (миграция 0034_fix_sequences)
 
 ### Следующие задачи
-- OfferAgent -- генерация акций по загрузке мастеров
-- Supervisor -- оркестратор агентов
+- Доработка логики OfferAgent по загрузке мастеров
+- Расширение SupervisorAgent для более гранулярного управления
 
 ---
 
 ## Шаблон начала сессии
-<!-- Копируй это в начале каждой новой сессии Claude Code -->
-
 ```
 Прочитай CLAUDE.md. Работай в ветке dev, не создавай новые ветки.
 Задача на сегодня: [описание задачи]
 ```
+
+---
+
+*Последнее обновление: 2026-04-08*
