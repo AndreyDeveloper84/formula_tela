@@ -22,8 +22,8 @@ import json
 import logging
 
 from django.conf import settings
-from openai import OpenAI
 
+from agents.agents import get_openai_client
 from agents.models import LandingPage, SeoKeywordCluster, SeoTask
 from agents.telegram import notify_new_landing
 
@@ -54,7 +54,7 @@ class LandingPageGenerator:
     }
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = get_openai_client()
         self.model = settings.OPENAI_MODEL
 
     # ── Публичные методы ──────────────────────────────────────────────────────

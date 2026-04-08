@@ -7,8 +7,8 @@ import logging
 
 from django.conf import settings
 from django.utils import timezone
-from openai import OpenAI
 
+from agents.agents import get_openai_client
 from agents.models import AgentReport, AgentTask, DailyMetric
 from agents.telegram import send_telegram
 
@@ -197,7 +197,7 @@ class AnalyticsAgent:
                                   for k, v in data.items() if k != "date"}
             task.save(update_fields=["input_context"])
 
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            client = get_openai_client()
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[

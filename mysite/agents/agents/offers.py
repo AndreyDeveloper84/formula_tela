@@ -7,8 +7,8 @@ import logging
 
 from django.conf import settings
 from django.utils import timezone
-from openai import OpenAI
 
+from agents.agents import get_openai_client
 from agents.models import AgentReport, AgentTask
 from agents.telegram import send_telegram
 
@@ -38,7 +38,7 @@ def _build_prompt(data: dict) -> str:
 
 class OfferAgent:
     def gather_data(self) -> dict:
-        from services_app.models import BookingRequest, Master, Promotion
+        from services_app.models import BookingRequest, Master, Promotion, Service
 
         today = datetime.date.today()
         week_ago = today - datetime.timedelta(days=7)
@@ -50,9 +50,9 @@ class OfferAgent:
             by_service[req] = by_service.get(req, 0) + 1
 
         # Все активные услуги без заявок получают count=0
-        all_services = list(Master.objects.filter(is_active=True).values_list(
-            "services__name", flat=True
-        ).distinct())
+        all_services = list(Service.objects.filter(is_active=True).values_list(
+            "name", flat=True
+        ))
         for svc in all_services:
             if svc and svc not in by_service:
                 by_service[svc] = 0
@@ -90,7 +90,7 @@ class OfferAgent:
             task.input_context = {k: v for k, v in data.items() if k != "date"}
             task.save(update_fields=["input_context"])
 
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            client = get_openai_client()
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
