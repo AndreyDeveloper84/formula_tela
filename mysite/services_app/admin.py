@@ -21,6 +21,9 @@ from .models import (
     BookingRequest,
     ServiceBlock,
     ServiceMedia,
+    Order,
+    GiftCertificate,
+    CertificateRedemption,
 )
 
 from .forms import ServiceCSVImportForm
@@ -458,4 +461,172 @@ class BookingRequestAdmin(admin.ModelAdmin):
     list_editable = ("is_processed",)
     search_fields = ("client_name", "client_phone", "service_name")
     readonly_fields = ("created_at",)
+
+
+# ── Заказы и сертификаты ──────────────────────────────────────────────
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = (
+        "number", "order_type", "client_name", "client_phone",
+        "total_amount", "status", "created_at",
+    )
+    list_filter = ("status", "order_type", "created_at")
+    list_editable = ("status",)
+    search_fields = ("number", "client_name", "client_phone", "client_email")
+    readonly_fields = ("number", "created_at", "updated_at")
+    fieldsets = (
+        ("Заказ", {"fields": ("number", "order_type", "status", "total_amount")}),
+        ("Клиент", {"fields": ("client_name", "client_phone", "client_email")}),
+        ("Оплата", {
+            "fields": ("payment_method", "payment_id", "paid_at"),
+            "classes": ["collapse"],
+        }),
+        ("Примечания", {"fields": ("comment", "admin_note")}),
+        ("Даты", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+class CertificateRedemptionInline(admin.TabularInline):
+    model = CertificateRedemption
+    extra = 0
+    readonly_fields = ("created_at",)
+    fields = ("amount", "service_name", "redeemed_by", "note", "created_at")
+
+
+@admin.register(GiftCertificate)
+class GiftCertificateAdmin(admin.ModelAdmin):
+    list_display = (
+        "code", "certificate_type", "nominal_display",
+        "buyer_name", "recipient_name", "status",
+        "valid_until", "created_at",
+    )
+    list_filter = ("status", "certificate_type", "is_active", "created_at")
+    list_editable = ("status",)
+    search_fields = (
+        "code", "buyer_name", "buyer_phone",
+        "recipient_name", "recipient_phone",
+    )
+    readonly_fields = (
+        "code", "created_at", "updated_at",
+        "paid_at", "delivered_at", "redeemed_at",
+    )
+    autocomplete_fields = ("service", "service_option", "order")
+    inlines = [CertificateRedemptionInline]
+
+    fieldsets = (
+        ("Сертификат", {"fields": (
+            "code", "certificate_type", "nominal",
+            "service", "service_option", "order", "image",
+        )}),
+        ("Покупатель", {"fields": (
+            "buyer_name", "buyer_phone", "buyer_email",
+        )}),
+        ("Получатель", {"fields": (
+            "recipient_name", "recipient_phone", "message",
+        )}),
+        ("Статус", {"fields": (
+            "status", "is_active", "valid_from", "valid_until",
+        )}),
+        ("Даты", {"fields": (
+            "paid_at", "delivered_at", "redeemed_at",
+            "created_at", "updated_at",
+        )}),
+        ("Примечания", {
+            "fields": ("admin_note",),
+            "classes": ["collapse"],
+        }),
+    )
+
+    actions = ["mark_as_paid", "mark_as_delivered"]
+
+    @admin.display(description="Номинал")
+    def nominal_display(self, obj):
+        if obj.certificate_type == "nominal":
+            return f"{obj.nominal:,.0f} \u20bd"
+        return str(obj.service or "\u2014")
+
+    @admin.action(description="Отметить как оплаченные")
+    def mark_as_paid(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.filter(status="pending").update(
+            status="paid", paid_at=timezone.now(),
+        )
+        self.message_user(request, f"Оплачено сертификатов: {updated}")
+
+    @admin.action(description="Отметить как вручённые и отправить в Telegram")
+    def mark_as_delivered(self, request, queryset):
+        from django.utils import timezone
+        import requests as http_requests
+        from django.conf import settings as django_settings
+        import logging
+
+        now = timezone.now()
+        certs = list(queryset.filter(status="paid"))
+        if not certs:
+            self.message_user(request, "Нет оплаченных сертификатов для вручения")
+            return
+
+        queryset.filter(status="paid").update(status="delivered", delivered_at=now)
+
+        tg_token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
+        tg_chat = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
+        sent = 0
+
+        for cert in certs:
+            if not (tg_token and tg_chat):
+                break
+            try:
+                value_str = (
+                    f"{cert.nominal:,.0f} \u20bd"
+                    if cert.certificate_type == "nominal"
+                    else str(cert.service or "\u2014")
+                )
+                caption = (
+                    f"\U0001f381 \u041f\u043e\u0434\u0430\u0440\u043e\u0447\u043d\u044b\u0439 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\n\n"
+                    f"\U0001f4b3 \u041a\u043e\u0434: <b>{cert.code}</b>\n"
+                    f"\U0001f4b0 {value_str}\n"
+                    f"\U0001f464 \u041f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u044c: {cert.buyer_name}\n"
+                )
+                if cert.recipient_name:
+                    caption += f"\U0001f380 \u041f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044c: {cert.recipient_name}\n"
+                if cert.message:
+                    caption += f"\U0001f4ac {cert.message}\n"
+                caption += (
+                    f"\n\u2705 \u0414\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442 \u0434\u043e: {cert.valid_until:%d.%m.%Y}"
+                )
+
+                if cert.image:
+                    with cert.image.open("rb") as img:
+                        http_requests.post(
+                            f"https://api.telegram.org/bot{tg_token}/sendPhoto",
+                            data={
+                                "chat_id": tg_chat,
+                                "caption": caption,
+                                "parse_mode": "HTML",
+                            },
+                            files={"photo": (cert.image.name, img, "image/jpeg")},
+                            timeout=10,
+                        )
+                else:
+                    http_requests.post(
+                        f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                        json={
+                            "chat_id": tg_chat,
+                            "text": caption,
+                            "parse_mode": "HTML",
+                        },
+                        timeout=5,
+                    )
+                sent += 1
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    f"Telegram send failed for {cert.code}: {e}"
+                )
+
+        msg = f"Вручено сертификатов: {len(certs)}"
+        if sent:
+            msg += f", отправлено в Telegram: {sent}"
+        self.message_user(request, msg)
 
