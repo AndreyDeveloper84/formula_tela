@@ -21,6 +21,9 @@ from .models import (
     BookingRequest,
     ServiceBlock,
     ServiceMedia,
+    Order,
+    GiftCertificate,
+    CertificateRedemption,
 )
 
 from .forms import ServiceCSVImportForm
@@ -458,4 +461,105 @@ class BookingRequestAdmin(admin.ModelAdmin):
     list_editable = ("is_processed",)
     search_fields = ("client_name", "client_phone", "service_name")
     readonly_fields = ("created_at",)
+
+
+# ── Заказы и сертификаты ──────────────────────────────────────────────
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = (
+        "number", "order_type", "client_name", "client_phone",
+        "total_amount", "status", "created_at",
+    )
+    list_filter = ("status", "order_type", "created_at")
+    list_editable = ("status",)
+    search_fields = ("number", "client_name", "client_phone", "client_email")
+    readonly_fields = ("number", "created_at", "updated_at")
+    fieldsets = (
+        ("Заказ", {"fields": ("number", "order_type", "status", "total_amount")}),
+        ("Клиент", {"fields": ("client_name", "client_phone", "client_email")}),
+        ("Оплата", {
+            "fields": ("payment_method", "payment_id", "paid_at"),
+            "classes": ["collapse"],
+        }),
+        ("Примечания", {"fields": ("comment", "admin_note")}),
+        ("Даты", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+class CertificateRedemptionInline(admin.TabularInline):
+    model = CertificateRedemption
+    extra = 0
+    readonly_fields = ("created_at",)
+    fields = ("amount", "service_name", "redeemed_by", "note", "created_at")
+
+
+@admin.register(GiftCertificate)
+class GiftCertificateAdmin(admin.ModelAdmin):
+    list_display = (
+        "code", "certificate_type", "nominal_display",
+        "buyer_name", "recipient_name", "status",
+        "valid_until", "created_at",
+    )
+    list_filter = ("status", "certificate_type", "is_active", "created_at")
+    list_editable = ("status",)
+    search_fields = (
+        "code", "buyer_name", "buyer_phone",
+        "recipient_name", "recipient_phone",
+    )
+    readonly_fields = (
+        "code", "created_at", "updated_at",
+        "paid_at", "delivered_at", "redeemed_at",
+    )
+    autocomplete_fields = ("service", "service_option", "order")
+    inlines = [CertificateRedemptionInline]
+
+    fieldsets = (
+        ("Сертификат", {"fields": (
+            "code", "certificate_type", "nominal",
+            "service", "service_option", "order",
+        )}),
+        ("Покупатель", {"fields": (
+            "buyer_name", "buyer_phone", "buyer_email",
+        )}),
+        ("Получатель", {"fields": (
+            "recipient_name", "recipient_phone", "message",
+        )}),
+        ("Статус", {"fields": (
+            "status", "is_active", "valid_from", "valid_until",
+        )}),
+        ("Даты", {"fields": (
+            "paid_at", "delivered_at", "redeemed_at",
+            "created_at", "updated_at",
+        )}),
+        ("Примечания", {
+            "fields": ("admin_note",),
+            "classes": ["collapse"],
+        }),
+    )
+
+    actions = ["mark_as_paid", "mark_as_delivered"]
+
+    @admin.display(description="Номинал")
+    def nominal_display(self, obj):
+        if obj.certificate_type == "nominal":
+            return f"{obj.nominal:,.0f} \u20bd"
+        return str(obj.service or "\u2014")
+
+    @admin.action(description="Отметить как оплаченные")
+    def mark_as_paid(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.filter(status="pending").update(
+            status="paid", paid_at=timezone.now(),
+        )
+        self.message_user(request, f"Оплачено сертификатов: {updated}")
+
+    @admin.action(description="Отметить как вручённые")
+    def mark_as_delivered(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.filter(status="paid").update(
+            status="delivered", delivered_at=timezone.now(),
+        )
+        self.message_user(request, f"Вручено сертификатов: {updated}")
 

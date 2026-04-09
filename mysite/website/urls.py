@@ -14,7 +14,8 @@ urlpatterns = [
     path("contacts/", views.contacts, name="contacts"),
     path("book/", views.book_service, name="book_service"),
     path("bundles/", views.bundles, name="bundles"),
-    
+    path("certificates/", views.certificates, name="certificates"),
+
     # API endpoints
     path('api/booking/get_staff/', views.api_get_staff, name='api_get_staff'),
     path('api/booking/available_dates/', views.api_available_dates, name='api_available_dates'),  
@@ -23,6 +24,9 @@ urlpatterns = [
     path('api/booking/service_options/', views.api_service_options, name='api_service_options'),
     # API endpoints для комплексов
     path('api/bundle/request/', views.api_bundle_request, name='api_bundle_request'),
+    # API endpoints для сертификатов
+    path('api/certificates/request/', views.api_certificate_request, name='api_certificate_request'),
+    path('api/certificates/check/', views.api_certificate_check, name='api_certificate_check'),
     # API endpoints для визарда
     path('api/wizard/categories/', views.api_wizard_categories, name='api_wizard_categories'),
     path('api/wizard/categories/<int:category_id>/services/', views.api_wizard_services, name='api_wizard_services'),

@@ -106,3 +106,36 @@ def mock_telegram(monkeypatch):
     mock = MagicMock(return_value=MagicMock(status_code=200))
     monkeypatch.setattr("website.views.http_requests.post", mock)
     return mock
+
+
+# ── Заказы и сертификаты ────────────────────────────────────────────────────
+
+@pytest.fixture
+def order(db):
+    """Заказ на сертификат."""
+    return baker.make(
+        "services_app.Order",
+        order_type="certificate",
+        status="pending",
+        client_name="Иванов Иван",
+        client_phone="+79991234567",
+        total_amount=Decimal("3000"),
+    )
+
+
+@pytest.fixture
+def gift_certificate(db, order, service):
+    """Оплаченный подарочный сертификат на 3000 руб."""
+    from datetime import date, timedelta
+    return baker.make(
+        "services_app.GiftCertificate",
+        order=order,
+        certificate_type="nominal",
+        nominal=Decimal("3000"),
+        buyer_name="Иванов Иван",
+        buyer_phone="+79991234567",
+        status="paid",
+        valid_from=date.today(),
+        valid_until=date.today() + timedelta(days=180),
+        is_active=True,
+    )

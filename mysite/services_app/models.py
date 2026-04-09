@@ -703,3 +703,238 @@ class BookingRequest(models.Model):
 
     def __str__(self):
         return f"{self.client_name} — {self.service_name} ({self.created_at:%d.%m.%Y %H:%M})"
+
+
+# ── Заказы и сертификаты ──────────────────────────────────────────────
+
+ORDER_TYPE_CHOICES = [
+    ("certificate", "Сертификат"),
+    ("bundle", "Комплекс"),
+    ("booking", "Запись"),
+]
+
+ORDER_STATUS_CHOICES = [
+    ("pending", "Ожидает"),
+    ("confirmed", "Подтверждён"),
+    ("paid", "Оплачен"),
+    ("completed", "Выполнен"),
+    ("cancelled", "Отменён"),
+]
+
+
+class Order(models.Model):
+    """Универсальный заказ — сертификат, комплекс, запись"""
+    number = models.CharField(
+        max_length=20, unique=True, blank=True,
+        verbose_name="Номер заказа",
+    )
+    order_type = models.CharField(
+        max_length=20, choices=ORDER_TYPE_CHOICES,
+        verbose_name="Тип заказа",
+    )
+    status = models.CharField(
+        max_length=20, choices=ORDER_STATUS_CHOICES,
+        default="pending", verbose_name="Статус",
+    )
+
+    client_name = models.CharField(max_length=150, verbose_name="Имя клиента")
+    client_phone = models.CharField(max_length=30, verbose_name="Телефон")
+    client_email = models.EmailField(blank=True, verbose_name="Email")
+
+    total_amount = models.DecimalField(
+        max_digits=8, decimal_places=0, default=0,
+        verbose_name="Сумма",
+    )
+
+    # Поля для будущего эквайринга (nullable)
+    payment_method = models.CharField(
+        max_length=30, blank=True, verbose_name="Способ оплаты",
+    )
+    payment_id = models.CharField(
+        max_length=100, blank=True, verbose_name="ID платежа",
+    )
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата оплаты")
+
+    comment = models.TextField(blank=True, verbose_name="Комментарий")
+    admin_note = models.TextField(blank=True, verbose_name="Заметка администратора")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлён")
+
+    class Meta:
+        verbose_name = "Заказ"
+        verbose_name_plural = "Заказы"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "order_type"]),
+            models.Index(fields=["number"]),
+        ]
+
+    def __str__(self):
+        return f"{self.number} — {self.get_order_type_display()} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.number:
+            self.number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    def _generate_number(self):
+        import random
+        import string
+        from django.utils import timezone
+        date_part = timezone.now().strftime("%Y%m%d")
+        rand_part = "".join(random.choices(string.digits, k=4))
+        return f"FT-{date_part}-{rand_part}"
+
+
+CERT_TYPE_CHOICES = [
+    ("nominal", "На сумму"),
+    ("service", "На услугу"),
+]
+
+CERT_STATUS_CHOICES = [
+    ("pending", "Ожидает оплаты"),
+    ("paid", "Оплачен"),
+    ("delivered", "Вручён"),
+    ("redeemed", "Использован"),
+    ("expired", "Истёк"),
+    ("cancelled", "Отменён"),
+]
+
+
+class GiftCertificate(models.Model):
+    """Подарочный сертификат"""
+    order = models.ForeignKey(
+        Order, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="certificates", verbose_name="Заказ",
+    )
+    code = models.CharField(
+        max_length=16, unique=True, blank=True,
+        verbose_name="Код сертификата",
+    )
+    certificate_type = models.CharField(
+        max_length=10, choices=CERT_TYPE_CHOICES,
+        default="nominal", verbose_name="Тип",
+    )
+
+    # Номинал (для типа nominal)
+    nominal = models.DecimalField(
+        max_digits=8, decimal_places=0, default=0,
+        verbose_name="Номинал (руб.)",
+    )
+    # Услуга (для типа service)
+    service = models.ForeignKey(
+        Service, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="gift_certificates", verbose_name="Услуга",
+    )
+    service_option = models.ForeignKey(
+        ServiceOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="gift_certificates", verbose_name="Вариант услуги",
+    )
+
+    # Покупатель
+    buyer_name = models.CharField(max_length=150, verbose_name="Имя покупателя")
+    buyer_phone = models.CharField(max_length=30, verbose_name="Телефон покупателя")
+    buyer_email = models.EmailField(blank=True, verbose_name="Email покупателя")
+
+    # Получатель
+    recipient_name = models.CharField(
+        max_length=150, blank=True, verbose_name="Имя получателя",
+    )
+    recipient_phone = models.CharField(
+        max_length=30, blank=True, verbose_name="Телефон получателя",
+    )
+    message = models.TextField(blank=True, verbose_name="Пожелание на сертификате")
+
+    # Статус и даты
+    status = models.CharField(
+        max_length=12, choices=CERT_STATUS_CHOICES,
+        default="pending", verbose_name="Статус",
+    )
+    valid_from = models.DateField(verbose_name="Действует с")
+    valid_until = models.DateField(verbose_name="Действует до")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата оплаты")
+    delivered_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Дата вручения",
+    )
+    redeemed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Дата использования",
+    )
+
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    admin_note = models.TextField(blank=True, verbose_name="Заметка администратора")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    class Meta:
+        verbose_name = "Подарочный сертификат"
+        verbose_name_plural = "Подарочные сертификаты"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "is_active"]),
+            models.Index(fields=["code"]),
+            models.Index(fields=["valid_until"]),
+        ]
+
+    def __str__(self):
+        value = (
+            f"{self.nominal} \u20bd"
+            if self.certificate_type == "nominal"
+            else str(self.service or "\u2014")
+        )
+        return f"{self.code} \u2014 {value} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self._generate_code()
+        super().save(*args, **kwargs)
+
+    def _generate_code(self):
+        import random
+        import string
+        while True:
+            part1 = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            part2 = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            code = f"FT-{part1}-{part2}"
+            if not GiftCertificate.objects.filter(code=code).exists():
+                return code
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        today = timezone.now().date()
+        return (
+            self.status in ("paid", "delivered")
+            and self.is_active
+            and self.valid_from <= today <= self.valid_until
+        )
+
+    @property
+    def remaining_value(self):
+        if self.certificate_type != "nominal":
+            return None
+        used = sum(r.amount for r in self.redemptions.all())
+        return max(self.nominal - used, Decimal("0"))
+
+
+class CertificateRedemption(models.Model):
+    """Журнал использования сертификата"""
+    certificate = models.ForeignKey(
+        GiftCertificate, on_delete=models.CASCADE,
+        related_name="redemptions", verbose_name="Сертификат",
+    )
+    amount = models.DecimalField(
+        max_digits=8, decimal_places=0, verbose_name="Списано (руб.)",
+    )
+    service_name = models.CharField(max_length=200, verbose_name="Услуга")
+    redeemed_by = models.CharField(max_length=150, verbose_name="Клиент")
+    note = models.TextField(blank=True, verbose_name="Комментарий")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата списания")
+
+    class Meta:
+        verbose_name = "Списание по сертификату"
+        verbose_name_plural = "Списания по сертификатам"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.certificate.code}: -{self.amount} \u20bd ({self.created_at:%d.%m.%Y})"
