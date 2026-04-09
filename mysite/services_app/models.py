@@ -832,6 +832,14 @@ class GiftCertificate(models.Model):
         related_name="gift_certificates", verbose_name="Вариант услуги",
     )
 
+    # Изображение сертификата
+    image = models.ImageField(
+        upload_to="certificates/",
+        blank=True, null=True,
+        verbose_name="Изображение сертификата",
+        help_text="Дизайн сертификата для отправки клиенту",
+    )
+
     # Покупатель
     buyer_name = models.CharField(max_length=150, verbose_name="Имя покупателя")
     buyer_phone = models.CharField(max_length=30, verbose_name="Телефон покупателя")
