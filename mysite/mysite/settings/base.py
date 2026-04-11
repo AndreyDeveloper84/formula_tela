@@ -148,6 +148,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "agents.tasks.collect_rank_snapshots",
         "schedule": crontab(hour=7, minute=0),
     },
+    "weekly-trend-scout-monday-0730": {
+        "task": "agents.tasks.collect_trends",
+        "schedule": crontab(hour=7, minute=30, day_of_week="monday"),
+    },
 }
 
 # === OpenAI ===
@@ -167,6 +171,17 @@ YANDEX_DIRECT_CLIENT_LOGIN = os.getenv("YANDEX_DIRECT_CLIENT_LOGIN", "")
 # === VK Реклама ===
 VK_ADS_TOKEN      = os.getenv("VK_ADS_TOKEN", "")
 VK_ADS_ACCOUNT_ID = os.getenv("VK_ADS_ACCOUNT_ID", "")
+
+# === VK Social (парсинг групп для трендов) ===
+VK_SERVICE_TOKEN = os.getenv("VK_SERVICE_TOKEN", "")
+VK_TREND_GROUP_IDS = [gid.strip() for gid in os.getenv("VK_TREND_GROUP_IDS", "").split(",") if gid.strip()]
+
+# === Парсер трендов ===
+TREND_SEED_QUERIES = [q.strip() for q in os.getenv("TREND_SEED_QUERIES",
+    "массаж пенза,спа пенза,массаж лица,антицеллюлитный массаж,"
+    "лимфодренажный массаж,массаж спины,подарочный сертификат массаж,"
+    "массажист пенза,lpg массаж,спа процедуры"
+).split(",") if q.strip()]
 
 # === Яндекс.Вебмастер ===
 # Токен: https://oauth.yandex.ru/ (scope: webmaster:info)

@@ -109,6 +109,7 @@ class SupervisorAgent:
             AgentTask.SMM_GROWTH:       "SMM-контент",
             AgentTask.SEO_LANDING:      "SEO-лендинги",
             AgentTask.ANALYTICS_BUDGET: "Бюджет и воронка",
+            AgentTask.TREND_SCOUT:      "Разведка трендов",
         }
 
         # Собираем последние DONE-отчёты по каждому типу

@@ -9,6 +9,7 @@ class AgentTask(models.Model):
     SMM_GROWTH       = "smm_growth"
     SEO_LANDING      = "seo_landing"
     ANALYTICS_BUDGET = "analytics_budget"
+    TREND_SCOUT      = "trend_scout"
     AGENT_CHOICES = [
         (ANALYTICS,        "Аналитика"),
         (OFFERS,           "Акции"),
@@ -16,6 +17,7 @@ class AgentTask(models.Model):
         (SMM_GROWTH,       "SMM-контент"),
         (SEO_LANDING,      "SEO-аудит лендингов"),
         (ANALYTICS_BUDGET, "Бюджет и воронка"),
+        (TREND_SCOUT,      "Разведка трендов"),
     ]
 
     PENDING = "pending"
@@ -87,6 +89,32 @@ class DailyMetric(models.Model):
 
     def __str__(self):
         return f"Метрики {self.date}: {self.total_requests} заявок"
+
+
+class TrendSnapshot(models.Model):
+    """Еженедельный снимок трендов из внешних источников."""
+    SOURCE_YANDEX = "yandex_suggest"
+    SOURCE_VK = "vk_social"
+    SOURCE_CHOICES = [
+        (SOURCE_YANDEX, "Яндекс подсказки"),
+        (SOURCE_VK, "VK группы"),
+    ]
+
+    source = models.CharField("Источник", max_length=20, choices=SOURCE_CHOICES)
+    date = models.DateField("Дата сбора")
+    raw_data = models.JSONField("Сырые данные")
+    summary = models.TextField("Анализ GPT", blank=True)
+    trends = models.JSONField("Выделенные тренды", default=list, blank=True)
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Снимок трендов"
+        verbose_name_plural = "Снимки трендов"
+        ordering = ["-date"]
+        unique_together = [("source", "date")]
+
+    def __str__(self):
+        return f"{self.get_source_display()} — {self.date}"
 
 
 class ContentPlan(models.Model):
