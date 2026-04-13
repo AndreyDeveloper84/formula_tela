@@ -207,9 +207,19 @@ def bundles(request):
             "min_duration": min_duration,
             "price": price})
     
+    # Лечебные комплексы — услуги с "комплекс" в названии
+    complex_opt_qs = (ServiceOption.objects
+                      .filter(is_active=True)
+                      .order_by("order", "units", "duration_min"))
+    complex_services = (Service.objects
+                        .filter(is_active=True, name__icontains='комплекс')
+                        .prefetch_related(Prefetch('options', queryset=complex_opt_qs))
+                        .order_by('name'))
+
     return render(request, "website/bundles.html", {
         "settings": _settings(),
         "bundles": bundles,
+        "complex_services": complex_services,
     })
 
 logger = logging.getLogger(__name__)
