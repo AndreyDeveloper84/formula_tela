@@ -1,3 +1,5 @@
+import datetime
+
 from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 
@@ -29,11 +31,16 @@ class ServiceSitemap(Sitemap):
 
 
 class CategorySitemap(Sitemap):
+    """
+    Категории доступны только по числовым ID (/services/<id>/) — без slug.
+    Такие URL не имеют SEO-ценности и зря расходуют краулинг-бюджет.
+    items() возвращает пустой список пока у категорий не появятся slug-based URL.
+    """
     priority = 0.7
     changefreq = "weekly"
 
     def items(self):
-        return ServiceCategory.objects.all().order_by("pk")
+        return []
 
     def location(self, obj):
         return reverse("website:category_services", kwargs={"category_id": obj.pk})
@@ -48,3 +55,6 @@ class LandingPageSitemap(Sitemap):
 
     def location(self, obj):
         return reverse("landing_page", kwargs={"slug": obj.slug})
+
+    def lastmod(self, obj):
+        return obj.published_at
