@@ -91,6 +91,10 @@ else:
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
         "PORT": os.getenv("DB_PORT", "5432"),
+        # Держим коннект 60 сек, чтобы не открывать TCP+TLS на каждый запрос.
+        # Health check (Django 4.1+) делает SELECT 1 и защищает от stale-коннекта.
+        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        "CONN_HEALTH_CHECKS": True,
     }}
 
 LANGUAGE_CODE = os.getenv("DJANGO_LANGUAGE_CODE", "ru")
