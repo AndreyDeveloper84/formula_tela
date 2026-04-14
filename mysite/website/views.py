@@ -22,6 +22,8 @@ from services_app.models import (
     BundleItem,
     Review,
     BookingRequest,
+    Order,
+    GiftCertificate,
 )
 
 
@@ -1275,3 +1277,210 @@ def _send_booking_telegram(booking):
         )
     except Exception as e:
         logger.error(f"Telegram notification failed: {e}")
+
+
+# ── Сертификаты ───────────────────────────────────────────────────────
+
+logger = logging.getLogger(__name__)
+
+
+def certificates(request):
+    """Страница подарочных сертификатов"""
+    popular_services = (
+        Service.objects
+        .filter(is_active=True, is_popular=True)
+        .prefetch_related("options")
+        .order_by("order")[:8]
+    )
+    return render(request, "website/certificates.html", {
+        "popular_services": popular_services,
+    })
+
+
+@require_POST
+def api_certificate_request(request):
+    """API: Заявка на подарочный сертификат"""
+    from datetime import date, timedelta
+    from django.core.mail import send_mail
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+
+    # --- Валидация ---
+    buyer_name = data.get("buyer_name", "").strip()
+    buyer_phone = data.get("buyer_phone", "").strip()
+    if not buyer_name or not buyer_phone:
+        return JsonResponse(
+            {"success": False, "error": "Имя и телефон покупателя обязательны"},
+            status=400,
+        )
+
+    cert_type = data.get("certificate_type", "nominal")
+    if cert_type not in ("nominal", "service"):
+        return JsonResponse(
+            {"success": False, "error": "Неверный тип сертификата"},
+            status=400,
+        )
+
+    nominal = 0
+    service = None
+    service_option = None
+
+    if cert_type == "nominal":
+        try:
+            nominal = int(data.get("nominal", 0))
+        except (TypeError, ValueError):
+            nominal = 0
+        if nominal <= 0:
+            return JsonResponse(
+                {"success": False, "error": "Укажите сумму сертификата"},
+                status=400,
+            )
+    else:
+        service_id = data.get("service_id")
+        if not service_id:
+            return JsonResponse(
+                {"success": False, "error": "Выберите услугу"},
+                status=400,
+            )
+        try:
+            service = Service.objects.get(id=service_id, is_active=True)
+        except Service.DoesNotExist:
+            return JsonResponse(
+                {"success": False, "error": "Услуга не найдена"},
+                status=404,
+            )
+        option_id = data.get("service_option_id")
+        if option_id:
+            try:
+                service_option = ServiceOption.objects.get(
+                    id=option_id, service=service, is_active=True,
+                )
+                nominal = service_option.price
+            except ServiceOption.DoesNotExist:
+                pass
+        if not nominal and service.price_from:
+            nominal = service.price_from
+
+    buyer_email = data.get("buyer_email", "").strip()
+    recipient_name = data.get("recipient_name", "").strip()
+    recipient_phone = data.get("recipient_phone", "").strip()
+    message = data.get("message", "").strip()
+
+    # --- Создание Order ---
+    order = Order.objects.create(
+        order_type="certificate",
+        client_name=buyer_name,
+        client_phone=buyer_phone,
+        client_email=buyer_email,
+        total_amount=nominal,
+        comment=message,
+    )
+
+    # --- Создание GiftCertificate ---
+    today = date.today()
+    cert = GiftCertificate.objects.create(
+        order=order,
+        certificate_type=cert_type,
+        nominal=nominal,
+        service=service,
+        service_option=service_option,
+        buyer_name=buyer_name,
+        buyer_phone=buyer_phone,
+        buyer_email=buyer_email,
+        recipient_name=recipient_name,
+        recipient_phone=recipient_phone,
+        message=message,
+        valid_from=today,
+        valid_until=today + timedelta(days=180),
+    )
+
+    # --- Telegram ---
+    tg_token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
+    tg_chat = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
+    if tg_token and tg_chat:
+        try:
+            value_str = (
+                f"{nominal:,.0f} \u20bd"
+                if cert_type == "nominal"
+                else str(service)
+            )
+            text = (
+                f"\U0001f381 \u041d\u043e\u0432\u0430\u044f \u0437\u0430\u044f\u0432\u043a\u0430 \u043d\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442!\n\n"
+                f"\U0001f4b0 {value_str}\n"
+                f"\U0001f464 {buyer_name}, {buyer_phone}\n"
+            )
+            if recipient_name:
+                text += f"\U0001f380 \u041f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044c: {recipient_name}\n"
+            if recipient_phone:
+                text += f"\U0001f4f1 {recipient_phone}\n"
+            if message:
+                text += f"\U0001f4ac {message}\n"
+            text += f"\n\u2116 \u0437\u0430\u043a\u0430\u0437\u0430: {order.number}"
+
+            http_requests.post(
+                f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                json={"chat_id": tg_chat, "text": text, "parse_mode": "HTML"},
+                timeout=5,
+            )
+        except Exception as e:
+            logger.warning(f"Telegram notification failed: {e}")
+
+    # --- Email ---
+    admin_email = getattr(django_settings, "ADMIN_NOTIFICATION_EMAIL", "")
+    if admin_email:
+        try:
+            send_mail(
+                subject=f"\u0417\u0430\u044f\u0432\u043a\u0430 \u043d\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442: {order.number}",
+                message=(
+                    f"\u041f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u044c: {buyer_name}, {buyer_phone}\n"
+                    f"\u041f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044c: {recipient_name or chr(8212)}\n"
+                    f"\u0422\u0438\u043f: {cert.get_certificate_type_display()}\n"
+                    f"\u041d\u043e\u043c\u0438\u043d\u0430\u043b: {nominal}"
+                ),
+                from_email=None,
+                recipient_list=[admin_email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+    return JsonResponse({
+        "success": True,
+        "message": "\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430! \u041c\u0435\u043d\u0435\u0434\u0436\u0435\u0440 \u0441\u0432\u044f\u0436\u0435\u0442\u0441\u044f \u0441 \u0432\u0430\u043c\u0438 \u0434\u043b\u044f \u043e\u043f\u043b\u0430\u0442\u044b.",
+        "order_number": order.number,
+    })
+
+
+@require_GET
+def api_certificate_check(request):
+    """API: \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u0430 \u043f\u043e \u043a\u043e\u0434\u0443"""
+    code = request.GET.get("code", "").strip().upper()
+    if not code:
+        return JsonResponse(
+            {"success": False, "error": "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u0430"}, status=400,
+        )
+    try:
+        cert = GiftCertificate.objects.select_related("service").get(code=code)
+    except GiftCertificate.DoesNotExist:
+        return JsonResponse(
+            {"success": False, "error": "\u0421\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d"}, status=404,
+        )
+
+    remaining = cert.remaining_value
+    return JsonResponse({
+        "success": True,
+        "certificate": {
+            "code": cert.code,
+            "type": cert.certificate_type,
+            "type_display": cert.get_certificate_type_display(),
+            "nominal": str(cert.nominal) if cert.certificate_type == "nominal" else None,
+            "service_name": str(cert.service) if cert.service else None,
+            "remaining_value": str(remaining) if remaining is not None else None,
+            "status": cert.get_status_display(),
+            "valid": cert.is_valid,
+            "valid_until": cert.valid_until.isoformat(),
+        },
+    })

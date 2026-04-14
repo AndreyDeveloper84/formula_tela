@@ -35,8 +35,12 @@ class YandexMetrikaClient:
     def _request(self, params: dict) -> dict:
         """Raw GET to Metrika stat API with OAuth header."""
         headers = {"Authorization": f"OAuth {self.token}"}
+        kwargs = {"timeout": 15}
+        proxy_url = getattr(settings, "OPENAI_PROXY", "")
+        if proxy_url:
+            kwargs["proxies"] = {"https": proxy_url, "http": proxy_url}
         try:
-            r = requests.get(self.BASE_URL, params=params, headers=headers, timeout=15)
+            r = requests.get(self.BASE_URL, params=params, headers=headers, **kwargs)
             if not r.ok:
                 raise YandexMetrikaError(f"HTTP {r.status_code}: {r.text[:300]}")
             return r.json()

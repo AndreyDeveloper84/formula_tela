@@ -25,13 +25,24 @@ def _build_prompt(data: dict) -> str:
         for p in data["active_promotions"]
     ) or "  нет активных акций"
 
+    trends_section = ""
+    if data.get("market_trends"):
+        trends_lines = "\n".join(
+            f"  - {t['topic']} (актуальность: {t.get('score', '?')}/10, "
+            f"{t.get('detail', '')[:80]})"
+            for t in data["market_trends"]
+        )
+        trends_section = f"- Актуальные тренды рынка:\n{trends_lines}\n"
+
     return (
         f"Данные салона красоты за период {data['period']}:\n"
         f"- Активных мастеров: {data['active_masters']}\n"
         f"- Услуги с низким спросом за 7 дней:\n{low}\n"
-        f"- Текущие активные акции:\n{active_promo}\n\n"
+        f"- Текущие активные акции:\n{active_promo}\n"
+        f"{trends_section}\n"
         "Предложи 2-3 конкретные акции (со скидкой или бонусом), которые помогут загрузить "
-        "мастеров на ближайшую неделю. Для каждой акции укажи: название, суть предложения, "
+        "мастеров на ближайшую неделю. Учитывай рыночные тренды — предлагай акции на услуги, "
+        "которые сейчас в тренде. Для каждой акции укажи: название, суть предложения, "
         "рекомендуемую скидку (%), на какую аудиторию направлена."
     )
 
@@ -70,12 +81,25 @@ class OfferAgent:
 
         active_masters = Master.objects.filter(is_active=True).count()
 
+        # Тренды рынка из TrendScoutAgent (если есть)
+        from agents.models import TrendSnapshot
+        market_trends = []
+        snap = (
+            TrendSnapshot.objects
+            .exclude(trends=[])
+            .order_by("-date")
+            .first()
+        )
+        if snap and snap.trends:
+            market_trends = snap.trends[:5]
+
         return {
             "period": f"{week_ago} — {today}",
             "date": today,
             "active_masters": active_masters,
             "low_demand_services": low_demand,
             "active_promotions": active_promotions,
+            "market_trends": market_trends,
         }
 
     def run(self) -> AgentTask:
