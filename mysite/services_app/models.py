@@ -1,6 +1,8 @@
 from django.db import models
-from django.db.models import Q 
+from django.db.models import Q
 from decimal import Decimal
+
+from .validators import validate_image_upload, validate_video_upload
 
 class Service(models.Model):
     name = models.CharField(max_length=200, verbose_name="Название услуги")
@@ -375,14 +377,16 @@ class ServiceMedia(models.Model):
         blank=True,
         null=True,
         verbose_name="Изображение",
-        help_text="JPG/PNG/WebP. Рекомендуемый размер: 800×600px."
+        help_text="JPG/PNG/WebP до 5 МБ. Рекомендуемый размер: 800×600px.",
+        validators=[validate_image_upload],
     )
     image_mobile = models.ImageField(
         upload_to="services/gallery/mobile/",
         blank=True,
         null=True,
         verbose_name="Мобильная версия",
-        help_text="Для экранов <768px. Если пусто — используется основное."
+        help_text="JPG/PNG/WebP до 5 МБ. Для экранов <768px.",
+        validators=[validate_image_upload],
     )
     video_url = models.URLField(
         blank=True,
@@ -394,7 +398,8 @@ class ServiceMedia(models.Model):
         blank=True,
         null=True,
         verbose_name="Видеофайл",
-        help_text="MP4/WebM. До 50 МБ. Если заполнено — приоритет над YouTube-ссылкой."
+        help_text="MP4/WebM до 50 МБ. Если заполнено — приоритет над YouTube-ссылкой.",
+        validators=[validate_video_upload],
     )
 
     alt_text = models.CharField(
@@ -837,7 +842,8 @@ class GiftCertificate(models.Model):
         upload_to="certificates/",
         blank=True, null=True,
         verbose_name="Изображение сертификата",
-        help_text="Дизайн сертификата для отправки клиенту",
+        help_text="JPG/PNG/WebP до 5 МБ. Дизайн сертификата для отправки клиенту.",
+        validators=[validate_image_upload],
     )
 
     # Покупатель
