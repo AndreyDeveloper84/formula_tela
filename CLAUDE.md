@@ -100,6 +100,8 @@ Frontend views: главная, каталог услуг, детальная с
 - `/contacts/` — контактная информация
 - `/bundles/` — пакеты услуг
 - `/admin/` — Django Admin
+- `/robots.txt` — robots.txt (Disallow `/admin/`, `/api/`; ссылка на sitemap; Host)
+- `/sitemap.xml` — динамический sitemap (static pages + services + categories + published landings)
 - `/<slug>/` — SEO-посадочная страница (только published, catch-all последним в urlpatterns)
 - `/healthz/` — health check -> `{"status": "ok"}`
 
@@ -185,6 +187,8 @@ pytest mysite/tests/test_booking_live.py -v -s
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_TOKEN`, `YCLIENTS_COMPANY_ID`
 - `OPENAI_API_KEY`, `OPENAI_MODEL` (по умолчанию: gpt-4o-mini)
+- `OPENAI_PROXY` — HTTP-прокси для OpenAI + Telegram API (формат: `http://user:pass@host:port`), нужен на русских серверах где OpenAI/Telegram заблокированы
+- `TELEGRAM_PROXY` — отдельный прокси только для Telegram (если не задан, используется `OPENAI_PROXY`)
 - `ADMIN_NOTIFICATION_EMAIL`
 - `YANDEX_WEBMASTER_TOKEN`, `YANDEX_WEBMASTER_HOST_ID`
 - `YANDEX_METRIKA_TOKEN`, `YANDEX_METRIKA_COUNTER_ID`
@@ -237,6 +241,9 @@ pytest mysite/tests/test_booking_live.py -v -s
 - CSP middleware включён — никаких инлайн-скриптов; разрешено: `'self'` + `https://w951024.yclients.com`
 - Booking API views используют `@csrf_exempt` и возвращают JSON
 - Активное использование `Prefetch` во views для оптимизации запросов
+- **OpenAI клиент централизован**: все агенты импортируют `get_openai_client()` из `agents/agents/__init__.py` — не создавать `OpenAI()` напрямую. Клиент автоматически поднимает HTTP-прокси из `OPENAI_PROXY` (нужно на русских серверах)
+- Telegram API (`agents/telegram.py`) также использует `OPENAI_PROXY`/`TELEGRAM_PROXY` т.к. api.telegram.org заблокирован в РФ
+- Sitemap — через `django.contrib.sitemaps` (4 sitemap: static/services/categories/landings), классы в `mysite/website/sitemaps.py`
 
 ---
 
@@ -406,6 +413,7 @@ python manage.py check
 - Форма-мастер записи через YClients API с WAF bypass
 - Профили мастеров, пакеты услуг, акции с промокодами
 - Meta description override через `{% block description %}` на страницах услуг
+- `robots.txt` и динамический `sitemap.xml` (django.contrib.sitemaps, 4 sitemap-класса в `website/sitemaps.py`)
 
 #### Интеграции (agents/integrations/)
 - YClients интеграция с WAF bypass
@@ -444,6 +452,8 @@ python manage.py check
 - CI/CD: GitHub Actions (тесты, deploy prod, deploy staging)
 - Django>=5.2,<6.0 (пин для предотвращения ломающего апгрейда)
 - Фикс последовательностей PostgreSQL (миграция 0034_fix_sequences)
+- **Централизованный OpenAI клиент** (`agents/agents/__init__.py::get_openai_client()`) с поддержкой `OPENAI_PROXY`; все 8 агентов используют его
+- **Proxy для Telegram API** в `agents/telegram.py` (РФ блокирует api.telegram.org)
 
 ### Следующие задачи
 - Доработка логики OfferAgent по загрузке мастеров
@@ -459,4 +469,4 @@ python manage.py check
 
 ---
 
-*Последнее обновление: 2026-04-08*
+*Последнее обновление: 2026-04-14*
