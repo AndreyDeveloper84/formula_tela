@@ -1209,7 +1209,15 @@ def api_wizard_services(request, category_id):
 @csrf_exempt
 @require_POST
 def api_wizard_booking(request):
-    """Создание заявки на запись"""
+    """Заявка с формы-мастера (#bookingWizard / кнопка «Записаться онлайн»).
+
+    By design НЕ создаёт запись в YClients — это «заявка на перезвон».
+    Менеджер обрабатывает вручную по уведомлению в Telegram/email.
+
+    Сохраняет BookingRequest в БД и шлёт два уведомления:
+      - Telegram: _send_booking_telegram
+      - Email:    _send_booking_email (список получателей — в SiteSettings.notification_emails)
+    """
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -1243,8 +1251,9 @@ def api_wizard_booking(request):
         comment=comment,
     )
 
-    # Telegram уведомление
+    # Уведомления: Telegram + email (список адресов в SiteSettings.notification_emails)
     _send_booking_telegram(booking)
+    _send_booking_email(booking)
 
     return JsonResponse({"success": True, "id": booking.id})
 
@@ -1277,6 +1286,55 @@ def _send_booking_telegram(booking):
         )
     except Exception as e:
         logger.error(f"Telegram notification failed: {e}")
+
+
+def _send_booking_email(booking):
+    """Отправка заявки wizard на email администраторов.
+
+    Список получателей берётся из SiteSettings.notification_emails
+    (редактируется через Django Admin). Если там пусто — fallback
+    на ADMIN_NOTIFICATION_EMAIL из окружения.
+    """
+    from django.conf import settings as django_settings
+    from django.core.mail import send_mail
+    from services_app.models import SiteSettings
+
+    recipients: list[str] = []
+    site = SiteSettings.objects.first()
+    if site:
+        recipients = site.get_notification_emails()
+
+    if not recipients:
+        fallback = getattr(django_settings, "ADMIN_NOTIFICATION_EMAIL", "")
+        if fallback:
+            recipients = [fallback]
+
+    if not recipients:
+        return
+
+    subject = f"Новая заявка с сайта: {booking.service_name}"
+    lines = [
+        f"Категория: {booking.category_name or '—'}",
+        f"Услуга:    {booking.service_name}",
+        f"Клиент:    {booking.client_name}",
+        f"Телефон:   {booking.client_phone}",
+    ]
+    if booking.comment:
+        lines.append(f"Комментарий: {booking.comment}")
+    lines.append(f"Время заявки: {booking.created_at:%d.%m.%Y %H:%M}")
+    lines.append("")
+    lines.append("Админка: /admin/services_app/bookingrequest/")
+
+    try:
+        send_mail(
+            subject=subject,
+            message="\n".join(lines),
+            from_email=None,
+            recipient_list=recipients,
+            fail_silently=True,
+        )
+    except Exception as e:
+        logger.error(f"Booking email notification failed: {e}")
 
 
 # ── Сертификаты ───────────────────────────────────────────────────────

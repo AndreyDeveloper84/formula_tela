@@ -419,7 +419,40 @@ class FAQAdmin(admin.ModelAdmin):
 
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(admin.ModelAdmin):
-    list_display = ("salon_name","contact_phone","address")
+    list_display = ("salon_name", "contact_phone", "address")
+    fieldsets = (
+        ("Основное", {
+            "fields": (
+                "site_name", "salon_name", "logo", "description",
+            ),
+        }),
+        ("Контакты", {
+            "fields": (
+                "contact_email", "contact_phone", "address", "working_hours",
+            ),
+        }),
+        ("Уведомления", {
+            "fields": ("notification_emails",),
+            "description": (
+                "Email-адреса для уведомлений о заявках с формы-мастера "
+                "(кнопка «Записаться онлайн» и CTA на страницах услуг). "
+                "По одному адресу на строку."
+            ),
+        }),
+        ("Интеграции и карты", {
+            "fields": (
+                "yclients_link", "yclients_company_id",
+                "google_maps_link", "yandex_maps_link",
+            ),
+        }),
+        ("Контент и соцсети", {
+            "fields": (
+                "social_media", "payment_methods",
+                "cancellation_policy", "privacy_policy",
+                "terms_of_service", "copyright",
+            ),
+        }),
+    )
 
 
 @admin.register(ServicePackage)

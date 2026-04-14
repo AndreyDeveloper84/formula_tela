@@ -490,6 +490,16 @@ class SiteSettings(models.Model):
     yandex_maps_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на Yandex Maps")
     yclients_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на YClients")
     yclients_company_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="ID компании в YClients")
+    notification_emails = models.TextField(
+        "Email для уведомлений о заявках",
+        blank=True,
+        default="",
+        help_text=(
+            "По одному email на строку (можно через запятую). Сюда падают "
+            "уведомления о заявках с формы «Записаться онлайн» (wizard). "
+            "Если пусто — используется ADMIN_NOTIFICATION_EMAIL из окружения."
+        ),
+    )
 
     class Meta:
         verbose_name = "Настройки сайта"
@@ -497,6 +507,17 @@ class SiteSettings(models.Model):
 
     def __str__(self):
         return "Настройки сайта"
+
+    def get_notification_emails(self) -> list[str]:
+        """Список email-адресов для уведомлений (по одному на строку)."""
+        if not self.notification_emails:
+            return []
+        result = []
+        for raw in self.notification_emails.replace(",", "\n").splitlines():
+            email = raw.strip()
+            if email and "@" in email:
+                result.append(email)
+        return result
 
 class Master(models.Model):
     name = models.CharField(max_length=150, verbose_name="ФИО")
