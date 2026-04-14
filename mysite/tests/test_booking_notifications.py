@@ -1,18 +1,26 @@
-"""Тесты email-уведомлений для wizard-заявок.
+"""Тесты централизованных уведомлений website/notifications.py.
 
 Покрывают:
-- Парсинг SiteSettings.notification_emails → list[str]
-- _send_booking_email: получатели из SiteSettings, fallback на ADMIN_NOTIFICATION_EMAIL
-- api_wizard_booking вызывает _send_booking_email после создания BookingRequest
+- SiteSettings.get_notification_emails() — парсинг поля
+- website.notifications.send_notification_email — получатели из SiteSettings,
+  fallback на ADMIN_NOTIFICATION_EMAIL, пустой список → no-op
+- website.notifications.send_notification_telegram — без токенов no-op
+- api_wizard_booking / api_bundle_request / api_certificate_request — все три
+  endpoint'а вызывают helpers и шлют email на список из SiteSettings
 """
 import json
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
 from model_bakery import baker
 
 from services_app.models import BookingRequest, SiteSettings
-from website.views import _send_booking_email
+from website.notifications import (
+    get_notification_recipients,
+    send_notification_email,
+    send_notification_telegram,
+)
 
 
 # ── SiteSettings.get_notification_emails ─────────────────────────────────────
@@ -68,73 +76,86 @@ def test_get_notification_emails_skips_junk():
     ]
 
 
-# ── _send_booking_email ──────────────────────────────────────────────────────
+# ── website.notifications.get_notification_recipients ───────────────────────
 
-@pytest.fixture
-def booking(db):
-    return baker.make(
-        BookingRequest,
-        category_name="Ручные массажи",
-        service_name="Классический массаж",
-        client_name="Алина",
-        client_phone="+79991112233",
-        comment="",
-    )
+@pytest.mark.django_db
+def test_recipients_from_sitesettings_when_present():
+    baker.make(SiteSettings, notification_emails="a@example.com\nb@example.com")
+    assert get_notification_recipients() == ["a@example.com", "b@example.com"]
 
 
 @pytest.mark.django_db
-def test_send_booking_email_uses_sitesettings(booking):
-    baker.make(
-        SiteSettings,
-        notification_emails="tikhonov-a-s@yandex.ru\nmanager@example.com",
-    )
-    with patch("django.core.mail.send_mail") as mock_mail:
-        _send_booking_email(booking)
-    mock_mail.assert_called_once()
-    assert mock_mail.call_args.kwargs["recipient_list"] == [
-        "tikhonov-a-s@yandex.ru",
-        "manager@example.com",
-    ]
-    assert "Классический массаж" in mock_mail.call_args.kwargs["subject"]
-    assert "Алина" in mock_mail.call_args.kwargs["message"]
+def test_recipients_fallback_to_env_when_sitesettings_empty(settings):
+    settings.ADMIN_NOTIFICATION_EMAIL = "env-admin@example.com"
+    assert get_notification_recipients() == ["env-admin@example.com"]
 
 
 @pytest.mark.django_db
-def test_send_booking_email_fallback_to_env(booking, settings):
-    """Если SiteSettings пуст — берём ADMIN_NOTIFICATION_EMAIL."""
-    settings.ADMIN_NOTIFICATION_EMAIL = "fallback@example.com"
-    # SiteSettings.notification_emails пустой (или записи вообще нет)
-    with patch("django.core.mail.send_mail") as mock_mail:
-        _send_booking_email(booking)
-    mock_mail.assert_called_once()
-    assert mock_mail.call_args.kwargs["recipient_list"] == ["fallback@example.com"]
-
-
-@pytest.mark.django_db
-def test_send_booking_email_no_recipients_silent(booking, settings):
-    """Пустой SiteSettings + пустой ADMIN_NOTIFICATION_EMAIL → ничего не шлём."""
+def test_recipients_empty_when_all_empty(settings):
     settings.ADMIN_NOTIFICATION_EMAIL = ""
-    with patch("django.core.mail.send_mail") as mock_mail:
-        _send_booking_email(booking)
+    assert get_notification_recipients() == []
+
+
+@pytest.mark.django_db
+def test_recipients_sitesettings_priority_over_env(settings):
+    settings.ADMIN_NOTIFICATION_EMAIL = "env@example.com"
+    baker.make(SiteSettings, notification_emails="admin@example.com")
+    assert get_notification_recipients() == ["admin@example.com"]
+
+
+# ── website.notifications.send_notification_email ───────────────────────────
+
+@pytest.mark.django_db
+def test_send_notification_email_uses_sitesettings():
+    baker.make(SiteSettings, notification_emails="a@example.com\nb@example.com")
+    with patch("website.notifications.send_mail") as mock_mail:
+        result = send_notification_email("Тема", "Тело")
+    assert result is True
+    mock_mail.assert_called_once()
+    assert mock_mail.call_args.kwargs["recipient_list"] == ["a@example.com", "b@example.com"]
+    assert mock_mail.call_args.kwargs["subject"] == "Тема"
+    assert mock_mail.call_args.kwargs["message"] == "Тело"
+
+
+@pytest.mark.django_db
+def test_send_notification_email_no_recipients_silent(settings):
+    settings.ADMIN_NOTIFICATION_EMAIL = ""
+    with patch("website.notifications.send_mail") as mock_mail:
+        result = send_notification_email("Тема", "Тело")
+    assert result is False
     mock_mail.assert_not_called()
 
 
+# ── website.notifications.send_notification_telegram ────────────────────────
+
+def test_send_notification_telegram_no_token_silent(settings):
+    settings.TELEGRAM_BOT_TOKEN = ""
+    settings.TELEGRAM_CHAT_ID = ""
+    with patch("website.notifications.http_requests.post") as mock_post:
+        result = send_notification_telegram("Тест")
+    assert result is False
+    mock_post.assert_not_called()
+
+
+def test_send_notification_telegram_sends_when_configured(settings):
+    settings.TELEGRAM_BOT_TOKEN = "fake-token"
+    settings.TELEGRAM_CHAT_ID = "fake-chat"
+    with patch("website.notifications.http_requests.post") as mock_post:
+        result = send_notification_telegram("Тест-сообщение")
+    assert result is True
+    mock_post.assert_called_once()
+    url_arg = mock_post.call_args[0][0]
+    assert "fake-token" in url_arg
+    assert mock_post.call_args.kwargs["json"]["chat_id"] == "fake-chat"
+    assert mock_post.call_args.kwargs["json"]["text"] == "Тест-сообщение"
+
+
+# ── api_wizard_booking — интеграция ─────────────────────────────────────────
+
 @pytest.mark.django_db
-def test_send_booking_email_sitesettings_takes_priority(booking, settings):
-    """SiteSettings перекрывает ADMIN_NOTIFICATION_EMAIL."""
-    settings.ADMIN_NOTIFICATION_EMAIL = "env@example.com"
-    baker.make(SiteSettings, notification_emails="admin@example.com")
-    with patch("django.core.mail.send_mail") as mock_mail:
-        _send_booking_email(booking)
-    assert mock_mail.call_args.kwargs["recipient_list"] == ["admin@example.com"]
-
-
-# ── api_wizard_booking интеграция ────────────────────────────────────────────
-
-@pytest.mark.django_db
-def test_wizard_booking_triggers_email(client, service, mock_telegram):
+def test_wizard_booking_triggers_notification(client, service, mock_telegram):
     baker.make(SiteSettings, notification_emails="tikhonov-a-s@yandex.ru")
-    with patch("django.core.mail.send_mail") as mock_mail:
+    with patch("website.notifications.send_mail") as mock_mail:
         resp = client.post(
             "/api/wizard/booking/",
             data=json.dumps({
@@ -149,3 +170,50 @@ def test_wizard_booking_triggers_email(client, service, mock_telegram):
     mock_mail.assert_called_once()
     assert "tikhonov-a-s@yandex.ru" in mock_mail.call_args.kwargs["recipient_list"]
     assert service.name in mock_mail.call_args.kwargs["subject"]
+    assert BookingRequest.objects.filter(service_name=service.name).exists()
+
+
+# ── api_bundle_request — интеграция ─────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_bundle_request_triggers_notification(client, bundle, mock_telegram):
+    baker.make(SiteSettings, notification_emails="manager@example.com")
+    with patch("website.notifications.send_mail") as mock_mail:
+        resp = client.post(
+            "/api/bundle/request/",
+            data=json.dumps({
+                "name": "Иван",
+                "phone": "+79001234567",
+                "bundle_id": bundle.id,
+                "bundle_name": bundle.name,
+                "comment": "",
+            }),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+    mock_mail.assert_called_once()
+    assert mock_mail.call_args.kwargs["recipient_list"] == ["manager@example.com"]
+    assert bundle.name in mock_mail.call_args.kwargs["subject"]
+
+
+# ── api_certificate_request — интеграция ───────────────────────────────────
+
+@pytest.mark.django_db
+def test_certificate_request_triggers_notification(client, mock_telegram):
+    baker.make(SiteSettings, notification_emails="certificates@example.com")
+    with patch("website.notifications.send_mail") as mock_mail:
+        resp = client.post(
+            "/api/certificates/request/",
+            data=json.dumps({
+                "certificate_type": "nominal",
+                "nominal": 3000,
+                "buyer_name": "Тест",
+                "buyer_phone": "+79990001122",
+            }),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    mock_mail.assert_called_once()
+    assert mock_mail.call_args.kwargs["recipient_list"] == ["certificates@example.com"]
+    assert "сертификат" in mock_mail.call_args.kwargs["subject"].lower()

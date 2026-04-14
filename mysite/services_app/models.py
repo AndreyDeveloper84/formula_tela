@@ -568,7 +568,6 @@ class ServicePackage(models.Model):
 class Bundle(models.Model):
     name = models.CharField(max_length=120, verbose_name="Название комплекса", null=True, blank=True)
     fixed_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    discount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0.00"))
 
     description = models.TextField(blank=True, verbose_name="Описание комплекса")
     image = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото")
@@ -579,7 +578,7 @@ class Bundle(models.Model):
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_popular = models.BooleanField(default=False, verbose_name="Популярный")
-    
+
     class Meta:
         verbose_name = "Комплекс (набор услуг)"
         verbose_name_plural = "Комплексы (наборы услуг)"
@@ -591,6 +590,11 @@ class Bundle(models.Model):
         return self.name
 
     def total_price(self) -> Decimal:
+        """Итоговая цена комплекса.
+
+        Если задано `fixed_price` — возвращает его. Иначе сумма
+        `option.price × quantity` по всем BundleItem.
+        """
         if self.fixed_price is not None:
             return self.fixed_price
         items = self.items.select_related("option").all()
@@ -598,11 +602,51 @@ class Bundle(models.Model):
         for it in items:
             if it.option and it.option.price is not None:
                 total += Decimal(it.option.price) * it.quantity
-        return max(Decimal("0.00"), total - self.discount)
+        return max(Decimal("0.00"), total)
 
     def total_duration_min(self) -> int:
+        """Сумма длительностей всех элементов комплекса (простая сумма)."""
         items = self.items.select_related("option").all()
         return sum((it.option.duration_min if it.option else 0) * it.quantity for it in items)
+
+    def compute_min_totals(self) -> tuple[Decimal, int]:
+        """Цена и минимальная длительность с учётом параллельных групп.
+
+        Элементы группируются по `BundleItem.parallel_group`: внутри одной
+        группы процедуры идут одновременно — длительность берётся как
+        максимум в группе, цены складываются. Между группами длительности
+        суммируются, плюс `gap_after_min` каждого элемента.
+
+        Используется на детальной странице/списке комплексов, когда нужно
+        показать клиенту, сколько он проведёт в салоне.
+        """
+        from collections import defaultdict
+
+        items = list(self.items.select_related("option").all())
+        if not items:
+            return Decimal("0.00"), 0
+
+        groups: dict[int, list] = defaultdict(list)
+        gaps_total = 0
+        for it in items:
+            groups[it.parallel_group].append(it)
+            gaps_total += int(it.gap_after_min or 0)
+
+        total_price = Decimal("0.00")
+        total_duration = 0
+        for group_items in groups.values():
+            group_max_duration = 0
+            for it in group_items:
+                opt = it.option
+                if not opt:
+                    continue
+                if opt.price is not None:
+                    total_price += Decimal(opt.price)
+                group_max_duration = max(group_max_duration, int(opt.duration_min or 0))
+            total_duration += group_max_duration
+
+        total_duration += gaps_total
+        return total_price, total_duration
 
 class BundleItem(models.Model):
     bundle = models.ForeignKey(Bundle, on_delete=models.CASCADE, related_name="items")

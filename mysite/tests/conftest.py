@@ -49,7 +49,6 @@ def bundle(db):
         "services_app.Bundle",
         name="Комплекс SPA",
         fixed_price=None,
-        discount=Decimal("0.00"),
         is_active=True,
     )
 

@@ -65,16 +65,23 @@ def home(request):
         .order_by("order", "-starts_at", "title")[:3]
     )
 
-    from django.db.models import Prefetch
-    popular_bundles = (
+    popular_bundles_qs = (
         Bundle.objects.filter(is_active=True, is_popular=True)
         .prefetch_related("items", "items__option", "items__option__service")
-        [:3]
+        .order_by("order", "id")[:3]
     )
+    popular_bundles = []
+    for b in popular_bundles_qs:
+        min_price, min_duration = b.compute_min_totals()
+        popular_bundles.append({
+            "bundle":       b,
+            "min_price":    min_price,
+            "min_duration": min_duration,
+            "price":        b.fixed_price or min_price,
+        })
 
-    # Отзывы для секции "Отзывы"
     reviews = Review.objects.filter(is_active=True).order_by("order", "-date", "-created_at")[:3]
-    
+
     ctx = {
         "settings": _settings(),
         "top_items": top_items,
@@ -150,32 +157,6 @@ def _min_option(service):
     return opts[0] if opts else None
     
 def bundles(request):
-
-    def _compute_min_totals(items):
-    # сгруппируем элементы по parallel_group
-        groups = defaultdict(list)
-        gaps_total = 0
-        for it in items:
-            groups[it.parallel_group].append(it)
-            gaps_total += int(it.gap_after_min or 0)
-
-        total_price = 0
-        total_duration = 0
-        for items in groups.values():
-            gmax = 0
-            for it in items:
-                opt = it.option  # ← берём ровно то, что выбрано в админке
-                if not opt:
-                    continue
-                total_price += opt.price or 0
-                gmax = max(gmax, int(opt.duration_min or 0))
-            total_duration += gmax
-
-        total_duration += gaps_total
-        return total_price, total_duration
-
-
-    # варианты для услуг
     opt_qs = (ServiceOption.objects
               .filter(is_active=True)
               .order_by("order", "duration_min", "unit_type", "units"))
@@ -183,32 +164,28 @@ def bundles(request):
     svc_qs = (Service.objects
               .prefetch_related(Prefetch("options", queryset=opt_qs)))
 
-    # элементы комплексов
     items_qs = (BundleItem.objects
                 .select_related("bundle", "option", "option__service")
                 .prefetch_related(Prefetch("option__service", queryset=svc_qs))
                 .order_by("order"))
 
-    # сами комплексы
     bundles_qs = (Bundle.objects
                   .filter(is_active=True)
-                  .prefetch_related(Prefetch("items", queryset=items_qs)))
+                  .prefetch_related(Prefetch("items", queryset=items_qs))
+                  .order_by("order", "id"))
 
-    # подготовим удобную структуру для шаблона
     bundles = []
     for b in bundles_qs:
-        # получим элементы и посчитаем «минимальные» итоги
         items = list(b.items.all())
-        min_price, min_duration = _compute_min_totals(items)
-        price = b.fixed_price
-        # не трогаем b.items (related manager), складываем в структуру
+        min_price, min_duration = b.compute_min_totals()
         bundles.append({
             "bundle": b,
             "items": items,
             "min_price": min_price,
             "min_duration": min_duration,
-            "price": price})
-    
+            "price": b.fixed_price,
+        })
+
     # Лечебные комплексы — услуги с "комплекс" в названии
     complex_opt_qs = (ServiceOption.objects
                       .filter(is_active=True)
@@ -1089,10 +1066,10 @@ def api_get_staff(request):
 
 @require_POST
 def api_bundle_request(request):
-    """API: Заявка на комплекс — сохранение + уведомление"""
+    """API: Заявка на комплекс — сохранение + уведомления."""
     import json
     from services_app.models import Bundle, BundleRequest
-    from django.core.mail import send_mail
+    from website.notifications import send_notification_telegram, send_notification_email
 
     try:
         data = json.loads(request.body)
@@ -1109,7 +1086,6 @@ def api_bundle_request(request):
     if not name or not phone:
         return JsonResponse({'success': False, 'error': 'Имя и телефон обязательны'}, status=400)
 
-    # Находим комплекс
     bundle = None
     if bundle_id:
         try:
@@ -1118,7 +1094,6 @@ def api_bundle_request(request):
         except Bundle.DoesNotExist:
             pass
 
-    # Сохраняем в БД
     req = BundleRequest.objects.create(
         bundle=bundle,
         bundle_name=bundle_name,
@@ -1128,44 +1103,28 @@ def api_bundle_request(request):
         comment=comment,
     )
 
-    # Уведомление в Telegram
-    tg_token = getattr(django_settings, 'TELEGRAM_BOT_TOKEN', '')
-    tg_chat = getattr(django_settings, 'TELEGRAM_CHAT_ID', '')
-    if tg_token and tg_chat:
-        try:
-            text = (
-                f"🔔 Новая заявка на комплекс!\n\n"
-                f"📦 {bundle_name}\n"
-                f"👤 {name}\n"
-                f"📱 {phone}\n"
-            )
-            if email:
-                text += f"📧 {email}\n"
-            if comment:
-                text += f"💬 {comment}\n"
+    tg_text = (
+        f"🔔 Новая заявка на комплекс!\n\n"
+        f"📦 {bundle_name}\n"
+        f"👤 {name}\n"
+        f"📱 {phone}\n"
+    )
+    if email:
+        tg_text += f"📧 {email}\n"
+    if comment:
+        tg_text += f"💬 {comment}\n"
+    send_notification_telegram(tg_text)
 
-            http_requests.post(
-                f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                json={"chat_id": tg_chat, "text": text, "parse_mode": "HTML"},
-                timeout=5
-            )
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Telegram notification failed: {e}")
-
-    # Уведомление по Email
-    admin_email = getattr(django_settings, 'ADMIN_NOTIFICATION_EMAIL', '')
-    if admin_email:
-        try:
-            send_mail(
-                subject=f"Заявка на комплекс: {bundle_name}",
-                message=f"Имя: {name}\nТелефон: {phone}\nEmail: {email}\nКомментарий: {comment}",
-                from_email=None,
-                recipient_list=[admin_email],
-                fail_silently=True,
-            )
-        except Exception:
-            pass
+    send_notification_email(
+        subject=f"Заявка на комплекс: {bundle_name}",
+        message=(
+            f"Комплекс: {bundle_name}\n"
+            f"Клиент:   {name}\n"
+            f"Телефон:  {phone}\n"
+            f"Email:    {email or '—'}\n"
+            f"Комментарий: {comment or '—'}\n"
+        ),
+    )
 
     return JsonResponse({
         'success': True,
@@ -1252,89 +1211,43 @@ def api_wizard_booking(request):
     )
 
     # Уведомления: Telegram + email (список адресов в SiteSettings.notification_emails)
-    _send_booking_telegram(booking)
-    _send_booking_email(booking)
+    _notify_booking_request(booking)
 
     return JsonResponse({"success": True, "id": booking.id})
 
 
-def _send_booking_telegram(booking):
-    """Отправка уведомления в Telegram"""
-    from django.conf import settings as django_settings
-    
-    token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
-    chat_id = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
-    if not token or not chat_id:
-        return
+def _notify_booking_request(booking):
+    """Шлёт Telegram и email о новой заявке с формы-мастера (wizard)."""
+    from website.notifications import send_notification_telegram, send_notification_email
 
-    text = (
+    tg_text = (
         f"📋 Новая заявка с сайта!\n\n"
         f"👤 {booking.client_name}\n"
         f"📞 {booking.client_phone}\n"
         f"💆 {booking.service_name}\n"
     )
     if booking.category_name:
-        text += f"📂 {booking.category_name}\n"
+        tg_text += f"📂 {booking.category_name}\n"
     if booking.comment:
-        text += f"💬 {booking.comment}\n"
+        tg_text += f"💬 {booking.comment}\n"
+    send_notification_telegram(tg_text)
 
-    try:
-        http_requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            timeout=5,
-        )
-    except Exception as e:
-        logger.error(f"Telegram notification failed: {e}")
-
-
-def _send_booking_email(booking):
-    """Отправка заявки wizard на email администраторов.
-
-    Список получателей берётся из SiteSettings.notification_emails
-    (редактируется через Django Admin). Если там пусто — fallback
-    на ADMIN_NOTIFICATION_EMAIL из окружения.
-    """
-    from django.conf import settings as django_settings
-    from django.core.mail import send_mail
-    from services_app.models import SiteSettings
-
-    recipients: list[str] = []
-    site = SiteSettings.objects.first()
-    if site:
-        recipients = site.get_notification_emails()
-
-    if not recipients:
-        fallback = getattr(django_settings, "ADMIN_NOTIFICATION_EMAIL", "")
-        if fallback:
-            recipients = [fallback]
-
-    if not recipients:
-        return
-
-    subject = f"Новая заявка с сайта: {booking.service_name}"
-    lines = [
+    email_lines = [
         f"Категория: {booking.category_name or '—'}",
         f"Услуга:    {booking.service_name}",
         f"Клиент:    {booking.client_name}",
         f"Телефон:   {booking.client_phone}",
     ]
     if booking.comment:
-        lines.append(f"Комментарий: {booking.comment}")
-    lines.append(f"Время заявки: {booking.created_at:%d.%m.%Y %H:%M}")
-    lines.append("")
-    lines.append("Админка: /admin/services_app/bookingrequest/")
+        email_lines.append(f"Комментарий: {booking.comment}")
+    email_lines.append(f"Время заявки: {booking.created_at:%d.%m.%Y %H:%M}")
+    email_lines.append("")
+    email_lines.append("Админка: /admin/services_app/bookingrequest/")
 
-    try:
-        send_mail(
-            subject=subject,
-            message="\n".join(lines),
-            from_email=None,
-            recipient_list=recipients,
-            fail_silently=True,
-        )
-    except Exception as e:
-        logger.error(f"Booking email notification failed: {e}")
+    send_notification_email(
+        subject=f"Новая заявка с сайта: {booking.service_name}",
+        message="\n".join(email_lines),
+    )
 
 
 # ── Сертификаты ───────────────────────────────────────────────────────
@@ -1357,9 +1270,8 @@ def certificates(request):
 
 @require_POST
 def api_certificate_request(request):
-    """API: Заявка на подарочный сертификат"""
+    """API: Заявка на подарочный сертификат."""
     from datetime import date, timedelta
-    from django.core.mail import send_mail
 
     try:
         data = json.loads(request.body)
@@ -1455,55 +1367,38 @@ def api_certificate_request(request):
         valid_until=today + timedelta(days=180),
     )
 
-    # --- Telegram ---
-    tg_token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
-    tg_chat = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
-    if tg_token and tg_chat:
-        try:
-            value_str = (
-                f"{nominal:,.0f} \u20bd"
-                if cert_type == "nominal"
-                else str(service)
-            )
-            text = (
-                f"\U0001f381 \u041d\u043e\u0432\u0430\u044f \u0437\u0430\u044f\u0432\u043a\u0430 \u043d\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442!\n\n"
-                f"\U0001f4b0 {value_str}\n"
-                f"\U0001f464 {buyer_name}, {buyer_phone}\n"
-            )
-            if recipient_name:
-                text += f"\U0001f380 \u041f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044c: {recipient_name}\n"
-            if recipient_phone:
-                text += f"\U0001f4f1 {recipient_phone}\n"
-            if message:
-                text += f"\U0001f4ac {message}\n"
-            text += f"\n\u2116 \u0437\u0430\u043a\u0430\u0437\u0430: {order.number}"
+    # --- Уведомления администраторам ---
+    from website.notifications import send_notification_telegram, send_notification_email
 
-            http_requests.post(
-                f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                json={"chat_id": tg_chat, "text": text, "parse_mode": "HTML"},
-                timeout=5,
-            )
-        except Exception as e:
-            logger.warning(f"Telegram notification failed: {e}")
+    value_str = (
+        f"{nominal:,.0f} ₽".replace(",", " ")
+        if cert_type == "nominal"
+        else str(service)
+    )
+    tg_text = (
+        f"🎁 Новая заявка на сертификат!\n\n"
+        f"💰 {value_str}\n"
+        f"👤 {buyer_name}, {buyer_phone}\n"
+    )
+    if recipient_name:
+        tg_text += f"🎀 Получатель: {recipient_name}\n"
+    if recipient_phone:
+        tg_text += f"📱 {recipient_phone}\n"
+    if message:
+        tg_text += f"💬 {message}\n"
+    tg_text += f"\n№ заказа: {order.number}"
+    send_notification_telegram(tg_text)
 
-    # --- Email ---
-    admin_email = getattr(django_settings, "ADMIN_NOTIFICATION_EMAIL", "")
-    if admin_email:
-        try:
-            send_mail(
-                subject=f"\u0417\u0430\u044f\u0432\u043a\u0430 \u043d\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442: {order.number}",
-                message=(
-                    f"\u041f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u044c: {buyer_name}, {buyer_phone}\n"
-                    f"\u041f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044c: {recipient_name or chr(8212)}\n"
-                    f"\u0422\u0438\u043f: {cert.get_certificate_type_display()}\n"
-                    f"\u041d\u043e\u043c\u0438\u043d\u0430\u043b: {nominal}"
-                ),
-                from_email=None,
-                recipient_list=[admin_email],
-                fail_silently=True,
-            )
-        except Exception:
-            pass
+    send_notification_email(
+        subject=f"Заявка на сертификат: {order.number}",
+        message=(
+            f"Покупатель: {buyer_name}, {buyer_phone}\n"
+            f"Получатель: {recipient_name or '—'}\n"
+            f"Тип: {cert.get_certificate_type_display()}\n"
+            f"Номинал: {nominal}\n"
+            f"№ заказа: {order.number}\n"
+        ),
+    )
 
     return JsonResponse({
         "success": True,

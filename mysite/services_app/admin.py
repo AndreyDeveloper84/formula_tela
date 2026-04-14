@@ -374,15 +374,14 @@ class BundleItemInline(admin.TabularInline):
 
 @admin.register(Bundle)
 class BundleAdmin(admin.ModelAdmin):
-    exclude = ("services",)
-
     list_display = ("id", "name", "is_active", "is_popular", "order")
     list_editable = ("is_active", "is_popular", "order")
     list_filter = ("is_active", "is_popular")
+    search_fields = ("name", "description")
     inlines = [BundleItemInline]
     fieldsets = (
         (None, {"fields": ("name", "description", "image", "image_mobile")}),
-        ("Цена", {"fields": ("fixed_price", "discount")}),
+        ("Цена", {"fields": ("fixed_price",)}),
         ("Настройки", {"fields": ("is_active", "is_popular", "order")}),
     )
 
