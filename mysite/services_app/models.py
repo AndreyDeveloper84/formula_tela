@@ -1,6 +1,51 @@
 from django.db import models
-from django.db.models import Q 
+from django.db.models import Q
 from decimal import Decimal
+
+
+def generate_unique_slug(model_cls, name: str, *, pk=None, max_length: int = 200) -> str:
+    """Генерирует уникальный slug для модели на основе name.
+
+    Использует unidecode для транслитерации кириллицы в латиницу
+    (чтобы получить `klassicheskii-massazh` из «Классический массаж»).
+    При коллизии добавляет суффикс `-2`, `-3` и т.д.
+
+    - `model_cls` — класс модели, у которой есть поле slug
+    - `name` — исходное название (любой язык)
+    - `pk` — если обновляем существующий объект, его pk (чтобы не учитывать
+      самого себя при проверке уникальности)
+    - `max_length` — max_length поля slug в модели
+
+    Возвращает пустую строку, если `name` пустое или после очистки не
+    осталось символов.
+    """
+    from django.utils.text import slugify
+    from unidecode import unidecode
+
+    if not name:
+        return ""
+    base = slugify(unidecode(name))[:max_length]
+    if not base:
+        return ""
+
+    qs = model_cls._default_manager.filter(slug=base)
+    if pk is not None:
+        qs = qs.exclude(pk=pk)
+    if not qs.exists():
+        return base
+
+    # Коллизия — приклеиваем числовой суффикс
+    n = 2
+    while True:
+        suffix = f"-{n}"
+        candidate = base[: max_length - len(suffix)] + suffix
+        qs = model_cls._default_manager.filter(slug=candidate)
+        if pk is not None:
+            qs = qs.exclude(pk=pk)
+        if not qs.exists():
+            return candidate
+        n += 1
+
 
 class Service(models.Model):
     name = models.CharField(max_length=200, verbose_name="Название услуги")
@@ -103,6 +148,13 @@ class Service(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            self.slug = generate_unique_slug(
+                Service, self.name, pk=self.pk, max_length=200
+            )
+        super().save(*args, **kwargs)
     
 
 UNIT_CHOICES = [
