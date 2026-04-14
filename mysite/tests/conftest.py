@@ -4,7 +4,23 @@
 import pytest
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
+from django.conf import settings
 from model_bakery import baker
+
+
+# ── Кэш в тестах: LocMem вместо Redis, ratelimit по умолчанию выключен ────
+# В проде CACHES указывает на Redis, которого в CI/локальном pytest может не
+# быть. django-ratelimit использует default cache, поэтому без этой правки
+# любые booking-тесты падают на redis.ConnectionError. RATELIMIT_ENABLE=False
+# глобально отключает лимиты — отдельные тесты, которые хотят проверить
+# лимит, включают его через @override_settings.
+settings.CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "pytest-default-cache",
+    }
+}
+settings.RATELIMIT_ENABLE = False
 
 
 # ── Модельные фикстуры ───────────────────────────────────────────────────────

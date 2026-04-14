@@ -53,6 +53,8 @@ MIDDLEWARE = [
     "django.middleware.locale.LocaleMiddleware",
     # CSP — включаем, если используешь django-csp:
     "csp.middleware.CSPMiddleware",
+    # Превращает django_ratelimit Ratelimited в 429 JSON для booking API
+    "website.middleware.RatelimitMiddleware",
 ]
 
 # CSP — расширенный (безопасный) вариант
@@ -130,6 +132,20 @@ LOGGING = {
 YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
 YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
 YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")
+
+# === Django cache (rate limit + booking idempotency) ===
+# Redis DB 1 — изолирован от Celery broker (DB 0), чтобы ключи кэша не
+# пересекались с очередью задач. Локально достаточно дефолтного
+# REDIS_URL, в проде — брать из .env.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv(
+            "DJANGO_CACHE_URL",
+            "redis://127.0.0.1:6379/1",
+        ),
+    }
+}
 
 # === Celery ===
 from celery.schedules import crontab  # noqa: E402
