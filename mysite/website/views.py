@@ -1,14 +1,18 @@
 from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from collections import defaultdict
+from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django_ratelimit.decorators import ratelimit
 from services_app.yclients_api import get_yclients_api, YClientsAPIError
 import logging
 import json
 import requests as http_requests
 from django.conf import settings as django_settings
+
+from .utils import normalize_ru_phone
 
 from services_app.models import (
     SiteSettings,
@@ -222,6 +226,7 @@ logger = logging.getLogger(__name__)
 
 @require_GET
 @csrf_exempt
+@ratelimit(key="ip", rate="30/m", method="GET", block=True)
 def api_available_times(request):
     """
     API: получить список доступных времён для записи с фильтрацией по длительности
@@ -483,6 +488,7 @@ def api_available_times_simple(request):
             'error': 'Internal server error'
         }, status=500)
 @csrf_exempt
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_create_booking(request):
     """
@@ -547,6 +553,15 @@ def api_create_booking(request):
             return JsonResponse({
                 'success': False,
                 'error': 'client must have name and phone'
+            }, status=400)
+
+        # Нормализация телефона до +7XXXXXXXXXX перед записью в YClients
+        try:
+            client['phone'] = normalize_ru_phone(client.get('phone', ''))
+        except ValidationError as exc:
+            return JsonResponse({
+                'success': False,
+                'error': str(exc.message if hasattr(exc, 'message') else exc),
             }, status=400)
         
         # Валидация service_ids
@@ -906,6 +921,7 @@ def _get_other_services(service, limit=8):
 """
 
 @csrf_exempt
+@ratelimit(key="ip", rate="30/m", method="GET", block=True)
 def api_available_dates(request):
     """
     API: получить список доступных дат для мастера.
@@ -961,6 +977,7 @@ def api_available_dates(request):
         }, status=500)
         
 @csrf_exempt
+@ratelimit(key="ip", rate="30/m", method="GET", block=True)
 @require_GET
 def api_get_staff(request):
     """
@@ -1064,6 +1081,7 @@ def api_get_staff(request):
             'error': str(e)
         }, status=500)
 
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_bundle_request(request):
     """API: Заявка на комплекс — сохранение + уведомления."""
@@ -1077,14 +1095,19 @@ def api_bundle_request(request):
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
 
     name = data.get('name', '').strip()
-    phone = data.get('phone', '').strip()
+    raw_phone = data.get('phone', '').strip()
     email = data.get('email', '').strip()
     comment = data.get('comment', '').strip()
     bundle_id = data.get('bundle_id')
     bundle_name = data.get('bundle_name', '')
 
-    if not name or not phone:
+    if not name or not raw_phone:
         return JsonResponse({'success': False, 'error': 'Имя и телефон обязательны'}, status=400)
+
+    try:
+        phone = normalize_ru_phone(raw_phone)
+    except ValidationError as exc:
+        return JsonResponse({'success': False, 'error': str(exc.message if hasattr(exc, 'message') else exc)}, status=400)
 
     bundle = None
     if bundle_id:
@@ -1166,6 +1189,7 @@ def api_wizard_services(request, category_id):
     return JsonResponse({"services": result})
 
 @csrf_exempt
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_wizard_booking(request):
     """Заявка с формы-мастера (#bookingWizard / кнопка «Записаться онлайн»).
@@ -1183,12 +1207,17 @@ def api_wizard_booking(request):
         return JsonResponse({"success": False, "error": "Неверный формат данных"}, status=400)
 
     client_name = data.get("client_name", "").strip()
-    client_phone = data.get("client_phone", "").strip()
+    raw_phone = data.get("client_phone", "").strip()
     comment = data.get("comment", "").strip()
     service_id = data.get("service_id")
 
-    if not client_name or not client_phone:
+    if not client_name or not raw_phone:
         return JsonResponse({"success": False, "error": "Укажите имя и телефон"}, status=400)
+
+    try:
+        client_phone = normalize_ru_phone(raw_phone)
+    except ValidationError as exc:
+        return JsonResponse({"success": False, "error": str(exc.message if hasattr(exc, 'message') else exc)}, status=400)
 
     # Получаем названия
     service_name = "Не указана"
@@ -1268,6 +1297,7 @@ def certificates(request):
     })
 
 
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_certificate_request(request):
     """API: Заявка на подарочный сертификат."""
@@ -1280,10 +1310,18 @@ def api_certificate_request(request):
 
     # --- Валидация ---
     buyer_name = data.get("buyer_name", "").strip()
-    buyer_phone = data.get("buyer_phone", "").strip()
-    if not buyer_name or not buyer_phone:
+    raw_buyer_phone = data.get("buyer_phone", "").strip()
+    if not buyer_name or not raw_buyer_phone:
         return JsonResponse(
             {"success": False, "error": "Имя и телефон покупателя обязательны"},
+            status=400,
+        )
+
+    try:
+        buyer_phone = normalize_ru_phone(raw_buyer_phone)
+    except ValidationError as exc:
+        return JsonResponse(
+            {"success": False, "error": str(exc.message if hasattr(exc, 'message') else exc)},
             status=400,
         )
 
@@ -1336,8 +1374,18 @@ def api_certificate_request(request):
 
     buyer_email = data.get("buyer_email", "").strip()
     recipient_name = data.get("recipient_name", "").strip()
-    recipient_phone = data.get("recipient_phone", "").strip()
+    raw_recipient_phone = data.get("recipient_phone", "").strip()
     message = data.get("message", "").strip()
+
+    recipient_phone = ""
+    if raw_recipient_phone:
+        try:
+            recipient_phone = normalize_ru_phone(raw_recipient_phone)
+        except ValidationError as exc:
+            return JsonResponse(
+                {"success": False, "error": f"Телефон получателя: {exc.message if hasattr(exc, 'message') else exc}"},
+                status=400,
+            )
 
     # --- Создание Order ---
     order = Order.objects.create(
