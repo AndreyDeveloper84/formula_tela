@@ -14,6 +14,21 @@ from django.conf import settings as django_settings
 
 from .utils import normalize_ru_phone
 
+from django.core.cache import cache
+import hashlib
+
+# TTL для idempotency-ключей бронирования. 60 секунд покрывает double-click
+# и retry после сетевого глитча; осознанная повторная запись через минуту
+# уже считается валидной и бьёт YClients заново.
+BOOKING_IDEMPOTENCY_TTL = 60
+
+
+def _booking_idempotency_key(*parts: str) -> str:
+    """Собирает стабильный ключ кэша из частей бронирования."""
+    raw = "|".join(str(p) for p in parts)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"booking-idem:{digest}"
+
 from services_app.models import (
     SiteSettings,
     ServiceCategory,
@@ -591,20 +606,35 @@ def api_create_booking(request):
         
         # Формируем datetime
         booking_datetime = f"{date}T{time}:00"
-        
+
+        # Idempotency: если тот же клиент с тем же слотом уже пролетал
+        # сквозь этот хэндлер за последние BOOKING_IDEMPOTENCY_TTL секунд,
+        # возвращаем сохранённый ответ и НЕ трогаем YClients повторно.
+        idem_key = _booking_idempotency_key(
+            "create",
+            client['phone'],
+            staff_id,
+            ",".join(str(s) for s in sorted(service_ids)),
+            booking_datetime,
+        )
+        cached_response = cache.get(idem_key)
+        if cached_response is not None:
+            logger.info("api_create_booking: idempotent hit %s", idem_key[-16:])
+            return JsonResponse(cached_response)
+
         # API клиент
         api = get_yclients_api()
-        
+
         # Информация о мастере
         staff_list = api.get_staff()
         master = next((s for s in staff_list if s['id'] == staff_id), None)
-        
+
         if not master:
             return JsonResponse({
                 'success': False,
                 'error': f'Staff {staff_id} not found'
             }, status=404)
-        
+
         logger.info(
             f"📝 Создание записи: "
             f"staff={master['name']}, "
@@ -612,7 +642,7 @@ def api_create_booking(request):
             f"client={client['name']}, "
             f"services={service_ids}"
         )
-        
+
         # Создаём запись
         booking = api.create_booking(
             staff_id=staff_id,
@@ -627,7 +657,7 @@ def api_create_booking(request):
             f"Record ID: {booking.get('record_id')}"
         )
         
-        return JsonResponse({
+        response_payload = {
             'success': True,
             'data': {
                 'booking_id': booking.get('record_id'),
@@ -639,8 +669,12 @@ def api_create_booking(request):
                 'client_name': client['name'],
                 'comment': comment
             }
-        })
-        
+        }
+        # Кэшируем только успешный ответ. Ошибки YClients не кэшируем —
+        # клиент должен иметь возможность немедленно повторить.
+        cache.set(idem_key, response_payload, BOOKING_IDEMPOTENCY_TTL)
+        return JsonResponse(response_payload)
+
     except YClientsAPIError as e:
         logger.exception(f"❌ YClients API Error: {e}")
         return JsonResponse({
@@ -1109,6 +1143,16 @@ def api_bundle_request(request):
     except ValidationError as exc:
         return JsonResponse({'success': False, 'error': str(exc.message if hasattr(exc, 'message') else exc)}, status=400)
 
+    # Idempotency: тот же клиент на тот же bundle с тем же комментарием
+    # не должен плодить дубли BundleRequest при дабл-клике / retry.
+    idem_key = _booking_idempotency_key(
+        "bundle", phone, bundle_id or "", comment[:64]
+    )
+    cached_response = cache.get(idem_key)
+    if cached_response is not None:
+        logger.info("api_bundle_request: idempotent hit %s", idem_key[-16:])
+        return JsonResponse(cached_response)
+
     bundle = None
     if bundle_id:
         try:
@@ -1149,10 +1193,12 @@ def api_bundle_request(request):
         ),
     )
 
-    return JsonResponse({
+    response_payload = {
         'success': True,
-        'message': 'Заявка принята! Администратор свяжется с вами.'
-    })
+        'message': 'Заявка принята! Администратор свяжется с вами.',
+    }
+    cache.set(idem_key, response_payload, BOOKING_IDEMPOTENCY_TTL)
+    return JsonResponse(response_payload)
 
 @require_GET
 def api_wizard_categories(request):
@@ -1219,6 +1265,16 @@ def api_wizard_booking(request):
     except ValidationError as exc:
         return JsonResponse({"success": False, "error": str(exc.message if hasattr(exc, 'message') else exc)}, status=400)
 
+    # Idempotency-ключ: телефон + услуга + обрезанный комментарий.
+    # Защищает от дубликатов BookingRequest при double-submit.
+    idem_key = _booking_idempotency_key(
+        "wizard", client_phone, service_id or "", comment[:64]
+    )
+    cached_response = cache.get(idem_key)
+    if cached_response is not None:
+        logger.info("api_wizard_booking: idempotent hit %s", idem_key[-16:])
+        return JsonResponse(cached_response)
+
     # Получаем названия
     service_name = "Не указана"
     category_name = ""
@@ -1242,7 +1298,9 @@ def api_wizard_booking(request):
     # Уведомления: Telegram + email (список адресов в SiteSettings.notification_emails)
     _notify_booking_request(booking)
 
-    return JsonResponse({"success": True, "id": booking.id})
+    response_payload = {"success": True, "id": booking.id}
+    cache.set(idem_key, response_payload, BOOKING_IDEMPOTENCY_TTL)
+    return JsonResponse(response_payload)
 
 
 def _notify_booking_request(booking):
