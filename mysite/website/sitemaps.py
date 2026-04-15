@@ -30,8 +30,11 @@ class ServiceSitemap(Sitemap):
     def location(self, obj):
         return reverse("website:service_detail_by_slug", kwargs={"slug": obj.slug})
 
-    def lastmod(self, obj):
-        return obj.updated_at
+    # NB: lastmod removed — у Service нет полей created_at/updated_at в БД,
+    # а добавление их через миграцию + auto_now выходит за рамки hotfix'а.
+    # Если SEO потребуется lastmod — добавить отдельным коммитом:
+    #   1) AddField Service.updated_at + created_at (auto_now / auto_now_add)
+    #   2) Вернуть метод lastmod(self, obj): return obj.updated_at
 
 
 class BundleSitemap(Sitemap):
