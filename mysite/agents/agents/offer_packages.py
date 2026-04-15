@@ -10,6 +10,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from agents.agents import get_openai_client
+from agents.agents._json_utils import to_jsonable
 from agents.agents._lifecycle import ensure_task_finalized
 from agents.models import AgentReport, AgentTask
 from agents.telegram import send_telegram
@@ -145,11 +146,9 @@ class OfferPackagesAgent:
         logger.info("OfferPackagesAgent: старт (task_id=%s)", task.pk)
         try:
             data = self.gather_data()
-            task.input_context = {
-                k: (str(v) if isinstance(v, datetime.date) else v)
-                for k, v in data.items()
-                if k != "date"
-            }
+            task.input_context = to_jsonable(
+                {k: v for k, v in data.items() if k != "date"}
+            )
             task.save(update_fields=["input_context"])
 
             client = get_openai_client()
