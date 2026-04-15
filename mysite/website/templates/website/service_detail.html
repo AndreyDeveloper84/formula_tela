@@ -569,7 +569,7 @@
                 {% for cat in other_categories %}
                 {% if cat.image %}
                 <div class="col-xxl-3 col-xl-4 col-md-4 col-sm-6">
-                    <a href="{% url 'website:category_services' category_id=cat.id %}" class="item">
+                    <a href="{% if cat.slug %}{% url 'website:category_services_by_slug' slug=cat.slug %}{% else %}{% url 'website:category_services' category_id=cat.id %}{% endif %}" class="item">
                         <img src="{{ cat.image.url }}" class="responsive mn"
                              alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                         {% if cat.image_mobile %}

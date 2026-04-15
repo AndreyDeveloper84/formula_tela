@@ -49,19 +49,19 @@ class BundleSitemap(Sitemap):
 
 
 class CategorySitemap(Sitemap):
-    """
-    Категории доступны только по числовым ID (/services/<id>/) — без slug.
-    Такие URL не имеют SEO-ценности и зря расходуют краулинг-бюджет.
-    items() возвращает пустой список пока у категорий не появятся slug-based URL.
-    """
     priority = 0.7
     changefreq = "weekly"
 
     def items(self):
-        return []
+        return (
+            ServiceCategory.objects
+            .filter(slug__isnull=False)
+            .exclude(slug="")
+            .order_by("slug")
+        )
 
     def location(self, obj):
-        return reverse("website:category_services", kwargs={"category_id": obj.pk})
+        return reverse("website:category_services_by_slug", kwargs={"slug": obj.slug})
 
 
 class LandingPageSitemap(Sitemap):

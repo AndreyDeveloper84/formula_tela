@@ -23,7 +23,7 @@
             <div class="row">
                 {% for s in services %}
                     <div class="col-lg-4 col-md-6 col-sm-6">
-                        <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
+                        <a href="{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% else %}{% url 'website:service_detail' service_id=s.id %}{% endif %}" class="item">
                             {% if s.image %}
                                 <img src="{{ s.image.url }}" class="responsive mn7" alt="{{ s.name }}" title="{{ s.name }}" loading="lazy">
                             {% else %}
@@ -38,7 +38,7 @@
                             {% endif %}
                         </a>
 
-                        <a href="{% url 'website:service_detail' service_id=s.id %}" class="text-center mb-40">
+                        <a href="{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% else %}{% url 'website:service_detail' service_id=s.id %}{% endif %}" class="text-center mb-40">
                             <span class="semi f20 mb-15">{{ s.name }}</span>
                             {% if s.options.all %}
                                 {% with first_option=s.options.all|first %}
@@ -72,7 +72,7 @@
             <div class="row">
                 {% for cat in other_categories %}
                     <div class="col-xxl-3 col-xl-4 col-md-4 col-sm-6">
-                        <a href="{% url 'website:category_services' category_id=cat.id %}" class="item">
+                        <a href="{% if cat.slug %}{% url 'website:category_services_by_slug' slug=cat.slug %}{% else %}{% url 'website:category_services' category_id=cat.id %}{% endif %}" class="item">
                             {% if cat.image %}
                                 <img src="{{ cat.image.url }}" class="responsive mn" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                             {% else %}

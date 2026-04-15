@@ -106,8 +106,17 @@ def test_bundles_returns_200(client):
 
 @pytest.mark.django_db
 def test_category_services_valid_200(client, category):
-    resp = client.get(f"/services/{category.id}/")
+    # ЧПУ-URL — основной
+    resp = client.get(f"/kategorii/{category.slug}/")
     assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_category_services_id_redirects_to_slug(client, category):
+    # Legacy /services/<id>/ → 301 на /kategorii/<slug>/
+    resp = client.get(f"/services/{category.id}/")
+    assert resp.status_code == 301
+    assert resp["Location"] == f"/kategorii/{category.slug}/"
 
 
 @pytest.mark.django_db
@@ -118,5 +127,5 @@ def test_category_services_invalid_404(client):
 
 @pytest.mark.django_db
 def test_category_services_context_has_category(client, category):
-    resp = client.get(f"/services/{category.id}/")
+    resp = client.get(f"/kategorii/{category.slug}/")
     assert resp.context["category"].id == category.id
