@@ -4,7 +4,23 @@
 import pytest
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
+from django.conf import settings
 from model_bakery import baker
+
+
+# ── Кэш в тестах: LocMem вместо Redis, ratelimit по умолчанию выключен ────
+# В проде CACHES указывает на Redis, которого в CI/локальном pytest может не
+# быть. django-ratelimit использует default cache, поэтому без этой правки
+# любые booking-тесты падают на redis.ConnectionError. RATELIMIT_ENABLE=False
+# глобально отключает лимиты — отдельные тесты, которые хотят проверить
+# лимит, включают его через @override_settings.
+settings.CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "pytest-default-cache",
+    }
+}
+settings.RATELIMIT_ENABLE = False
 
 
 # ── Модельные фикстуры ───────────────────────────────────────────────────────
@@ -49,7 +65,6 @@ def bundle(db):
         "services_app.Bundle",
         name="Комплекс SPA",
         fixed_price=None,
-        discount=Decimal("0.00"),
         is_active=True,
     )
 
@@ -106,3 +121,36 @@ def mock_telegram(monkeypatch):
     mock = MagicMock(return_value=MagicMock(status_code=200))
     monkeypatch.setattr("website.views.http_requests.post", mock)
     return mock
+
+
+# ── Заказы и сертификаты ────────────────────────────────────────────────────
+
+@pytest.fixture
+def order(db):
+    """Заказ на сертификат."""
+    return baker.make(
+        "services_app.Order",
+        order_type="certificate",
+        status="pending",
+        client_name="Иванов Иван",
+        client_phone="+79991234567",
+        total_amount=Decimal("3000"),
+    )
+
+
+@pytest.fixture
+def gift_certificate(db, order, service):
+    """Оплаченный подарочный сертификат на 3000 руб."""
+    from datetime import date, timedelta
+    return baker.make(
+        "services_app.GiftCertificate",
+        order=order,
+        certificate_type="nominal",
+        nominal=Decimal("3000"),
+        buyer_name="Иванов Иван",
+        buyer_phone="+79991234567",
+        status="paid",
+        valid_from=date.today(),
+        valid_until=date.today() + timedelta(days=180),
+        is_active=True,
+    )

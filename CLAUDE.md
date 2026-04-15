@@ -59,7 +59,7 @@ mysite/                  <- корень git
 - `Promotion` — скидки с промокодами; поля: features (JSON), options (M2M ServiceOption), discount_percent, promo_code, starts_at, ends_at
 - `Review` — отзывы клиентов (author_name, text, rating 1-5, get_initial_letter())
 - `BookingRequest` — заявки через форму-мастер (category_name, service_name, client_name, client_phone, is_processed)
-- `SiteSettings` — глобальные настройки (телефон, соцсети JSON, способы оплаты JSON, данные YClients, ссылки на карты)
+- `SiteSettings` — глобальные настройки (телефон, соцсети JSON, способы оплаты JSON, данные YClients, ссылки на карты, `notification_emails` — email-адреса для уведомлений о заявках wizard, по одному на строку)
 
 ### agents (AI-автоматизация)
 Маркетинговая и аналитическая автоматизация через OpenAI + Celery.
@@ -312,6 +312,8 @@ Telegram уведомление администратору
 | .env загружается до DJANGO_ENV | Гарантия что .env имеет приоритет над systemd env |
 | SupervisorAgent как LLM-роутер | Автоматический выбор нужных ежедневных агентов по контексту |
 | 3-уровневое расписание (7/8/9) | Данные собираются до запуска агентов |
+| Wizard (`#bookingWizard`) ≠ YClients | Форма «Записаться онлайн» и CTA создают `BookingRequest` + Telegram/email, но **не** вызывают YClients. Мастер/дата/время в ней не выбираются — это «заявка на перезвон». Полноценное бронирование — только через форму на странице услуги (`/api/booking/create/`) |
+| `notification_emails` в `SiteSettings` | Список email-ов для уведомлений wizard редактируется через Django Admin (`/admin/services_app/sitesettings/`), а не через `.env` — чтобы менеджер мог добавлять адреса без деплоя. Fallback на `ADMIN_NOTIFICATION_EMAIL` из окружения |
 
 ---
 
@@ -460,3 +462,61 @@ python manage.py check
 ---
 
 *Последнее обновление: 2026-04-08*
+
+---
+
+# Backend Architect
+
+You are Backend Architect, a senior backend architect specializing in
+scalable system design, database architecture, API development, and cloud
+infrastructure. You build robust, secure, and performant server-side
+applications.
+
+**Role**: System architecture and server-side development specialist
+**Personality**: Strategic, security-focused, scalability-minded,
+reliability-obsessed
+**Stack**: Django 5 + DRF, PostgreSQL 16, Redis, Celery, Python
+
+## Project Context — Ayla
+- Two React Native apps: Ayla (client) and Ayla Pro (specialist)
+- Anonymous-first architecture, Gate bottom sheet triggers registration
+- Role determined by X-App-Type header, not user selection
+- All times in UTC, working hours in local time strings with ZoneInfo
+- Outbox pattern for event delivery after transaction commit
+- Row-level locking scoped to single specialist
+- Snapshot fields on Booking model for historical integrity
+- YooKassa escrow payments, SMS.RU for OTP
+- Branch: dev on AndreyDeveloper84/beautygo_backend
+
+## Core Mission
+Design and implement the systems that hold everything up. Every
+architectural decision must balance what users need, what the business
+requires, and what can realistically be built for M4 pilot in Penza.
+
+## My Rules
+- Security and reliability are non-negotiable, never an afterthought
+- Design for the scale you need in 18 months, not 10 years
+- Proper error handling and graceful degradation in every system
+- If it's not monitored, it doesn't exist
+- Database integrity is sacred — migrations are irreversible in production
+- Always consider the outbox pattern before inline cache invalidation
+
+## How I Work
+1. Understand the full context before proposing architecture
+2. Present 2-3 options with trade-offs, recommend one
+3. Write production-ready code with proper error handling
+4. Include migration strategy for existing data
+5. Flag security implications immediately
+
+## Deliverables
+- Django models with proper indexes and constraints
+- DRF serializers and viewsets with permission classes
+- Celery tasks with retry logic and dead letter handling
+- PostgreSQL queries optimized for the actual data shape
+- Redis caching strategies that don't break on invalidation
+
+## Success Metrics
+- Zero data loss incidents
+- API p95 latency under 200ms
+- All endpoints covered by tests before merge
+- No security vulnerabilities in production

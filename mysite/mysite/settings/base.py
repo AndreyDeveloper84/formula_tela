@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
     "django.contrib.humanize",
+    "django.contrib.sitemaps",
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
@@ -52,6 +53,8 @@ MIDDLEWARE = [
     "django.middleware.locale.LocaleMiddleware",
     # CSP — включаем, если используешь django-csp:
     "csp.middleware.CSPMiddleware",
+    # Превращает django_ratelimit Ratelimited в 429 JSON для booking API
+    "website.middleware.RatelimitMiddleware",
 ]
 
 # CSP — расширенный (безопасный) вариант
@@ -90,6 +93,10 @@ else:
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
         "PORT": os.getenv("DB_PORT", "5432"),
+        # Держим коннект 60 сек, чтобы не открывать TCP+TLS на каждый запрос.
+        # Health check (Django 4.1+) делает SELECT 1 и защищает от stale-коннекта.
+        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        "CONN_HEALTH_CHECKS": True,
     }}
 
 LANGUAGE_CODE = os.getenv("DJANGO_LANGUAGE_CODE", "ru")
@@ -126,6 +133,20 @@ YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
 YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
 YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")
 
+# === Django cache (rate limit + booking idempotency) ===
+# Redis DB 1 — изолирован от Celery broker (DB 0), чтобы ключи кэша не
+# пересекались с очередью задач. Локально достаточно дефолтного
+# REDIS_URL, в проде — брать из .env.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv(
+            "DJANGO_CACHE_URL",
+            "redis://127.0.0.1:6379/1",
+        ),
+    }
+}
+
 # === Celery ===
 from celery.schedules import crontab  # noqa: E402
 
@@ -147,11 +168,17 @@ CELERY_BEAT_SCHEDULE = {
         "task": "agents.tasks.collect_rank_snapshots",
         "schedule": crontab(hour=7, minute=0),
     },
+    "weekly-trend-scout-monday-0730": {
+        "task": "agents.tasks.collect_trends",
+        "schedule": crontab(hour=7, minute=30, day_of_week="monday"),
+    },
 }
 
 # === OpenAI ===
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")  # API-прокси для OpenAI
+OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")  # HTTP-прокси (http://user:pass@host:port)
 
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
@@ -165,6 +192,17 @@ YANDEX_DIRECT_CLIENT_LOGIN = os.getenv("YANDEX_DIRECT_CLIENT_LOGIN", "")
 VK_ADS_TOKEN      = os.getenv("VK_ADS_TOKEN", "")
 VK_ADS_ACCOUNT_ID = os.getenv("VK_ADS_ACCOUNT_ID", "")
 
+# === VK Social (парсинг групп для трендов) ===
+VK_SERVICE_TOKEN = os.getenv("VK_SERVICE_TOKEN", "")
+VK_TREND_GROUP_IDS = [gid.strip() for gid in os.getenv("VK_TREND_GROUP_IDS", "").split(",") if gid.strip()]
+
+# === Парсер трендов ===
+TREND_SEED_QUERIES = [q.strip() for q in os.getenv("TREND_SEED_QUERIES",
+    "массаж пенза,спа пенза,массаж лица,антицеллюлитный массаж,"
+    "лимфодренажный массаж,массаж спины,подарочный сертификат массаж,"
+    "массажист пенза,lpg массаж,спа процедуры"
+).split(",") if q.strip()]
+
 # === Яндекс.Вебмастер ===
 # Токен: https://oauth.yandex.ru/ (scope: webmaster:info)
 # HOST_ID: encoded URL вида https:yourdomain.ru:443
@@ -175,4 +213,4 @@ YANDEX_WEBMASTER_HOST_ID = os.getenv("YANDEX_WEBMASTER_HOST_ID", "")
 
 # Базовый URL сайта (без trailing slash)
 # Используется TechnicalSEOWatchdog для проверки страниц
-SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela.ru")
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela58.ru")

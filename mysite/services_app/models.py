@@ -1,6 +1,53 @@
 from django.db import models
-from django.db.models import Q 
+from django.db.models import Q
 from decimal import Decimal
+
+from .validators import validate_image_upload, validate_video_upload
+
+
+def generate_unique_slug(model_cls, name: str, *, pk=None, max_length: int = 200) -> str:
+    """Генерирует уникальный slug для модели на основе name.
+
+    Использует unidecode для транслитерации кириллицы в латиницу
+    (чтобы получить `klassicheskii-massazh` из «Классический массаж»).
+    При коллизии добавляет суффикс `-2`, `-3` и т.д.
+
+    - `model_cls` — класс модели, у которой есть поле slug
+    - `name` — исходное название (любой язык)
+    - `pk` — если обновляем существующий объект, его pk (чтобы не учитывать
+      самого себя при проверке уникальности)
+    - `max_length` — max_length поля slug в модели
+
+    Возвращает пустую строку, если `name` пустое или после очистки не
+    осталось символов.
+    """
+    from django.utils.text import slugify
+    from unidecode import unidecode
+
+    if not name:
+        return ""
+    base = slugify(unidecode(name))[:max_length]
+    if not base:
+        return ""
+
+    qs = model_cls._default_manager.filter(slug=base)
+    if pk is not None:
+        qs = qs.exclude(pk=pk)
+    if not qs.exists():
+        return base
+
+    # Коллизия — приклеиваем числовой суффикс
+    n = 2
+    while True:
+        suffix = f"-{n}"
+        candidate = base[: max_length - len(suffix)] + suffix
+        qs = model_cls._default_manager.filter(slug=candidate)
+        if pk is not None:
+            qs = qs.exclude(pk=pk)
+        if not qs.exists():
+            return candidate
+        n += 1
+
 
 class Service(models.Model):
     name = models.CharField(max_length=200, verbose_name="Название услуги")
@@ -103,6 +150,13 @@ class Service(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            self.slug = generate_unique_slug(
+                Service, self.name, pk=self.pk, max_length=200
+            )
+        super().save(*args, **kwargs)
     
 
 UNIT_CHOICES = [
@@ -375,14 +429,16 @@ class ServiceMedia(models.Model):
         blank=True,
         null=True,
         verbose_name="Изображение",
-        help_text="JPG/PNG/WebP. Рекомендуемый размер: 800×600px."
+        help_text="JPG/PNG/WebP до 5 МБ. Рекомендуемый размер: 800×600px.",
+        validators=[validate_image_upload],
     )
     image_mobile = models.ImageField(
         upload_to="services/gallery/mobile/",
         blank=True,
         null=True,
         verbose_name="Мобильная версия",
-        help_text="Для экранов <768px. Если пусто — используется основное."
+        help_text="JPG/PNG/WebP до 5 МБ. Для экранов <768px.",
+        validators=[validate_image_upload],
     )
     video_url = models.URLField(
         blank=True,
@@ -394,7 +450,8 @@ class ServiceMedia(models.Model):
         blank=True,
         null=True,
         verbose_name="Видеофайл",
-        help_text="MP4/WebM. До 50 МБ. Если заполнено — приоритет над YouTube-ссылкой."
+        help_text="MP4/WebM до 50 МБ. Если заполнено — приоритет над YouTube-ссылкой.",
+        validators=[validate_video_upload],
     )
 
     alt_text = models.CharField(
@@ -490,6 +547,16 @@ class SiteSettings(models.Model):
     yandex_maps_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на Yandex Maps")
     yclients_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на YClients")
     yclients_company_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="ID компании в YClients")
+    notification_emails = models.TextField(
+        "Email для уведомлений о заявках",
+        blank=True,
+        default="",
+        help_text=(
+            "По одному email на строку (можно через запятую). Сюда падают "
+            "уведомления о заявках с формы «Записаться онлайн» (wizard). "
+            "Если пусто — используется ADMIN_NOTIFICATION_EMAIL из окружения."
+        ),
+    )
 
     class Meta:
         verbose_name = "Настройки сайта"
@@ -497,6 +564,17 @@ class SiteSettings(models.Model):
 
     def __str__(self):
         return "Настройки сайта"
+
+    def get_notification_emails(self) -> list[str]:
+        """Список email-адресов для уведомлений (по одному на строку)."""
+        if not self.notification_emails:
+            return []
+        result = []
+        for raw in self.notification_emails.replace(",", "\n").splitlines():
+            email = raw.strip()
+            if email and "@" in email:
+                result.append(email)
+        return result
 
 class Master(models.Model):
     name = models.CharField(max_length=150, verbose_name="ФИО")
@@ -547,7 +625,6 @@ class ServicePackage(models.Model):
 class Bundle(models.Model):
     name = models.CharField(max_length=120, verbose_name="Название комплекса", null=True, blank=True)
     fixed_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    discount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0.00"))
 
     description = models.TextField(blank=True, verbose_name="Описание комплекса")
     image = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото")
@@ -558,7 +635,7 @@ class Bundle(models.Model):
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_popular = models.BooleanField(default=False, verbose_name="Популярный")
-    
+
     class Meta:
         verbose_name = "Комплекс (набор услуг)"
         verbose_name_plural = "Комплексы (наборы услуг)"
@@ -570,6 +647,11 @@ class Bundle(models.Model):
         return self.name
 
     def total_price(self) -> Decimal:
+        """Итоговая цена комплекса.
+
+        Если задано `fixed_price` — возвращает его. Иначе сумма
+        `option.price × quantity` по всем BundleItem.
+        """
         if self.fixed_price is not None:
             return self.fixed_price
         items = self.items.select_related("option").all()
@@ -577,11 +659,51 @@ class Bundle(models.Model):
         for it in items:
             if it.option and it.option.price is not None:
                 total += Decimal(it.option.price) * it.quantity
-        return max(Decimal("0.00"), total - self.discount)
+        return max(Decimal("0.00"), total)
 
     def total_duration_min(self) -> int:
+        """Сумма длительностей всех элементов комплекса (простая сумма)."""
         items = self.items.select_related("option").all()
         return sum((it.option.duration_min if it.option else 0) * it.quantity for it in items)
+
+    def compute_min_totals(self) -> tuple[Decimal, int]:
+        """Цена и минимальная длительность с учётом параллельных групп.
+
+        Элементы группируются по `BundleItem.parallel_group`: внутри одной
+        группы процедуры идут одновременно — длительность берётся как
+        максимум в группе, цены складываются. Между группами длительности
+        суммируются, плюс `gap_after_min` каждого элемента.
+
+        Используется на детальной странице/списке комплексов, когда нужно
+        показать клиенту, сколько он проведёт в салоне.
+        """
+        from collections import defaultdict
+
+        items = list(self.items.select_related("option").all())
+        if not items:
+            return Decimal("0.00"), 0
+
+        groups: dict[int, list] = defaultdict(list)
+        gaps_total = 0
+        for it in items:
+            groups[it.parallel_group].append(it)
+            gaps_total += int(it.gap_after_min or 0)
+
+        total_price = Decimal("0.00")
+        total_duration = 0
+        for group_items in groups.values():
+            group_max_duration = 0
+            for it in group_items:
+                opt = it.option
+                if not opt:
+                    continue
+                if opt.price is not None:
+                    total_price += Decimal(opt.price)
+                group_max_duration = max(group_max_duration, int(opt.duration_min or 0))
+            total_duration += group_max_duration
+
+        total_duration += gaps_total
+        return total_price, total_duration
 
 class BundleItem(models.Model):
     bundle = models.ForeignKey(Bundle, on_delete=models.CASCADE, related_name="items")
@@ -703,3 +825,247 @@ class BookingRequest(models.Model):
 
     def __str__(self):
         return f"{self.client_name} — {self.service_name} ({self.created_at:%d.%m.%Y %H:%M})"
+
+
+# ── Заказы и сертификаты ──────────────────────────────────────────────
+
+ORDER_TYPE_CHOICES = [
+    ("certificate", "Сертификат"),
+    ("bundle", "Комплекс"),
+    ("booking", "Запись"),
+]
+
+ORDER_STATUS_CHOICES = [
+    ("pending", "Ожидает"),
+    ("confirmed", "Подтверждён"),
+    ("paid", "Оплачен"),
+    ("completed", "Выполнен"),
+    ("cancelled", "Отменён"),
+]
+
+
+class Order(models.Model):
+    """Универсальный заказ — сертификат, комплекс, запись"""
+    number = models.CharField(
+        max_length=20, unique=True, blank=True,
+        verbose_name="Номер заказа",
+    )
+    order_type = models.CharField(
+        max_length=20, choices=ORDER_TYPE_CHOICES,
+        verbose_name="Тип заказа",
+    )
+    status = models.CharField(
+        max_length=20, choices=ORDER_STATUS_CHOICES,
+        default="pending", verbose_name="Статус",
+    )
+
+    client_name = models.CharField(max_length=150, verbose_name="Имя клиента")
+    client_phone = models.CharField(max_length=30, verbose_name="Телефон")
+    client_email = models.EmailField(blank=True, verbose_name="Email")
+
+    total_amount = models.DecimalField(
+        max_digits=8, decimal_places=0, default=0,
+        verbose_name="Сумма",
+    )
+
+    # Поля для будущего эквайринга (nullable)
+    payment_method = models.CharField(
+        max_length=30, blank=True, verbose_name="Способ оплаты",
+    )
+    payment_id = models.CharField(
+        max_length=100, blank=True, verbose_name="ID платежа",
+    )
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата оплаты")
+
+    comment = models.TextField(blank=True, verbose_name="Комментарий")
+    admin_note = models.TextField(blank=True, verbose_name="Заметка администратора")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлён")
+
+    class Meta:
+        verbose_name = "Заказ"
+        verbose_name_plural = "Заказы"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "order_type"]),
+            models.Index(fields=["number"]),
+        ]
+
+    def __str__(self):
+        return f"{self.number} — {self.get_order_type_display()} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.number:
+            self.number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    def _generate_number(self):
+        import random
+        import string
+        from django.utils import timezone
+        date_part = timezone.now().strftime("%Y%m%d")
+        rand_part = "".join(random.choices(string.digits, k=4))
+        return f"FT-{date_part}-{rand_part}"
+
+
+CERT_TYPE_CHOICES = [
+    ("nominal", "На сумму"),
+    ("service", "На услугу"),
+]
+
+CERT_STATUS_CHOICES = [
+    ("pending", "Ожидает оплаты"),
+    ("paid", "Оплачен"),
+    ("delivered", "Вручён"),
+    ("redeemed", "Использован"),
+    ("expired", "Истёк"),
+    ("cancelled", "Отменён"),
+]
+
+
+class GiftCertificate(models.Model):
+    """Подарочный сертификат"""
+    order = models.ForeignKey(
+        Order, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="certificates", verbose_name="Заказ",
+    )
+    code = models.CharField(
+        max_length=16, unique=True, blank=True,
+        verbose_name="Код сертификата",
+    )
+    certificate_type = models.CharField(
+        max_length=10, choices=CERT_TYPE_CHOICES,
+        default="nominal", verbose_name="Тип",
+    )
+
+    # Номинал (для типа nominal)
+    nominal = models.DecimalField(
+        max_digits=8, decimal_places=0, default=0,
+        verbose_name="Номинал (руб.)",
+    )
+    # Услуга (для типа service)
+    service = models.ForeignKey(
+        Service, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="gift_certificates", verbose_name="Услуга",
+    )
+    service_option = models.ForeignKey(
+        ServiceOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="gift_certificates", verbose_name="Вариант услуги",
+    )
+
+    # Изображение сертификата
+    image = models.ImageField(
+        upload_to="certificates/",
+        blank=True, null=True,
+        verbose_name="Изображение сертификата",
+        help_text="JPG/PNG/WebP до 5 МБ. Дизайн сертификата для отправки клиенту.",
+        validators=[validate_image_upload],
+    )
+
+    # Покупатель
+    buyer_name = models.CharField(max_length=150, verbose_name="Имя покупателя")
+    buyer_phone = models.CharField(max_length=30, verbose_name="Телефон покупателя")
+    buyer_email = models.EmailField(blank=True, verbose_name="Email покупателя")
+
+    # Получатель
+    recipient_name = models.CharField(
+        max_length=150, blank=True, verbose_name="Имя получателя",
+    )
+    recipient_phone = models.CharField(
+        max_length=30, blank=True, verbose_name="Телефон получателя",
+    )
+    message = models.TextField(blank=True, verbose_name="Пожелание на сертификате")
+
+    # Статус и даты
+    status = models.CharField(
+        max_length=12, choices=CERT_STATUS_CHOICES,
+        default="pending", verbose_name="Статус",
+    )
+    valid_from = models.DateField(verbose_name="Действует с")
+    valid_until = models.DateField(verbose_name="Действует до")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата оплаты")
+    delivered_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Дата вручения",
+    )
+    redeemed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Дата использования",
+    )
+
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    admin_note = models.TextField(blank=True, verbose_name="Заметка администратора")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    class Meta:
+        verbose_name = "Подарочный сертификат"
+        verbose_name_plural = "Подарочные сертификаты"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "is_active"]),
+            models.Index(fields=["code"]),
+            models.Index(fields=["valid_until"]),
+        ]
+
+    def __str__(self):
+        value = (
+            f"{self.nominal} \u20bd"
+            if self.certificate_type == "nominal"
+            else str(self.service or "\u2014")
+        )
+        return f"{self.code} \u2014 {value} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self._generate_code()
+        super().save(*args, **kwargs)
+
+    def _generate_code(self):
+        import random
+        import string
+        while True:
+            part1 = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            part2 = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            code = f"FT-{part1}-{part2}"
+            if not GiftCertificate.objects.filter(code=code).exists():
+                return code
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        today = timezone.now().date()
+        return (
+            self.status in ("paid", "delivered")
+            and self.is_active
+            and self.valid_from <= today <= self.valid_until
+        )
+
+    @property
+    def remaining_value(self):
+        if self.certificate_type != "nominal":
+            return None
+        used = sum(r.amount for r in self.redemptions.all())
+        return max(self.nominal - used, Decimal("0"))
+
+
+class CertificateRedemption(models.Model):
+    """Журнал использования сертификата"""
+    certificate = models.ForeignKey(
+        GiftCertificate, on_delete=models.CASCADE,
+        related_name="redemptions", verbose_name="Сертификат",
+    )
+    amount = models.DecimalField(
+        max_digits=8, decimal_places=0, verbose_name="Списано (руб.)",
+    )
+    service_name = models.CharField(max_length=200, verbose_name="Услуга")
+    redeemed_by = models.CharField(max_length=150, verbose_name="Клиент")
+    note = models.TextField(blank=True, verbose_name="Комментарий")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата списания")
+
+    class Meta:
+        verbose_name = "Списание по сертификату"
+        verbose_name_plural = "Списания по сертификатам"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.certificate.code}: -{self.amount} \u20bd ({self.created_at:%d.%m.%Y})"

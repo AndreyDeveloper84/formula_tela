@@ -8,8 +8,9 @@ import logging
 
 from django.conf import settings
 from django.utils import timezone
-from openai import OpenAI
 
+from agents.agents import get_openai_client
+from agents.agents._lifecycle import ensure_task_finalized
 from agents.models import AgentReport, AgentTask
 from agents.telegram import send_telegram
 
@@ -151,7 +152,7 @@ class OfferPackagesAgent:
             }
             task.save(update_fields=["input_context"])
 
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            client = get_openai_client()
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
@@ -199,5 +200,7 @@ class OfferPackagesAgent:
             task.error_message = str(exc)
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "error_message", "finished_at"])
+        finally:
+            ensure_task_finalized(task)
 
         return task

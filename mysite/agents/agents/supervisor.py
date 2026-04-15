@@ -7,8 +7,8 @@ import json
 import logging
 
 from django.conf import settings
-from openai import OpenAI
 
+from agents.agents import get_openai_client
 from agents.models import AgentTask
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class SupervisorAgent:
     def decide(self) -> list[str]:
         """Возвращает список агентов для запуска: ['analytics'], ['offers'] или ['analytics', 'offers']."""
         ctx = self._get_context()
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = get_openai_client()
 
         prompt = (
             f"Контекст салона красоты на {ctx['today']} ({ctx['weekday_ru']}):\n"
@@ -109,6 +109,7 @@ class SupervisorAgent:
             AgentTask.SMM_GROWTH:       "SMM-контент",
             AgentTask.SEO_LANDING:      "SEO-лендинги",
             AgentTask.ANALYTICS_BUDGET: "Бюджет и воронка",
+            AgentTask.TREND_SCOUT:      "Разведка трендов",
         }
 
         # Собираем последние DONE-отчёты по каждому типу
@@ -146,7 +147,7 @@ class SupervisorAgent:
             "Отвечай по-русски, лаконично."
         )
 
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = get_openai_client()
         try:
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,

@@ -60,6 +60,9 @@ class YandexWebmasterClient:
         url = self.BASE_URL + path
         headers = {"Authorization": f"OAuth {self.token}"}
         kwargs.setdefault("timeout", 20)
+        proxy_url = getattr(settings, "OPENAI_PROXY", "")
+        if proxy_url:
+            kwargs.setdefault("proxies", {"https": proxy_url, "http": proxy_url})
         try:
             r = requests.request(method, url, headers=headers, **kwargs)
             if not r.ok:

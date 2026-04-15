@@ -15,11 +15,16 @@ def send_telegram(text: str) -> bool:
         logger.warning("send_telegram: TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не настроены")
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    proxies = None
+    proxy_url = getattr(settings, "TELEGRAM_PROXY", "") or getattr(settings, "OPENAI_PROXY", "")
+    if proxy_url:
+        proxies = {"https": proxy_url}
     try:
         r = requests.post(
             url,
             json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=10,
+            proxies=proxies,
         )
         if not r.ok:
             logger.error("send_telegram HTTP %s: %s", r.status_code, r.text[:200])
