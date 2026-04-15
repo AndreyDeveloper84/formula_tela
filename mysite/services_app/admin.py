@@ -456,6 +456,16 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 "terms_of_service", "copyright",
             ),
         }),
+        ("Реквизиты организации", {
+            "fields": (
+                "legal_name", "legal_address", "inn", "ogrn",
+                "bank_name", "bank_account", "bank_bik", "bank_corr_account",
+            ),
+            "description": (
+                "Публикуются на странице /contacts/ в разделе «Реквизиты», "
+                "используются в оферте и footer. Требуются для модерации YooKassa."
+            ),
+        }),
     )
 
 

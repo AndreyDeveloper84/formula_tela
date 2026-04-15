@@ -571,6 +571,35 @@ class SiteSettings(models.Model):
         ),
     )
 
+    # ── Реквизиты организации (для YooKassa, оферты, footer) ──
+    legal_name = models.CharField(
+        "Полное юр. наименование", max_length=200, blank=True, default="",
+        help_text="Например: ИП Иванов Иван Иванович или ООО «Название»",
+    )
+    legal_address = models.CharField(
+        "Юридический адрес", max_length=300, blank=True, default="",
+    )
+    inn = models.CharField(
+        "ИНН", max_length=12, blank=True, default="",
+        help_text="10 цифр (ООО) или 12 цифр (ИП)",
+    )
+    ogrn = models.CharField(
+        "ОГРН / ОГРНИП", max_length=15, blank=True, default="",
+        help_text="13 цифр (ООО) или 15 цифр (ИП)",
+    )
+    bank_name = models.CharField(
+        "Банк", max_length=100, blank=True, default="",
+    )
+    bank_account = models.CharField(
+        "Расчётный счёт", max_length=20, blank=True, default="",
+    )
+    bank_bik = models.CharField(
+        "БИК банка", max_length=9, blank=True, default="",
+    )
+    bank_corr_account = models.CharField(
+        "Корреспондентский счёт", max_length=20, blank=True, default="",
+    )
+
     class Meta:
         verbose_name = "Настройки сайта"
         verbose_name_plural = "Настройки сайта"
