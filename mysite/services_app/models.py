@@ -234,7 +234,7 @@ class ServiceCategory(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="Название категории")
     description = models.TextField(blank=True, verbose_name="Описание категории")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
-    
+
 
     image = models.ImageField(
         upload_to="categories/",
@@ -255,7 +255,7 @@ class ServiceCategory(models.Model):
         verbose_name="URL-slug",
         help_text="Для ЧПУ-ссылок, например: ruchnye-massazhi"
     )
-    
+
     class Meta:
         ordering = ["order", "name"]
         verbose_name = "Категория услуг"
@@ -263,6 +263,19 @@ class ServiceCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            self.slug = generate_unique_slug(
+                ServiceCategory, self.name, pk=self.pk, max_length=50
+            )
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        if self.slug:
+            return reverse("website:category_services_by_slug", kwargs={"slug": self.slug})
+        return reverse("website:category_services", kwargs={"category_id": self.pk})
 
 
 # ─────────────────────────────────────────────────────

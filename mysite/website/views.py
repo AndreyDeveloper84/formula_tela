@@ -760,23 +760,36 @@ def api_create_booking(request):
             'error': str(e)
         }, status=500)
 
+def category_services_by_slug(request, slug):
+    """ЧПУ-версия страницы категории: /kategorii/<slug>/."""
+    category = get_object_or_404(ServiceCategory, slug=slug)
+    return _render_category_services(request, category)
+
+
 def category_services(request, category_id):
-    """Услуги конкретной категории"""
-    category = get_object_or_404(ServiceCategory, id=category_id)
+    """Legacy-роут /services/<int:id>/. 301 на ЧПУ если есть slug."""
+    category = get_object_or_404(ServiceCategory, pk=category_id)
+    if category.slug:
+        from django.shortcuts import redirect
+        return redirect("website:category_services_by_slug", slug=category.slug, permanent=True)
+    return _render_category_services(request, category)
+
+
+def _render_category_services(request, category):
+    """Общая логика рендера страницы категории (услуги + другие категории)."""
     services_qs = (
         category.services
         .filter(is_active=True)
         .prefetch_related("options")
     )
-    
-    # Другие категории (исключаем текущую)
+
     other_categories = (
         ServiceCategory.objects
-        .exclude(id=category_id)
+        .exclude(pk=category.pk)
         .prefetch_related("services")
         .order_by("order", "name")
     )
-    
+
     return render(request, "website/category_services.html", {
         "settings": _settings(),
         "category": category,
