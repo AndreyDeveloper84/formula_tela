@@ -23,6 +23,7 @@ from django.http import HttpResponse, JsonResponse
 
 from agents.views import landing_page_view
 from website.sitemaps import (
+    BundleSitemap,
     CategorySitemap,
     LandingPageSitemap,
     ServiceSitemap,
@@ -32,6 +33,7 @@ from website.sitemaps import (
 sitemaps = {
     "static": StaticViewSitemap,
     "services": ServiceSitemap,
+    "bundles": BundleSitemap,
     "categories": CategorySitemap,
     "landings": LandingPageSitemap,
 }

@@ -14,6 +14,8 @@ urlpatterns = [
     path("contacts/", views.contacts, name="contacts"),
     path("book/", views.book_service, name="book_service"),
     path("bundles/", views.bundles, name="bundles"),
+    path("kompleks/<slug:slug>/", views.bundle_detail_by_slug, name="bundle_detail_by_slug"),
+    path("bundle/<int:bundle_id>/", views.bundle_detail, name="bundle_detail"),
     path("certificates/", views.certificates, name="certificates"),
 
     # API endpoints
