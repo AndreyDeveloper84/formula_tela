@@ -82,7 +82,7 @@
         <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:20px;">🗺️ Как нас найти</h2>
         <div style="border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);">
           <iframe
-            src="https://yandex.ru/map-widget/v1/?text=%D0%9F%D0%B5%D0%BD%D0%B7%D0%B0%2C+%D1%83%D0%BB.+%D0%9F%D1%83%D1%88%D0%BA%D0%B8%D0%BD%D0%B0%2C+45&z=16&l=map"
+            src="https://yandex.ru/map-widget/v1/?um=constructor%3A1add670ea4f2f7880be94aae36cfce289a88c7a36db95772ba1f1d74138c30f3&source=constructor"
             width="100%" height="380"
             style="border:none;display:block;"
             allowfullscreen loading="lazy"
@@ -90,18 +90,14 @@
           </iframe>
         </div>
         <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
-          {% if settings.yandex_maps_link %}
-          <a href="{{ settings.yandex_maps_link }}" target="_blank" rel="noopener"
+          <a href="https://yandex.ru/maps/?mode=routes&rtext=~{{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}&rtt=auto" target="_blank" rel="noopener"
              style="display:inline-flex;align-items:center;gap:6px;background:#273A37;color:#fff;padding:10px 20px;border-radius:50px;font-size:.88rem;text-decoration:none;font-weight:500;">
             🗺️ Маршрут в Яндекс Картах
           </a>
-          {% endif %}
-          {% if settings.google_maps_link %}
-          <a href="{{ settings.google_maps_link }}" target="_blank" rel="noopener"
+          <a href="https://www.google.com/maps/dir/?api=1&destination={{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}" target="_blank" rel="noopener"
              style="display:inline-flex;align-items:center;gap:6px;background:#fff;color:#273A37;border:1px solid #ccc;padding:10px 20px;border-radius:50px;font-size:.88rem;text-decoration:none;font-weight:500;">
             📍 Google Maps
           </a>
-          {% endif %}
         </div>
       </div>
 
