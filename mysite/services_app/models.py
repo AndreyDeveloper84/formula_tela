@@ -627,11 +627,45 @@ class Bundle(models.Model):
     fixed_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
 
     description = models.TextField(blank=True, verbose_name="Описание комплекса")
-    image = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото")
-    image_mobile = models.ImageField(upload_to="bundles/", blank=True, null=True, verbose_name="Фото (мобильное)")
+    image = models.ImageField(
+        upload_to="bundles/", blank=True, null=True,
+        verbose_name="Фото",
+        validators=[validate_image_upload],
+    )
+    image_mobile = models.ImageField(
+        upload_to="bundles/", blank=True, null=True,
+        verbose_name="Фото (мобильное)",
+        validators=[validate_image_upload],
+    )
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
 
     options = models.ManyToManyField('ServiceOption', through='BundleItem', related_name='bundles')
+
+    # --- SEO и ЧПУ ---
+    slug = models.SlugField(
+        max_length=200, unique=True, blank=True, null=True,
+        verbose_name="URL-slug",
+        help_text="ЧПУ, например: kompleks-iz-3-massazhei",
+    )
+    seo_h1 = models.CharField(
+        max_length=200, blank=True, default="",
+        verbose_name="H1 заголовок",
+        help_text="Если пусто — используется название комплекса.",
+    )
+    seo_title = models.CharField(
+        max_length=120, blank=True, default="",
+        verbose_name="SEO Title",
+        help_text="Для <title>. Если пусто — '<название> — комплекс услуг'.",
+    )
+    seo_description = models.CharField(
+        max_length=300, blank=True, default="",
+        verbose_name="SEO Description",
+        help_text="Для <meta name=description>. До 160 символов.",
+    )
+    subtitle = models.CharField(
+        max_length=300, blank=True, default="",
+        verbose_name="Подзаголовок под H1",
+    )
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_popular = models.BooleanField(default=False, verbose_name="Популярный")
@@ -641,10 +675,24 @@ class Bundle(models.Model):
         verbose_name_plural = "Комплексы (наборы услуг)"
         indexes = [
             models.Index(fields=["is_active", "is_popular"]),
+            models.Index(fields=["slug"]),
         ]
 
     def __str__(self):
-        return self.name
+        return self.name or f"Bundle #{self.pk}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            self.slug = generate_unique_slug(
+                Bundle, self.name, pk=self.pk, max_length=200
+            )
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        if self.slug:
+            return reverse("website:bundle_detail_by_slug", kwargs={"slug": self.slug})
+        return reverse("website:bundle_detail", kwargs={"bundle_id": self.pk})
 
     def total_price(self) -> Decimal:
         """Итоговая цена комплекса.
@@ -879,6 +927,13 @@ class Order(models.Model):
 
     comment = models.TextField(blank=True, verbose_name="Комментарий")
     admin_note = models.TextField(blank=True, verbose_name="Заметка администратора")
+
+    # Для order_type="bundle"
+    bundle = models.ForeignKey(
+        "Bundle", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="orders",
+        verbose_name="Комплекс",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлён")

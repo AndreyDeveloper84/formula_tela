@@ -1,0 +1,73 @@
+{% comment %}
+Модалка заявки на комплекс + JS. Подключается на /bundles/ и /kompleks/<slug>/.
+Открывается через window.openBundleModal(bundleId, bundleName, price, duration).
+Отправляет POST на /api/bundle/request/ с полями name/phone/email/comment/bundle_id/bundle_name.
+{% endcomment %}
+
+<div class="modal fade" id="bundleModal" tabindex="-1" aria-labelledby="bundleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border: none; border-radius: 12px;">
+
+            <!-- Шаг 1: Контактные данные -->
+            <div id="bundle-step-1">
+                <div class="modal-header" style="border-bottom: 1px solid #eee; padding: 20px 30px;">
+                    <h5 class="modal-title semi" id="bundleModalLabel">Записаться на комплекс</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+                <div class="modal-body" style="padding: 30px;">
+
+                    <div class="bundle-info">
+                        <div class="bundle-info-item">
+                            <span>Комплекс:</span>
+                            <strong id="bm-bundle-name"></strong>
+                        </div>
+                        <div class="bundle-info-item">
+                            <span>Длительность:</span>
+                            <strong id="bm-duration"></strong>
+                        </div>
+                        <div class="bundle-info-item">
+                            <span>Стоимость:</span>
+                            <strong id="bm-price"></strong>
+                        </div>
+                    </div>
+
+                    <form id="bundle-contact-form">
+                        <div class="form-group">
+                            <label for="bm-name">Ваше имя *</label>
+                            <input type="text" id="bm-name" placeholder="Иван Петров" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bm-phone">Телефон *</label>
+                            <input type="tel" id="bm-phone" placeholder="+7 (900) 123-45-67" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bm-email">Email</label>
+                            <input type="email" id="bm-email" placeholder="email@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="bm-comment">Комментарий</label>
+                            <textarea id="bm-comment" rows="3" placeholder="Пожелания по дате, времени или мастеру"></textarea>
+                        </div>
+
+                        <div id="bm-alert"></div>
+
+                        <button type="submit" id="bm-submit" class="btn-black t-btn" style="width: 100%; margin-top: 10px;">
+                            Отправить заявку
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Шаг 2: Успех -->
+            <div id="bundle-step-2" style="display: none;">
+                <div class="modal-body" style="padding: 50px 30px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
+                    <h4 class="semi" style="margin-bottom: 10px;">Заявка отправлена!</h4>
+                    <p style="opacity: 0.7;">Наш администратор свяжется с вами<br>для подтверждения записи</p>
+                    <button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top: 20px;">Закрыть</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

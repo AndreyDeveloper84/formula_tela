@@ -220,6 +220,78 @@ def bundles(request):
         "complex_services": complex_services,
     })
 
+
+def bundle_detail_by_slug(request, slug):
+    """Детальная страница комплекса по ЧПУ-url /kompleks/<slug>/."""
+    opt_qs = (ServiceOption.objects
+              .filter(is_active=True)
+              .order_by("order", "duration_min", "unit_type", "units"))
+    svc_qs = Service.objects.prefetch_related(Prefetch("options", queryset=opt_qs))
+    items_qs = (BundleItem.objects
+                .select_related("option", "option__service", "option__service__category")
+                .prefetch_related(Prefetch("option__service", queryset=svc_qs))
+                .order_by("order"))
+
+    bundle = get_object_or_404(
+        Bundle.objects.prefetch_related(Prefetch("items", queryset=items_qs)),
+        slug=slug,
+        is_active=True,
+    )
+    return _render_bundle_detail(request, bundle)
+
+
+def bundle_detail(request, bundle_id):
+    """Legacy-роут /bundle/<id>/. Если у комплекса есть slug — 301 на ЧПУ."""
+    bundle = get_object_or_404(Bundle, pk=bundle_id, is_active=True)
+    if bundle.slug:
+        from django.shortcuts import redirect
+        return redirect("website:bundle_detail_by_slug", slug=bundle.slug, permanent=True)
+    return _render_bundle_detail(request, bundle)
+
+
+def _render_bundle_detail(request, bundle):
+    """Сборка контекста детальной страницы комплекса."""
+    items = list(bundle.items.all())
+    min_price, min_duration = bundle.compute_min_totals()
+    price = bundle.fixed_price if bundle.fixed_price is not None else min_price
+
+    # Похожие комплексы — другие активные, кроме этого
+    other_bundles_qs = (
+        Bundle.objects.filter(is_active=True)
+        .exclude(pk=bundle.pk)
+        .order_by("order", "id")[:3]
+    )
+    other_bundles = []
+    for b in other_bundles_qs:
+        b_min_price, b_min_duration = b.compute_min_totals()
+        other_bundles.append({
+            "bundle":       b,
+            "price":        b.fixed_price if b.fixed_price is not None else b_min_price,
+            "min_duration": b_min_duration,
+        })
+
+    seo_title = bundle.seo_title or f"{bundle.name} — комплекс услуг"
+    seo_description = bundle.seo_description or (
+        bundle.description[:160] if bundle.description else ""
+    )
+    seo_h1 = bundle.seo_h1 or bundle.name
+
+    context = {
+        "settings":        _settings(),
+        "bundle":          bundle,
+        "items":           items,
+        "price":           price,
+        "min_price":       min_price,
+        "min_duration":    min_duration,
+        "other_bundles":   other_bundles,
+        "seo_title":       seo_title,
+        "seo_description": seo_description,
+        "seo_h1":          seo_h1,
+        "subtitle":        bundle.subtitle,
+    }
+    return render(request, "website/bundle_detail.html", context)
+
+
 logger = logging.getLogger(__name__)
 
 """

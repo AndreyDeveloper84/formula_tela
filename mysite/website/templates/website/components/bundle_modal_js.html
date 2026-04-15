@@ -1,0 +1,84 @@
+{% comment %}
+JS для модалки заявки на комплекс. Подключается через {% include %}
+в блоке {% block extra_js %} на /bundles/ и /kompleks/<slug>/.
+{% endcomment %}
+<script>
+(function() {
+    'use strict';
+    const API = '{{ request.scheme }}://{{ request.get_host }}';
+    const CSRF = '{{ csrf_token }}';
+    let curBundleId = null, curBundleName = '', bsModal = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const el = document.getElementById('bundleModal');
+        if (!el) return;
+        bsModal = new bootstrap.Modal(el);
+        el.addEventListener('hidden.bs.modal', resetBundleModal);
+        document.getElementById('bundle-contact-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitBundleRequest();
+        });
+    });
+
+    window.openBundleModal = function(bundleId, bundleName, price, duration) {
+        curBundleId = bundleId;
+        curBundleName = bundleName;
+        document.getElementById('bm-bundle-name').textContent = bundleName;
+        document.getElementById('bm-duration').textContent = duration + ' мин';
+        document.getElementById('bm-price').textContent = price + ' ₽';
+        document.getElementById('bundle-step-1').style.display = 'block';
+        document.getElementById('bundle-step-2').style.display = 'none';
+        bsModal.show();
+    };
+
+    async function submitBundleRequest() {
+        const btn = document.getElementById('bm-submit');
+        const alert = document.getElementById('bm-alert');
+        btn.disabled = true; btn.textContent = 'Отправка...'; alert.innerHTML = '';
+
+        const name = document.getElementById('bm-name').value.trim();
+        const phone = document.getElementById('bm-phone').value.trim();
+        const email = document.getElementById('bm-email').value.trim();
+        const comment = document.getElementById('bm-comment').value.trim();
+
+        if (!name || !phone) {
+            alert.innerHTML = '<div class="alert alert-danger">Заполните имя и телефон</div>';
+            btn.disabled = false; btn.textContent = 'Отправить заявку'; return;
+        }
+
+        try {
+            const r = await fetch(`${API}/api/bundle/request/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({
+                    bundle_id: curBundleId,
+                    bundle_name: curBundleName,
+                    name: name, phone: phone, email: email, comment: comment
+                })
+            });
+            const d = await r.json();
+            if (d.success) {
+                document.getElementById('bundle-step-1').style.display = 'none';
+                document.getElementById('bundle-step-2').style.display = 'block';
+            } else {
+                alert.innerHTML = `<div class="alert alert-danger">${d.error || 'Ошибка'}</div>`;
+            }
+        } catch(e) {
+            alert.innerHTML = '<div class="alert alert-danger">Ошибка подключения к серверу</div>';
+        } finally {
+            btn.disabled = false; btn.textContent = 'Отправить заявку';
+        }
+    }
+
+    function resetBundleModal() {
+        curBundleId = null; curBundleName = '';
+        document.getElementById('bundle-step-1').style.display = 'block';
+        document.getElementById('bundle-step-2').style.display = 'none';
+        document.getElementById('bm-name').value = '';
+        document.getElementById('bm-phone').value = '';
+        document.getElementById('bm-email').value = '';
+        document.getElementById('bm-comment').value = '';
+        document.getElementById('bm-alert').innerHTML = '';
+    }
+})();
+</script>

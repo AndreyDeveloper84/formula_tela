@@ -1,0 +1,191 @@
+{% extends "website/base.html" %}
+{% load static %}
+
+{% block title %}{{ seo_title }}{% endblock %}
+{% block description %}{{ seo_description }}{% endblock %}
+
+{% block extra_head %}
+<link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{% url 'website:bundle_detail_by_slug' slug=bundle.slug %}">
+<meta property="og:title" content="{{ seo_title }}">
+<meta property="og:description" content="{{ seo_description }}">
+<meta property="og:type" content="product">
+<meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{% url 'website:bundle_detail_by_slug' slug=bundle.slug %}">
+{% if bundle.image %}<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{{ bundle.image.url }}">{% endif %}
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "{{ bundle.name|escapejs }}",
+  "description": "{{ seo_description|escapejs }}",
+  {% if bundle.image %}"image": "{{ request.scheme }}://{{ request.get_host }}{{ bundle.image.url }}",{% endif %}
+  "offers": {
+    "@type": "Offer",
+    "price": "{{ price|floatformat:0 }}",
+    "priceCurrency": "RUB",
+    "availability": "https://schema.org/InStock",
+    "url": "{{ request.scheme }}://{{ request.get_host }}{% url 'website:bundle_detail_by_slug' slug=bundle.slug %}"
+  },
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "{{ settings.salon_name|default:'Студия эстетики Формула Тела'|escapejs }}"
+  }
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    #bundleModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
+    #bundleModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
+    #bundleModal .modal-content { max-width: 500px; width: calc(100% - 30px); pointer-events: auto; max-height: 90vh; overflow-y: auto; }
+    #bundle-contact-form .form-group { margin-bottom: 15px; }
+    #bundle-contact-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+    #bundle-contact-form .form-group input,
+    #bundle-contact-form .form-group textarea { width: 100%; box-sizing: border-box; padding: 10px 15px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px; font-family: inherit; }
+    .bundle-info { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
+    .bundle-info-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+    .bundle-info-item span { opacity: 0.6; }
+    .bundle-info-item strong { text-align: right; }
+    .bundle-breadcrumbs { font-size: 14px; opacity: 0.6; margin: 24px 0 12px; }
+    .bundle-breadcrumbs a { color: inherit; text-decoration: underline; }
+    .bundle-items-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 24px; }
+    .bundle-item-card { border: 1px solid #eee; border-radius: 8px; padding: 16px 20px; }
+    .bundle-item-card h4 { margin: 0 0 6px; font-size: 16px; }
+    .bundle-item-card .meta { opacity: 0.6; font-size: 13px; }
+    @media (max-width: 576px) { #bundleModal .modal-body { padding: 20px !important; } }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <div class="container">
+        <div class="bundle-breadcrumbs">
+            <a href="{% url 'website:home' %}">Главная</a>
+            &nbsp;/&nbsp;
+            <a href="{% url 'website:bundles' %}">Комплексы</a>
+            &nbsp;/&nbsp;
+            <span>{{ bundle.name }}</span>
+        </div>
+    </div>
+
+    <section class="kompleks mt-20 mb-40">
+        <div class="container">
+            <div class="row wow fadeInUp" data-wow-delay=".2s">
+                <div class="col-lg-6">
+                    <h1 class="wow fadeInUp" data-wow-delay=".4s">{{ seo_h1 }}</h1>
+
+                    {% if subtitle %}
+                        <p style="opacity:.7; margin-bottom:16px;">{{ subtitle }}</p>
+                    {% endif %}
+
+                    {% if bundle.description %}
+                        <div style="margin-bottom:20px;">{{ bundle.description|safe }}</div>
+                    {% endif %}
+
+                    <div style="margin:20px 0 24px;">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid #eee;font-size:.95rem;gap:12px;">
+                            <span style="color:#555;">{{ min_duration }} мин — всего</span>
+                            <strong style="white-space:nowrap;font-size:1.2rem;">{{ price|floatformat:0 }} ₽</strong>
+                        </div>
+                    </div>
+
+                    <form>
+                        <div class="in-form2">
+                            <a href="#" class="btn-black t-btn" onclick="openBundleModal({{ bundle.id }}, '{{ bundle.name|escapejs }}', '{{ price|floatformat:0 }}', '{{ min_duration }}'); return false;">Записаться на комплекс</a>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="col-lg-6">
+                    <div class="item">
+                        {% if bundle.image %}
+                            <img src="{{ bundle.image.url }}" class="responsive mn7" alt="{{ bundle.name }}" title="{{ bundle.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ bundle.name }}" loading="lazy">
+                        {% endif %}
+                        {% if bundle.image_mobile %}
+                            <img src="{{ bundle.image_mobile.url }}" class="responsive mobb7" alt="{{ bundle.name }}" loading="lazy">
+                        {% elif bundle.image %}
+                            <img src="{{ bundle.image.url }}" class="responsive mobb7" alt="{{ bundle.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ bundle.name }}" loading="lazy">
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% if items %}
+            <div class="row mt-40">
+                <div class="col-12">
+                    <h2 class="wow fadeInUp" data-wow-delay=".2s">Что входит в комплекс</h2>
+                    <div class="bundle-items-grid">
+                        {% for it in items %}
+                            {% if it.option and it.option.service %}
+                            <div class="bundle-item-card">
+                                <h4>
+                                    {% if it.option.service.slug %}
+                                    <a href="{% url 'website:service_detail_by_slug' slug=it.option.service.slug %}">{{ it.option.service.name }}</a>
+                                    {% else %}
+                                    <a href="{% url 'website:service_detail' service_id=it.option.service.id %}">{{ it.option.service.name }}</a>
+                                    {% endif %}
+                                </h4>
+                                <div class="meta">
+                                    {{ it.option.duration_min }} мин
+                                    {% if it.quantity and it.quantity > 1 %} × {{ it.quantity }}{% endif %}
+                                    {% if it.option.price %} — {{ it.option.price|floatformat:0 }} ₽{% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if other_bundles %}
+    <section class="service mb-72">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-30 wow fadeInUp" data-wow-delay=".2s">
+                <h2 class="m-0">Другие комплексы</h2>
+                <a href="{% url 'website:bundles' %}" class="op50 mn7">Все комплексы →</a>
+            </div>
+            <div class="row">
+                {% for ob in other_bundles %}
+                    {% with ob_b=ob.bundle %}
+                    <div class="col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% else %}0.8{% endif %}s">
+                        <a href="{% if ob_b.slug %}{% url 'website:bundle_detail_by_slug' slug=ob_b.slug %}{% else %}{% url 'website:bundles' %}#bundle-{{ ob_b.id }}{% endif %}" class="item">
+                            {% if ob_b.image %}
+                                <img src="{{ ob_b.image.url }}" class="responsive mn7" alt="{{ ob_b.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ ob_b.name }}" loading="lazy">
+                            {% endif %}
+                            {% if ob_b.image_mobile %}
+                                <img src="{{ ob_b.image_mobile.url }}" class="responsive mobb7" alt="{{ ob_b.name }}" loading="lazy">
+                            {% elif ob_b.image %}
+                                <img src="{{ ob_b.image.url }}" class="responsive mobb7" alt="{{ ob_b.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ ob_b.name }}" loading="lazy">
+                            {% endif %}
+                        </a>
+                        <a class="d-flex justify-content-between mb-40" href="{% if ob_b.slug %}{% url 'website:bundle_detail_by_slug' slug=ob_b.slug %}{% else %}{% url 'website:bundles' %}#bundle-{{ ob_b.id }}{% endif %}">
+                            <b>{{ ob_b.name }}</b>
+                            <span class="op50">{{ ob.min_duration }} мин — {{ ob.price|floatformat:0 }} ₽</span>
+                        </a>
+                    </div>
+                    {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% include "website/components/bundle_modal.html" %}
+
+{% endblock %}
+
+{% block extra_js %}
+{% include "website/components/bundle_modal_js.html" %}
+{% endblock %}

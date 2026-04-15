@@ -374,14 +374,19 @@ class BundleItemInline(admin.TabularInline):
 
 @admin.register(Bundle)
 class BundleAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "is_active", "is_popular", "order")
+    list_display = ("id", "name", "slug", "is_active", "is_popular", "order")
     list_editable = ("is_active", "is_popular", "order")
     list_filter = ("is_active", "is_popular")
-    search_fields = ("name", "description")
+    search_fields = ("name", "description", "slug", "seo_title")
+    prepopulated_fields = {"slug": ("name",)}
     inlines = [BundleItemInline]
     fieldsets = (
         (None, {"fields": ("name", "description", "image", "image_mobile")}),
         ("Цена", {"fields": ("fixed_price",)}),
+        ("SEO", {
+            "fields": ("slug", "seo_h1", "seo_title", "seo_description", "subtitle"),
+            "description": "URL вида /kompleks/<slug>/. slug автозаполняется из названия.",
+        }),
         ("Настройки", {"fields": ("is_active", "is_popular", "order")}),
     )
 

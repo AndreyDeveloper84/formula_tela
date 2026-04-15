@@ -1,12 +1,165 @@
+import json
+
 from django import forms
 from django.contrib import admin, messages
 from django.shortcuts import redirect, render
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from .models import (
     AgentTask, AgentReport, ContentPlan, DailyMetric,
     SeoKeywordCluster, SeoRankSnapshot, SeoClusterSnapshot,
     LandingPage, SeoTask,
 )
+
+
+# ── Хелперы рендера JSON в админке ────────────────────────────────────
+# Чтобы не показывать сырой dict как str() — со всеми \u0430... — даём
+# отступы и оставляем кириллицу как есть. <pre> с max-height и scroll,
+# чтобы большие дампы не растягивали страницу.
+
+_PRE_STYLE = (
+    "white-space:pre-wrap;word-wrap:break-word;"
+    "max-height:500px;overflow:auto;"
+    "background:#f7f7f7;border:1px solid #ddd;border-radius:4px;"
+    "padding:12px;font-family:Consolas,Menlo,monospace;font-size:12px;"
+    "line-height:1.45;margin:0;"
+)
+_CARD_STYLE = (
+    "border:1px solid #ddd;border-radius:6px;padding:12px 14px;"
+    "margin-bottom:10px;background:#fafafa;"
+)
+_BADGE_STYLE = (
+    "display:inline-block;padding:2px 8px;border-radius:10px;"
+    "background:#e4f1ff;color:#1856a8;font-size:11px;"
+    "font-weight:bold;margin-left:6px;"
+)
+_LIFT_STYLE = (
+    "display:inline-block;padding:2px 8px;border-radius:10px;"
+    "background:#e6f7e1;color:#2a6a1d;font-size:11px;"
+    "font-weight:bold;margin-left:6px;"
+)
+
+
+def _pretty_json_html(value) -> str:
+    """Сырые dict/list → <pre> с indent=2 и без \\uXXXX."""
+    if value is None or value == "" or value == [] or value == {}:
+        return format_html('<em style="color:#888">— пусто —</em>')
+    try:
+        text = json.dumps(value, ensure_ascii=False, indent=2, default=str)
+    except Exception:
+        text = str(value)
+    return format_html('<pre style="{}">{}</pre>', _PRE_STYLE, text)
+
+
+def _try_parse_json(text: str):
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+def _render_offer_hypotheses(hypotheses: list) -> str:
+    """Карточки гипотез OfferPackagesAgent."""
+    if not hypotheses:
+        return format_html('<em style="color:#888">— нет гипотез —</em>')
+
+    cards = []
+    for i, h in enumerate(hypotheses, 1):
+        if not isinstance(h, dict):
+            cards.append(format_html('<pre style="{}">{}</pre>', _PRE_STYLE, str(h)))
+            continue
+        title = h.get("title", "—")
+        segment = h.get("segment", "")
+        lift = h.get("predicted_cr_lift", "")
+        pain = h.get("pain", "")
+        solution = h.get("solution", "")
+        proof = h.get("proof", "")
+        cta = h.get("cta", "")
+        social = h.get("social_text", "")
+        landing = h.get("landing_brief", "")
+
+        segment_badge = (
+            format_html('<span style="{}">{}</span>', _BADGE_STYLE, segment)
+            if segment else mark_safe("")
+        )
+        lift_badge = (
+            format_html('<span style="{}">CR {}</span>', _LIFT_STYLE, lift)
+            if lift else mark_safe("")
+        )
+        card = format_html(
+            '<div style="{card_style}">'
+            '<div style="font-size:14px;font-weight:bold;margin-bottom:8px">'
+            '#{n} {title}{segment_badge}{lift_badge}'
+            '</div>'
+            '<div style="margin:6px 0"><b>Боль:</b> {pain}</div>'
+            '<div style="margin:6px 0"><b>Решение:</b> {solution}</div>'
+            '<div style="margin:6px 0"><b>Доказательство:</b> {proof}</div>'
+            '<div style="margin:6px 0"><b>CTA:</b> {cta}</div>'
+            '<div style="margin:6px 0"><b>Текст для соцсетей:</b><br>{social}</div>'
+            '<div style="margin:6px 0"><b>Правки лендинга:</b> {landing}</div>'
+            '</div>',
+            card_style=_CARD_STYLE,
+            n=i,
+            title=title,
+            segment_badge=segment_badge,
+            lift_badge=lift_badge,
+            pain=pain,
+            solution=solution,
+            proof=proof,
+            cta=cta,
+            social=social,
+            landing=landing,
+        )
+        cards.append(card)
+    return mark_safe("".join(cards))
+
+
+def _render_smm_posts(posts: list) -> str:
+    """Таблица постов SMMGrowthAgent (превью)."""
+    if not posts:
+        return format_html('<em style="color:#888">— нет постов —</em>')
+
+    day_names = {
+        0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт",
+        4: "Пт", 5: "Сб", 6: "Вс",
+    }
+    rows_html = []
+    for p in posts:
+        if not isinstance(p, dict):
+            continue
+        day = p.get("day_of_week", "?")
+        day_label = day_names.get(day, str(day))
+        platform = (p.get("platform") or "").upper()
+        post_type = p.get("post_type", "")
+        theme = p.get("theme", "")
+        desc = p.get("description", "")
+        cta = p.get("cta", "")
+        hashtags = p.get("hashtags", "")
+        rows_html.append(format_html(
+            '<tr>'
+            '<td style="padding:8px;border-bottom:1px solid #eee;vertical-align:top">'
+            '<b>{day}</b><br><small style="color:#888">{platform}<br>{ptype}</small>'
+            '</td>'
+            '<td style="padding:8px;border-bottom:1px solid #eee;vertical-align:top">'
+            '<b>{theme}</b><br>{desc}<br>'
+            '<small style="color:#1856a8">{cta}</small><br>'
+            '<small style="color:#888">{hashtags}</small>'
+            '</td>'
+            '</tr>',
+            day=day_label, platform=platform, ptype=post_type,
+            theme=theme, desc=desc, cta=cta, hashtags=hashtags,
+        ))
+    return format_html(
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+        '<thead><tr style="background:#f0f0f0">'
+        '<th style="padding:8px;text-align:left;width:90px">День</th>'
+        '<th style="padding:8px;text-align:left">Пост</th>'
+        '</tr></thead>'
+        '<tbody>{}</tbody></table>',
+        mark_safe("".join(rows_html)),
+    )
 
 
 @admin.register(AgentTask)
@@ -15,9 +168,29 @@ class AgentTaskAdmin(admin.ModelAdmin):
     list_filter   = ["agent_type", "status", "triggered_by"]
     readonly_fields = [
         "agent_type", "status", "triggered_by",
-        "input_context", "raw_response", "error_message",
+        "input_context_pretty", "raw_response_pretty", "error_message_pretty",
         "created_at", "finished_at",
     ]
+    fieldsets = (
+        (None, {
+            "fields": (
+                "agent_type", "status", "triggered_by",
+                "created_at", "finished_at",
+            ),
+        }),
+        ("Ошибка", {
+            "fields": ("error_message_pretty",),
+            "classes": ("collapse",),
+        }),
+        ("Входной контекст", {
+            "fields": ("input_context_pretty",),
+            "classes": ("collapse",),
+        }),
+        ("Ответ LLM (сырой)", {
+            "fields": ("raw_response_pretty",),
+            "classes": ("collapse",),
+        }),
+    )
     ordering = ["-created_at"]
 
     def status_badge(self, obj):
@@ -41,16 +214,57 @@ class AgentTaskAdmin(admin.ModelAdmin):
         return f"{s}с"
     duration_display.short_description = "Длительность"
 
+    def input_context_pretty(self, obj):
+        return _pretty_json_html(obj.input_context)
+    input_context_pretty.short_description = "Входной контекст"
+
+    def raw_response_pretty(self, obj):
+        if not obj.raw_response:
+            return format_html('<em style="color:#888">— пусто —</em>')
+        parsed = _try_parse_json(obj.raw_response)
+        if parsed is not None:
+            return _pretty_json_html(parsed)
+        return format_html('<pre style="{}">{}</pre>', _PRE_STYLE, obj.raw_response)
+    raw_response_pretty.short_description = "Ответ LLM"
+
+    def error_message_pretty(self, obj):
+        if not obj.error_message:
+            return format_html('<em style="color:#888">— нет ошибок —</em>')
+        return format_html(
+            '<pre style="{};color:#c00">{}</pre>',
+            _PRE_STYLE, obj.error_message,
+        )
+    error_message_pretty.short_description = "Ошибка"
+
 
 @admin.register(AgentReport)
 class AgentReportAdmin(admin.ModelAdmin):
     list_display  = ["task", "summary_preview", "created_at"]
-    readonly_fields = ["task", "summary", "recommendations", "created_at"]
+    readonly_fields = ["task", "summary", "recommendations_pretty", "created_at"]
+    fieldsets = (
+        (None, {
+            "fields": ("task", "created_at", "summary"),
+        }),
+        ("Рекомендации", {
+            "fields": ("recommendations_pretty",),
+        }),
+    )
     ordering = ["-created_at"]
 
     def summary_preview(self, obj):
         return obj.summary[:120] + "…" if len(obj.summary) > 120 else obj.summary
     summary_preview.short_description = "Резюме"
+
+    def recommendations_pretty(self, obj):
+        recs = obj.recommendations
+        agent_type = obj.task.agent_type if obj.task else None
+
+        if agent_type == AgentTask.OFFER_PACKAGES and isinstance(recs, list):
+            return _render_offer_hypotheses(recs)
+        if agent_type == AgentTask.SMM_GROWTH and isinstance(recs, list):
+            return _render_smm_posts(recs)
+        return _pretty_json_html(recs)
+    recommendations_pretty.short_description = "Рекомендации"
 
 
 @admin.register(DailyMetric)
