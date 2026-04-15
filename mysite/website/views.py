@@ -156,8 +156,26 @@ def masters(request):
     })
 
 def contacts(request):
+    stats = [
+        {"icon": "💆", "value": "50+",       "label": "видов процедур"},
+        {"icon": "⭐", "value": "5",          "label": "мастеров"},
+        {"icon": "📅", "value": "с 2020",     "label": "года работаем"},
+        {"icon": "🕐", "value": "9:00–21:00", "label": "ежедневно"},
+    ]
+    values = [
+        {"icon": "🎓", "title": "Профессионализм",
+         "desc": "Сертифицированные специалисты с профильным образованием"},
+        {"icon": "🌿", "title": "Натуральный уход",
+         "desc": "Профессиональные масла и средства премиум-класса"},
+        {"icon": "🤝", "title": "Индивидуальный подход",
+         "desc": "Программа подбирается под каждого клиента"},
+        {"icon": "💰", "title": "Честные цены",
+         "desc": "Прозрачный прайс, курсы со скидкой до 20%"},
+    ]
     return render(request, "website/contacts.html", {
         "settings": _settings(),
+        "stats":    stats,
+        "values":   values,
     })
 
 def book_service(request):
