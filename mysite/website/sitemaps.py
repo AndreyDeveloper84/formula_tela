@@ -30,6 +30,9 @@ class ServiceSitemap(Sitemap):
     def location(self, obj):
         return reverse("website:service_detail_by_slug", kwargs={"slug": obj.slug})
 
+    def lastmod(self, obj):
+        return obj.updated_at
+
 
 class BundleSitemap(Sitemap):
     priority = 0.7

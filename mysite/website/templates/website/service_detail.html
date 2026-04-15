@@ -26,16 +26,27 @@
         "@type": "Service",
         "name": "{{ seo_h1|default:service.name }}",
         "description": "{{ seo_description|default:service.description|truncatewords:30 }}",
+        "areaServed": {
+            "@type": "City",
+            "name": "Пенза"
+        },
         "provider": {
             "@type": "HealthAndBeautyBusiness",
             "name": "{{ settings.salon_name|default:'Студия эстетики Формула Тела' }}",
             "address": {
                 "@type": "PostalAddress",
                 "addressLocality": "Пенза",
+                "addressRegion": "Пензенская область",
                 "streetAddress": "{{ settings.address|default:'Ул. Пушкина, 45' }}"
             },
             "telephone": "{{ settings.contact_phone|default:'+7 (8412) 39-34-33' }}"
-        }{% if service.image %},
+        }{% if service.price_from %},
+        "offers": {
+            "@type": "Offer",
+            "priceCurrency": "RUB",
+            "price": "{{ service.price_from|floatformat:0 }}",
+            "availability": "https://schema.org/InStock"
+        }{% endif %}{% if service.image %},
         "image": "https://formulatela58.ru{{ service.image.url }}"{% endif %}
     }
     </script>
@@ -215,12 +226,12 @@
                                 {% faq_items block.content as items %}
                                 {% for item in items %}
                                 <div class="accordion-item">
-                                    <h2 class="accordion-header">
+                                    <h3 class="accordion-header">
                                         <button class="accordion-button collapsed" type="button"
                                                 data-bs-toggle="collapse" data-bs-target="#faq-{{ block.id }}-{{ forloop.counter }}">
                                             {{ item.question }}
                                         </button>
-                                    </h2>
+                                    </h3>
                                     <div id="faq-{{ block.id }}-{{ forloop.counter }}" class="accordion-collapse collapse"
                                          data-bs-parent="#faq-accordion-{{ block.id }}">
                                         <div class="accordion-body">
@@ -356,35 +367,18 @@
                         {% endif %}
                     {% endif %}
                     
-                    {# === Связанные услуги (перелинковка) === #}
+                    {# === Связанные услуги (перелинковка) — пилюли === #}
                     {% if has_related %}
                     <div class="landing-block landing-related mb-30">
                         <h2 class="mb-15">Другие виды массажа</h2>
-                        <div class="row">
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;">
                             {% for item in related_services %}
-                            <div class="col-sm-6 mb-20">
-                                <a href="{% if item.service.slug %}/uslugi/{{ item.service.slug }}/{% else %}/service/{{ item.service.id }}/{% endif %}"
-                                   class="related-card" style="display:block;text-decoration:none;color:inherit;border:1px solid #eee;border-radius:12px;overflow:hidden;transition:box-shadow 0.2s;">
-                                    {% if item.service.image %}
-                                    <div style="height:160px;overflow:hidden;">
-                                        <img src="{{ item.service.image.url }}" 
-                                             alt="{{ item.service.name }}" loading="lazy"
-                                             style="width:100%;height:100%;object-fit:cover;">
-                                    </div>
-                                    {% endif %}
-                                    <div style="padding:12px 16px;">
-                                        <p style="font-weight:600;margin-bottom:4px;">
-                                            {% if item.service.emoji %}{{ item.service.emoji }} {% endif %}{{ item.service.name }}
-                                        </p>
-                                        {% if item.service.short_description %}
-                                        <p style="font-size:14px;opacity:0.7;margin-bottom:6px;">{{ item.service.short_description }}</p>
-                                        {% endif %}
-                                        {% if item.min_price %}
-                                        <p style="font-size:14px;font-weight:500;">от {{ item.min_price|floatformat:0 }} ₽</p>
-                                        {% endif %}
-                                    </div>
-                                </a>
-                            </div>
+                            <a href="{% if item.service.slug %}/uslugi/{{ item.service.slug }}/{% else %}/service/{{ item.service.id }}/{% endif %}"
+                               style="display:inline-flex;flex-direction:column;align-items:flex-start;background:#f2f5f3;border:1px solid #b8c9bb;border-radius:50px;padding:8px 20px;font-size:.88rem;color:#273A37;text-decoration:none;line-height:1.4;transition:background .2s;"
+                               onmouseover="this.style.background='#e0ece4'" onmouseout="this.style.background='#f2f5f3'">
+                                <span>{% if item.service.emoji %}{{ item.service.emoji }} {% endif %}{{ item.service.name }}</span>
+                                {% if item.min_price %}<span style="font-size:.78rem;color:#5a8a6a;font-weight:600;">от {{ item.min_price|floatformat:0 }} ₽</span>{% endif %}
+                            </a>
                             {% endfor %}
                         </div>
                     </div>
