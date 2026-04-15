@@ -52,7 +52,7 @@
                         <h1>ФОРМУЛА ТЕЛА</h1>
                         <p class="text-banner">{{ settings.description|default:"Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день." }}</p>
                         <a href="{% url 'website:services' %}" class="btn-white t-btn">Записаться на процедуры</a>  
-                        <a href="{% url 'website:bundles' %}" class="t-btn"><i>Подарочные</i> сертификаты и абонементы</a>
+                        <a href="{% url 'website:certificates' %}" class="t-btn"><i>Подарочные</i> сертификаты</a>
                     </div>	
                 </div>
             </div>
@@ -148,6 +148,44 @@
     </section>
     {% endif %}
     
+    <!-- ========================= Популярные комплексы ========================= -->
+    {% if popular_bundles %}
+    <section class="service mb-72">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-30 wow fadeInUp" data-wow-delay=".2s">
+                <h2 class="m-0">Популярные комплексы</h2>
+                <a href="{% url 'website:bundles' %}" class="op50 mn7">Все комплексы →</a>
+            </div>
+            <div class="row">
+                {% for ctx in popular_bundles %}
+                    {% with b=ctx.bundle %}
+                    <div class="col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% else %}0.8{% endif %}s">
+                        <a href="{% url 'website:bundles' %}#bundle-{{ b.id }}" class="item">
+                            {% if b.image %}
+                                <img src="{{ b.image.url }}" class="responsive mn7" alt="{{ b.name }}" title="{{ b.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ b.name }}" loading="lazy">
+                            {% endif %}
+                            {% if b.image_mobile %}
+                                <img src="{{ b.image_mobile.url }}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
+                            {% elif b.image %}
+                                <img src="{{ b.image.url }}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
+                            {% else %}
+                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
+                            {% endif %}
+                        </a>
+                        <a class="d-flex justify-content-between mb-40" href="{% url 'website:bundles' %}#bundle-{{ b.id }}">
+                            <b>{{ b.name }}</b>
+                            <span class="op50">{{ ctx.min_duration }} мин — {{ ctx.price|floatformat:0 }} ₽</span>
+                        </a>
+                    </div>
+                    {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
     <!-- ========================= Отзывы (Desktop) ========================= -->
     <!-- ========================= Отзывы (Яндекс.Карты) ========================= -->
     <section class="reviews mb-72">

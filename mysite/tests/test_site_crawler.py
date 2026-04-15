@@ -65,8 +65,17 @@ class TestGetAllServiceUrls:
 
     @pytest.mark.django_db
     def test_skips_services_without_slug(self):
-        """Услуги без slug пропускаются, не вызывают ошибку."""
-        baker.make("services_app.Service", slug="", is_active=True)
+        """Legacy-услуги без slug пропускаются, не вызывают ошибку.
+
+        Service.save() автогенерирует slug из name, но в БД могут быть legacy
+        записи (raw SQL, старые миграции, кривой импорт) с пустым slug —
+        crawler должен их тихо пропускать.
+        """
+        from services_app.models import Service
+
+        legacy = baker.make("services_app.Service", is_active=True)
+        Service.objects.filter(pk=legacy.pk).update(slug="")
+
         baker.make("services_app.Service", slug="normalnyj", is_active=True)
 
         from agents.integrations.site_crawler import TechnicalSEOWatchdog

@@ -52,6 +52,19 @@ def run_weekly_agents(self):
         raise self.retry(exc=exc, countdown=300)
 
 
+@shared_task(name="agents.tasks.collect_trends", bind=True, max_retries=1)
+def collect_trends(self):
+    """Еженедельный сбор трендов: Яндекс подсказки + VK группы → GPT-анализ."""
+    logger.info("collect_trends: старт")
+    try:
+        from agents.agents.trend_scout import TrendScoutAgent
+        TrendScoutAgent().run()
+        logger.info("collect_trends: завершён")
+    except Exception as exc:
+        logger.exception("collect_trends: ошибка — %s", exc)
+        raise self.retry(exc=exc, countdown=300)
+
+
 @shared_task(name="agents.tasks.collect_rank_snapshots", bind=True, max_retries=1)
 def collect_rank_snapshots(self):
     """

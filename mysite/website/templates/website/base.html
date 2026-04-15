@@ -7,6 +7,7 @@
     <title>{% block title %}Студия эстетики Формула Тела{% endblock %}</title>
     <meta name="description" content="{% block description %}Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день.{% endblock %}">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if YANDEX_VERIFICATION %}<meta name="yandex-verification" content="{{ YANDEX_VERIFICATION }}">{% endif %}
     {% block extra_head %}{% endblock %}
     <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.png' %}">
 
@@ -102,6 +103,9 @@
                             <a class="{% if request.resolver_match.url_name == 'bundles' %}active{% endif %}" href="{% url 'website:bundles' %}">Комплексы</a>
                         </li>
                         <li class="nav-item">
+                            <a class="{% if request.resolver_match.url_name == 'certificates' %}active{% endif %}" href="{% url 'website:certificates' %}">Сертификаты</a>
+                        </li>
+                        <li class="nav-item">
                             <a class="{% if request.resolver_match.url_name == 'contacts' %}active{% endif %}" href="{% url 'website:contacts' %}">Контакты</a>
                         </li>
                     </ul>
@@ -136,6 +140,7 @@
 
     <!-- ========================= footer start ========================= -->
     <footer class="footer">
+        {% block footer_contacts %}
         <div class="container mb-112">
             <div class="row">
                 <h3 class="wow fadeInUp" data-wow-delay=".2s">Контакты</h3>
@@ -152,18 +157,13 @@
                         </ul>
                         <div class="mx250">
                             <a href="{% url 'website:services' %}" class="btn-black t-btn">Записаться на процедуры</a>
-                            {% if settings.yandex_maps_link %}
-                                <a href="{{ settings.yandex_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
-                            {% elif settings.google_maps_link %}
-                                <a href="{{ settings.google_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
-                            {% else %}
-                                <a href="#" class="btn-white2 t-btn">Построить маршрут</a>
-                            {% endif %}
+                            <a href="https://yandex.ru/maps/?mode=routes&rtext=~{{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}&rtt=auto" class="btn-white2 t-btn" target="_blank" rel="noopener">Построить маршрут</a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+        {% endblock footer_contacts %}
         <div class="container mb-56">
             <div class="row mb-30">
                 <div class="col-xl-8 social wow fadeInUp" data-wow-delay="1.4s">

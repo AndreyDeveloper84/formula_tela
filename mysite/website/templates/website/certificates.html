@@ -1,0 +1,410 @@
+{% extends "website/base.html" %}
+{% load static %}
+
+{% block title %}Подарочные сертификаты — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+
+{% block description %}Подарочные сертификаты на массаж и косметологические услуги в {{ settings.salon_name|default:"Формула Тела" }}. Выберите номинал или конкретную услугу.{% endblock %}
+
+{% block extra_css %}
+<style>
+    #certModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
+    #certModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
+    #certModal .modal-content { max-width: 520px; width: calc(100% - 30px); pointer-events: auto; max-height: 90vh; overflow-y: auto; border: none; border-radius: 12px; }
+    #cert-form .form-group { margin-bottom: 15px; }
+    #cert-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+    #cert-form .form-group input,
+    #cert-form .form-group textarea { width: 100%; box-sizing: border-box; padding: 10px 15px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px; font-family: inherit; }
+    #cert-form .form-group input:focus,
+    #cert-form .form-group textarea:focus { outline: none; border-color: #000; }
+    .cert-info { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
+    .cert-info-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+    .cert-info-item span { opacity: 0.6; }
+    .cert-info-item strong { text-align: right; }
+    .cert-nominals { display: flex; flex-wrap: wrap; gap: 12px; margin: 25px 0; }
+    .cert-nom-btn { display: inline-block; padding: 14px 24px; border: 2px solid #000; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all .2s; background: #fff; color: #000; text-align: center; min-width: 100px; }
+    .cert-nom-btn:hover, .cert-nom-btn.active { background: #000; color: #fff; }
+    .cert-custom-wrap { display: flex; gap: 10px; align-items: center; margin-top: 15px; }
+    .cert-custom-wrap input { max-width: 180px; padding: 12px 15px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; }
+    .cert-custom-wrap input:focus { border-color: #000; outline: none; }
+    .cert-type-tabs { display: flex; gap: 0; margin-bottom: 30px; border-bottom: 2px solid #eee; }
+    .cert-type-tab { flex: 1; text-align: center; padding: 14px 10px; cursor: pointer; font-weight: 600; font-size: 15px; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .2s; }
+    .cert-type-tab.active { border-bottom-color: #000; }
+    .cert-service-card { border: 2px solid #eee; border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; transition: all .2s; }
+    .cert-service-card:hover, .cert-service-card.active { border-color: #000; }
+    .cert-service-card .svc-name { font-weight: 600; font-size: 15px; }
+    .cert-service-card .svc-price { opacity: 0.6; font-size: 14px; margin-top: 4px; }
+    .cert-check-section { background: #f8f9fa; border-radius: 12px; padding: 30px; }
+    .cert-check-wrap { display: flex; gap: 12px; max-width: 450px; }
+    .cert-check-wrap input { flex: 1; padding: 12px 15px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; text-transform: uppercase; }
+    .cert-check-wrap input:focus { border-color: #000; outline: none; }
+    .cert-check-result { margin-top: 20px; padding: 20px; border-radius: 8px; display: none; }
+    .cert-check-result.valid { background: #d4edda; }
+    .cert-check-result.invalid { background: #f8d7da; }
+    @media (max-width: 576px) {
+        .cert-nominals { gap: 8px; }
+        .cert-nom-btn { padding: 10px 16px; font-size: 14px; min-width: 80px; }
+        #certModal .modal-body { padding: 20px !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="mt-56 mb-40">
+    <div class="container">
+        <h1 class="wow fadeInUp" data-wow-delay=".2s">Подарочные сертификаты</h1>
+        <p class="wow fadeInUp" data-wow-delay=".3s" style="max-width: 600px; opacity: 0.7;">
+            Идеальный подарок для близких — сертификат на массаж и косметологические услуги.
+            Выберите сумму или конкретную услугу.
+        </p>
+    </div>
+</section>
+
+<!-- Выбор типа -->
+<section class="mb-40">
+    <div class="container">
+        <div class="cert-type-tabs wow fadeInUp" data-wow-delay=".4s">
+            <div class="cert-type-tab active" onclick="switchCertTab('nominal')">На сумму</div>
+            <div class="cert-type-tab" onclick="switchCertTab('service')">На услугу</div>
+        </div>
+
+        <!-- Номиналы -->
+        <div id="cert-tab-nominal" class="wow fadeInUp" data-wow-delay=".5s">
+            <h3>Выберите номинал</h3>
+            <div class="cert-nominals">
+                <div class="cert-nom-btn" onclick="selectNominal(this, 1000)">1 000 &#8381;</div>
+                <div class="cert-nom-btn" onclick="selectNominal(this, 2000)">2 000 &#8381;</div>
+                <div class="cert-nom-btn" onclick="selectNominal(this, 3000)">3 000 &#8381;</div>
+                <div class="cert-nom-btn" onclick="selectNominal(this, 5000)">5 000 &#8381;</div>
+                <div class="cert-nom-btn" onclick="selectNominal(this, 10000)">10 000 &#8381;</div>
+            </div>
+            <div class="cert-custom-wrap">
+                <input type="number" id="cert-custom-amount" placeholder="Своя сумма" min="500" step="100">
+                <a href="#" class="btn-black t-btn" onclick="selectCustomNominal(); return false;">Выбрать</a>
+            </div>
+        </div>
+
+        <!-- Услуги -->
+        <div id="cert-tab-service" style="display: none;" class="wow fadeInUp" data-wow-delay=".5s">
+            <h3>Выберите услугу</h3>
+            {% for svc in popular_services %}
+            <div class="cert-service-card" onclick="selectService(this, {{ svc.id }}, '{{ svc.name|escapejs }}', '{{ svc.price_from|default:0 }}')">
+                <div class="svc-name">{{ svc.name }}</div>
+                {% if svc.price_from %}
+                <div class="svc-price">от {{ svc.price_from|floatformat:0 }} &#8381;</div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <p style="opacity: 0.5;">Услуги пока не добавлены</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Проверка сертификата -->
+<section class="mb-40">
+    <div class="container">
+        <div class="cert-check-section wow fadeInUp" data-wow-delay=".2s">
+            <h3>Проверить сертификат</h3>
+            <p style="opacity: 0.7; margin-bottom: 15px;">Введите код сертификата для проверки статуса и остатка</p>
+            <div class="cert-check-wrap">
+                <input type="text" id="cert-check-code" placeholder="FT-XXXX-XXXX" maxlength="12">
+                <a href="#" class="btn-black t-btn" onclick="checkCertificate(); return false;">Проверить</a>
+            </div>
+            <div id="cert-check-result" class="cert-check-result"></div>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ -->
+<section class="mb-40">
+    <div class="container">
+        <h2 class="wow fadeInUp" data-wow-delay=".2s">Частые вопросы</h2>
+        <div class="accordion" id="certFAQ">
+            <div class="accordion-item">
+                <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">Как купить сертификат?</button></h3>
+                <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#certFAQ"><div class="accordion-body">Выберите номинал или услугу, заполните форму. Наш менеджер свяжется с вами для оплаты. После оплаты вы получите электронный сертификат с уникальным кодом.</div></div>
+            </div>
+            <div class="accordion-item">
+                <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">Какой срок действия сертификата?</button></h3>
+                <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#certFAQ"><div class="accordion-body">Сертификат действует 6 месяцев с момента покупки.</div></div>
+            </div>
+            <div class="accordion-item">
+                <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">Можно ли использовать сертификат частично?</button></h3>
+                <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#certFAQ"><div class="accordion-body">Да, сертификат на сумму можно использовать частями. Остаток сохраняется до окончания срока действия.</div></div>
+            </div>
+            <div class="accordion-item">
+                <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">Можно ли вернуть сертификат?</button></h3>
+                <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#certFAQ"><div class="accordion-body">Возврат неиспользованного сертификата возможен в течение 14 дней с момента покупки. Свяжитесь с нами по телефону.</div></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ========================= Модалка заявки на сертификат ========================= -->
+<div class="modal fade" id="certModal" tabindex="-1" aria-labelledby="certModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <!-- Шаг 1: Данные покупателя -->
+            <div id="cert-step-1">
+                <div class="modal-header" style="border-bottom: 1px solid #eee; padding: 20px 30px;">
+                    <h5 class="modal-title semi" id="certModalLabel">Оформить сертификат</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+                <div class="modal-body" style="padding: 30px;">
+
+                    <div class="cert-info">
+                        <div class="cert-info-item">
+                            <span>Тип:</span>
+                            <strong id="cm-type-display"></strong>
+                        </div>
+                        <div class="cert-info-item">
+                            <span>Стоимость:</span>
+                            <strong id="cm-value-display"></strong>
+                        </div>
+                    </div>
+
+                    <form id="cert-form">
+                        <h6 style="margin-bottom: 15px; font-weight: 600;">Ваши данные</h6>
+                        <div class="form-group">
+                            <label for="cm-buyer-name">Ваше имя *</label>
+                            <input type="text" id="cm-buyer-name" placeholder="Иван Петров" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="cm-buyer-phone">Ваш телефон *</label>
+                            <input type="tel" id="cm-buyer-phone" placeholder="+7 (900) 123-45-67" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="cm-buyer-email">Email</label>
+                            <input type="email" id="cm-buyer-email" placeholder="email@example.com">
+                        </div>
+
+                        <h6 style="margin: 20px 0 15px; font-weight: 600;">Данные получателя</h6>
+                        <div class="form-group">
+                            <label for="cm-recipient-name">Имя получателя</label>
+                            <input type="text" id="cm-recipient-name" placeholder="Мария Иванова">
+                        </div>
+                        <div class="form-group">
+                            <label for="cm-recipient-phone">Телефон получателя</label>
+                            <input type="tel" id="cm-recipient-phone" placeholder="+7 (900) 765-43-21">
+                        </div>
+                        <div class="form-group">
+                            <label for="cm-message">Пожелание на сертификате</label>
+                            <textarea id="cm-message" rows="2" placeholder="С днём рождения!"></textarea>
+                        </div>
+
+                        <div id="cm-alert"></div>
+
+                        <button type="submit" id="cm-submit" class="btn-black t-btn" style="width: 100%; margin-top: 10px;">
+                            Отправить заявку
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Шаг 2: Успех -->
+            <div id="cert-step-2" style="display: none;">
+                <div class="modal-body" style="padding: 50px 30px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">&#10004;&#65039;</div>
+                    <h4 class="semi" style="margin-bottom: 10px;">Заявка отправлена!</h4>
+                    <p style="opacity: 0.7;">Наш менеджер свяжется с вами<br>для оплаты сертификата</p>
+                    <p id="cm-order-number" style="font-weight: 600; margin-top: 10px;"></p>
+                    <button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top: 20px;">Закрыть</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+    const API = '{{ request.scheme }}://{{ request.get_host }}';
+    const CSRF = '{{ csrf_token }}';
+
+    let certType = 'nominal';
+    let certNominal = 0;
+    let certServiceId = null;
+    let certServiceName = '';
+    let bsModal = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const el = document.getElementById('certModal');
+        if (!el) return;
+        bsModal = new bootstrap.Modal(el);
+        el.addEventListener('hidden.bs.modal', resetCertModal);
+        document.getElementById('cert-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitCertificateRequest();
+        });
+    });
+
+    /* ---- Tab switching ---- */
+    window.switchCertTab = function(type) {
+        certType = type;
+        document.querySelectorAll('.cert-type-tab').forEach(function(t, i) {
+            t.classList.toggle('active', (i === 0 && type === 'nominal') || (i === 1 && type === 'service'));
+        });
+        document.getElementById('cert-tab-nominal').style.display = type === 'nominal' ? '' : 'none';
+        document.getElementById('cert-tab-service').style.display = type === 'service' ? '' : 'none';
+        certNominal = 0;
+        certServiceId = null;
+        certServiceName = '';
+        document.querySelectorAll('.cert-nom-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.cert-service-card').forEach(function(c) { c.classList.remove('active'); });
+    };
+
+    /* ---- Nominal selection ---- */
+    window.selectNominal = function(btn, amount) {
+        certNominal = amount;
+        certServiceId = null;
+        certServiceName = '';
+        document.querySelectorAll('.cert-nom-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.getElementById('cert-custom-amount').value = '';
+        openCertModal();
+    };
+
+    window.selectCustomNominal = function() {
+        var val = parseInt(document.getElementById('cert-custom-amount').value);
+        if (!val || val < 500) {
+            document.getElementById('cert-custom-amount').style.borderColor = 'red';
+            return;
+        }
+        document.getElementById('cert-custom-amount').style.borderColor = '#dee2e6';
+        certNominal = val;
+        certServiceId = null;
+        certServiceName = '';
+        document.querySelectorAll('.cert-nom-btn').forEach(function(b) { b.classList.remove('active'); });
+        openCertModal();
+    };
+
+    /* ---- Service selection ---- */
+    window.selectService = function(card, serviceId, name, price) {
+        certType = 'service';
+        certServiceId = serviceId;
+        certServiceName = name;
+        certNominal = parseInt(price) || 0;
+        document.querySelectorAll('.cert-service-card').forEach(function(c) { c.classList.remove('active'); });
+        card.classList.add('active');
+        openCertModal();
+    };
+
+    /* ---- Modal ---- */
+    function openCertModal() {
+        var typeText = certType === 'nominal' ? 'На сумму' : 'На услугу';
+        var valueText = certType === 'nominal'
+            ? certNominal.toLocaleString('ru-RU') + ' \u20bd'
+            : certServiceName + (certNominal ? ' (от ' + certNominal.toLocaleString('ru-RU') + ' \u20bd)' : '');
+        document.getElementById('cm-type-display').textContent = typeText;
+        document.getElementById('cm-value-display').textContent = valueText;
+        document.getElementById('cert-step-1').style.display = 'block';
+        document.getElementById('cert-step-2').style.display = 'none';
+        bsModal.show();
+    }
+
+    async function submitCertificateRequest() {
+        var btn = document.getElementById('cm-submit');
+        var alertEl = document.getElementById('cm-alert');
+        btn.disabled = true; btn.textContent = 'Отправка...'; alertEl.innerHTML = '';
+
+        var buyerName = document.getElementById('cm-buyer-name').value.trim();
+        var buyerPhone = document.getElementById('cm-buyer-phone').value.trim();
+        if (!buyerName || !buyerPhone) {
+            alertEl.innerHTML = '<div class="alert alert-danger">Заполните имя и телефон</div>';
+            btn.disabled = false; btn.textContent = 'Отправить заявку';
+            return;
+        }
+
+        var payload = {
+            certificate_type: certType,
+            nominal: certNominal,
+            service_id: certServiceId,
+            buyer_name: buyerName,
+            buyer_phone: buyerPhone,
+            buyer_email: document.getElementById('cm-buyer-email').value.trim(),
+            recipient_name: document.getElementById('cm-recipient-name').value.trim(),
+            recipient_phone: document.getElementById('cm-recipient-phone').value.trim(),
+            message: document.getElementById('cm-message').value.trim()
+        };
+
+        try {
+            var r = await fetch(API + '/api/certificates/request/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify(payload)
+            });
+            var d = await r.json();
+            if (d.success) {
+                document.getElementById('cert-step-1').style.display = 'none';
+                document.getElementById('cert-step-2').style.display = 'block';
+                if (d.order_number) {
+                    document.getElementById('cm-order-number').textContent = '\u2116 ' + d.order_number;
+                }
+            } else {
+                alertEl.innerHTML = '<div class="alert alert-danger">' + (d.error || '\u041e\u0448\u0438\u0431\u043a\u0430') + '</div>';
+            }
+        } catch(e) {
+            alertEl.innerHTML = '<div class="alert alert-danger">\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u044f \u043a \u0441\u0435\u0440\u0432\u0435\u0440\u0443</div>';
+        } finally {
+            btn.disabled = false; btn.textContent = '\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443';
+        }
+    }
+
+    function resetCertModal() {
+        document.getElementById('cert-step-1').style.display = 'block';
+        document.getElementById('cert-step-2').style.display = 'none';
+        document.getElementById('cm-buyer-name').value = '';
+        document.getElementById('cm-buyer-phone').value = '';
+        document.getElementById('cm-buyer-email').value = '';
+        document.getElementById('cm-recipient-name').value = '';
+        document.getElementById('cm-recipient-phone').value = '';
+        document.getElementById('cm-message').value = '';
+        document.getElementById('cm-alert').innerHTML = '';
+        document.getElementById('cm-order-number').textContent = '';
+    }
+
+    /* ---- Check certificate ---- */
+    window.checkCertificate = function() {
+        var code = document.getElementById('cert-check-code').value.trim();
+        if (!code) return;
+
+        var resultEl = document.getElementById('cert-check-result');
+        resultEl.style.display = 'none';
+
+        fetch(API + '/api/certificates/check/?code=' + encodeURIComponent(code))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                resultEl.style.display = 'block';
+                if (d.success) {
+                    var c = d.certificate;
+                    var html = '<strong>' + c.code + '</strong><br>';
+                    html += '\u0422\u0438\u043f: ' + c.type_display + '<br>';
+                    if (c.nominal) html += '\u041d\u043e\u043c\u0438\u043d\u0430\u043b: ' + parseInt(c.nominal).toLocaleString('ru-RU') + ' \u20bd<br>';
+                    if (c.service_name) html += '\u0423\u0441\u043b\u0443\u0433\u0430: ' + c.service_name + '<br>';
+                    if (c.remaining_value !== null) html += '\u041e\u0441\u0442\u0430\u0442\u043e\u043a: ' + parseInt(c.remaining_value).toLocaleString('ru-RU') + ' \u20bd<br>';
+                    html += '\u0421\u0442\u0430\u0442\u0443\u0441: ' + c.status + '<br>';
+                    html += '\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442 \u0434\u043e: ' + c.valid_until;
+                    resultEl.className = 'cert-check-result ' + (c.valid ? 'valid' : 'invalid');
+                    resultEl.innerHTML = html;
+                } else {
+                    resultEl.className = 'cert-check-result invalid';
+                    resultEl.innerHTML = d.error || '\u0421\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d';
+                }
+            })
+            .catch(function() {
+                resultEl.style.display = 'block';
+                resultEl.className = 'cert-check-result invalid';
+                resultEl.innerHTML = '\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438';
+            });
+    };
+})();
+</script>
+{% endblock %}

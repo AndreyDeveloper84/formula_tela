@@ -85,14 +85,14 @@
             <section class="service serv1 mt-56"><h3>Услуги</h3><div class="row">
                 {% for s in m.services.all %}{% if s.is_active %}
                 <div class="col-xl-3 col-lg-4 col-md-6 col-sm-6">
-                    <a href="{% url 'website:service_detail' service_id=s.id %}" class="item">
+                    <a href="{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% else %}{% url 'website:service_detail' service_id=s.id %}{% endif %}" class="item">
                         {% if s.image %}
                             <img src="{{ s.image.url }}" class="responsive" alt="{{ s.name }}" loading="lazy">
                         {% else %}
                             <img src="{% static 'images/us1.jpg' %}" class="responsive" alt="{{ s.name }}" loading="lazy">
                         {% endif %}
                     </a>
-                    <a class="text-center mb-40" href="{% url 'website:service_detail' service_id=s.id %}">
+                    <a class="text-center mb-40" href="{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% else %}{% url 'website:service_detail' service_id=s.id %}{% endif %}">
                         <span class="semi f20 mb-15">{{ s.name }}</span>
                         {% with first_option=s.options.all|first %}{% if first_option %}<span class="op50">{{ first_option.duration_min }} мин — от {{ first_option.price|floatformat:0 }} ₽</span>{% elif s.price_from %}<span class="op50">от {{ s.price_from|floatformat:0 }} ₽</span>{% endif %}{% endwith %}
                     </a>

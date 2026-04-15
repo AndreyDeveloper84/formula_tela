@@ -1,14 +1,33 @@
 from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from collections import defaultdict
+from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django_ratelimit.decorators import ratelimit
 from services_app.yclients_api import get_yclients_api, YClientsAPIError
 import logging
 import json
 import requests as http_requests
 from django.conf import settings as django_settings
+
+from .utils import normalize_ru_phone
+
+from django.core.cache import cache
+import hashlib
+
+# TTL для idempotency-ключей бронирования. 60 секунд покрывает double-click
+# и retry после сетевого глитча; осознанная повторная запись через минуту
+# уже считается валидной и бьёт YClients заново.
+BOOKING_IDEMPOTENCY_TTL = 60
+
+
+def _booking_idempotency_key(*parts: str) -> str:
+    """Собирает стабильный ключ кэша из частей бронирования."""
+    raw = "|".join(str(p) for p in parts)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"booking-idem:{digest}"
 
 from services_app.models import (
     SiteSettings,
@@ -22,6 +41,8 @@ from services_app.models import (
     BundleItem,
     Review,
     BookingRequest,
+    Order,
+    GiftCertificate,
 )
 
 
@@ -63,16 +84,23 @@ def home(request):
         .order_by("order", "-starts_at", "title")[:3]
     )
 
-    from django.db.models import Prefetch
-    popular_bundles = (
+    popular_bundles_qs = (
         Bundle.objects.filter(is_active=True, is_popular=True)
         .prefetch_related("items", "items__option", "items__option__service")
-        [:3]
+        .order_by("order", "id")[:3]
     )
+    popular_bundles = []
+    for b in popular_bundles_qs:
+        min_price, min_duration = b.compute_min_totals()
+        popular_bundles.append({
+            "bundle":       b,
+            "min_price":    min_price,
+            "min_duration": min_duration,
+            "price":        b.fixed_price or min_price,
+        })
 
-    # Отзывы для секции "Отзывы"
     reviews = Review.objects.filter(is_active=True).order_by("order", "-date", "-created_at")[:3]
-    
+
     ctx = {
         "settings": _settings(),
         "top_items": top_items,
@@ -128,8 +156,26 @@ def masters(request):
     })
 
 def contacts(request):
+    stats = [
+        {"icon": "💆", "value": "50+",       "label": "видов процедур"},
+        {"icon": "⭐", "value": "5",          "label": "мастеров"},
+        {"icon": "📅", "value": "с 2020",     "label": "года работаем"},
+        {"icon": "🕐", "value": "9:00–21:00", "label": "ежедневно"},
+    ]
+    values = [
+        {"icon": "🎓", "title": "Профессионализм",
+         "desc": "Сертифицированные специалисты с профильным образованием"},
+        {"icon": "🌿", "title": "Натуральный уход",
+         "desc": "Профессиональные масла и средства премиум-класса"},
+        {"icon": "🤝", "title": "Индивидуальный подход",
+         "desc": "Программа подбирается под каждого клиента"},
+        {"icon": "💰", "title": "Честные цены",
+         "desc": "Прозрачный прайс, курсы со скидкой до 20%"},
+    ]
     return render(request, "website/contacts.html", {
         "settings": _settings(),
+        "stats":    stats,
+        "values":   values,
     })
 
 def book_service(request):
@@ -148,32 +194,6 @@ def _min_option(service):
     return opts[0] if opts else None
     
 def bundles(request):
-
-    def _compute_min_totals(items):
-    # сгруппируем элементы по parallel_group
-        groups = defaultdict(list)
-        gaps_total = 0
-        for it in items:
-            groups[it.parallel_group].append(it)
-            gaps_total += int(it.gap_after_min or 0)
-
-        total_price = 0
-        total_duration = 0
-        for items in groups.values():
-            gmax = 0
-            for it in items:
-                opt = it.option  # ← берём ровно то, что выбрано в админке
-                if not opt:
-                    continue
-                total_price += opt.price or 0
-                gmax = max(gmax, int(opt.duration_min or 0))
-            total_duration += gmax
-
-        total_duration += gaps_total
-        return total_price, total_duration
-
-
-    # варианты для услуг
     opt_qs = (ServiceOption.objects
               .filter(is_active=True)
               .order_by("order", "duration_min", "unit_type", "units"))
@@ -181,36 +201,114 @@ def bundles(request):
     svc_qs = (Service.objects
               .prefetch_related(Prefetch("options", queryset=opt_qs)))
 
-    # элементы комплексов
     items_qs = (BundleItem.objects
                 .select_related("bundle", "option", "option__service")
                 .prefetch_related(Prefetch("option__service", queryset=svc_qs))
                 .order_by("order"))
 
-    # сами комплексы
     bundles_qs = (Bundle.objects
                   .filter(is_active=True)
-                  .prefetch_related(Prefetch("items", queryset=items_qs)))
+                  .prefetch_related(Prefetch("items", queryset=items_qs))
+                  .order_by("order", "id"))
 
-    # подготовим удобную структуру для шаблона
     bundles = []
     for b in bundles_qs:
-        # получим элементы и посчитаем «минимальные» итоги
         items = list(b.items.all())
-        min_price, min_duration = _compute_min_totals(items)
-        price = b.fixed_price
-        # не трогаем b.items (related manager), складываем в структуру
+        min_price, min_duration = b.compute_min_totals()
         bundles.append({
             "bundle": b,
             "items": items,
             "min_price": min_price,
             "min_duration": min_duration,
-            "price": price})
-    
+            "price": b.fixed_price,
+        })
+
+    # Лечебные комплексы — услуги с "комплекс" в названии
+    complex_opt_qs = (ServiceOption.objects
+                      .filter(is_active=True)
+                      .order_by("order", "units", "duration_min"))
+    complex_services = (Service.objects
+                        .filter(is_active=True, name__icontains='комплекс')
+                        .prefetch_related(Prefetch('options', queryset=complex_opt_qs))
+                        .order_by('name'))
+
     return render(request, "website/bundles.html", {
         "settings": _settings(),
         "bundles": bundles,
+        "complex_services": complex_services,
     })
+
+
+def bundle_detail_by_slug(request, slug):
+    """Детальная страница комплекса по ЧПУ-url /kompleks/<slug>/."""
+    opt_qs = (ServiceOption.objects
+              .filter(is_active=True)
+              .order_by("order", "duration_min", "unit_type", "units"))
+    svc_qs = Service.objects.prefetch_related(Prefetch("options", queryset=opt_qs))
+    items_qs = (BundleItem.objects
+                .select_related("option", "option__service", "option__service__category")
+                .prefetch_related(Prefetch("option__service", queryset=svc_qs))
+                .order_by("order"))
+
+    bundle = get_object_or_404(
+        Bundle.objects.prefetch_related(Prefetch("items", queryset=items_qs)),
+        slug=slug,
+        is_active=True,
+    )
+    return _render_bundle_detail(request, bundle)
+
+
+def bundle_detail(request, bundle_id):
+    """Legacy-роут /bundle/<id>/. Если у комплекса есть slug — 301 на ЧПУ."""
+    bundle = get_object_or_404(Bundle, pk=bundle_id, is_active=True)
+    if bundle.slug:
+        from django.shortcuts import redirect
+        return redirect("website:bundle_detail_by_slug", slug=bundle.slug, permanent=True)
+    return _render_bundle_detail(request, bundle)
+
+
+def _render_bundle_detail(request, bundle):
+    """Сборка контекста детальной страницы комплекса."""
+    items = list(bundle.items.all())
+    min_price, min_duration = bundle.compute_min_totals()
+    price = bundle.fixed_price if bundle.fixed_price is not None else min_price
+
+    # Похожие комплексы — другие активные, кроме этого
+    other_bundles_qs = (
+        Bundle.objects.filter(is_active=True)
+        .exclude(pk=bundle.pk)
+        .order_by("order", "id")[:3]
+    )
+    other_bundles = []
+    for b in other_bundles_qs:
+        b_min_price, b_min_duration = b.compute_min_totals()
+        other_bundles.append({
+            "bundle":       b,
+            "price":        b.fixed_price if b.fixed_price is not None else b_min_price,
+            "min_duration": b_min_duration,
+        })
+
+    seo_title = bundle.seo_title or f"{bundle.name} — комплекс услуг"
+    seo_description = bundle.seo_description or (
+        bundle.description[:160] if bundle.description else ""
+    )
+    seo_h1 = bundle.seo_h1 or bundle.name
+
+    context = {
+        "settings":        _settings(),
+        "bundle":          bundle,
+        "items":           items,
+        "price":           price,
+        "min_price":       min_price,
+        "min_duration":    min_duration,
+        "other_bundles":   other_bundles,
+        "seo_title":       seo_title,
+        "seo_description": seo_description,
+        "seo_h1":          seo_h1,
+        "subtitle":        bundle.subtitle,
+    }
+    return render(request, "website/bundle_detail.html", context)
+
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +331,7 @@ logger = logging.getLogger(__name__)
 
 @require_GET
 @csrf_exempt
+@ratelimit(key="ip", rate="30/m", method="GET", block=True)
 def api_available_times(request):
     """
     API: получить список доступных времён для записи с фильтрацией по длительности
@@ -494,6 +593,7 @@ def api_available_times_simple(request):
             'error': 'Internal server error'
         }, status=500)
 @csrf_exempt
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_create_booking(request):
     """
@@ -559,6 +659,15 @@ def api_create_booking(request):
                 'success': False,
                 'error': 'client must have name and phone'
             }, status=400)
+
+        # Нормализация телефона до +7XXXXXXXXXX перед записью в YClients
+        try:
+            client['phone'] = normalize_ru_phone(client.get('phone', ''))
+        except ValidationError as exc:
+            return JsonResponse({
+                'success': False,
+                'error': str(exc.message if hasattr(exc, 'message') else exc),
+            }, status=400)
         
         # Валидация service_ids
         if not isinstance(service_ids, list) or not service_ids:
@@ -587,20 +696,35 @@ def api_create_booking(request):
         
         # Формируем datetime
         booking_datetime = f"{date}T{time}:00"
-        
+
+        # Idempotency: если тот же клиент с тем же слотом уже пролетал
+        # сквозь этот хэндлер за последние BOOKING_IDEMPOTENCY_TTL секунд,
+        # возвращаем сохранённый ответ и НЕ трогаем YClients повторно.
+        idem_key = _booking_idempotency_key(
+            "create",
+            client['phone'],
+            staff_id,
+            ",".join(str(s) for s in sorted(service_ids)),
+            booking_datetime,
+        )
+        cached_response = cache.get(idem_key)
+        if cached_response is not None:
+            logger.info("api_create_booking: idempotent hit %s", idem_key[-16:])
+            return JsonResponse(cached_response)
+
         # API клиент
         api = get_yclients_api()
-        
+
         # Информация о мастере
         staff_list = api.get_staff()
         master = next((s for s in staff_list if s['id'] == staff_id), None)
-        
+
         if not master:
             return JsonResponse({
                 'success': False,
                 'error': f'Staff {staff_id} not found'
             }, status=404)
-        
+
         logger.info(
             f"📝 Создание записи: "
             f"staff={master['name']}, "
@@ -608,7 +732,7 @@ def api_create_booking(request):
             f"client={client['name']}, "
             f"services={service_ids}"
         )
-        
+
         # Создаём запись
         booking = api.create_booking(
             staff_id=staff_id,
@@ -623,7 +747,7 @@ def api_create_booking(request):
             f"Record ID: {booking.get('record_id')}"
         )
         
-        return JsonResponse({
+        response_payload = {
             'success': True,
             'data': {
                 'booking_id': booking.get('record_id'),
@@ -635,8 +759,12 @@ def api_create_booking(request):
                 'client_name': client['name'],
                 'comment': comment
             }
-        })
-        
+        }
+        # Кэшируем только успешный ответ. Ошибки YClients не кэшируем —
+        # клиент должен иметь возможность немедленно повторить.
+        cache.set(idem_key, response_payload, BOOKING_IDEMPOTENCY_TTL)
+        return JsonResponse(response_payload)
+
     except YClientsAPIError as e:
         logger.exception(f"❌ YClients API Error: {e}")
         return JsonResponse({
@@ -650,23 +778,36 @@ def api_create_booking(request):
             'error': str(e)
         }, status=500)
 
+def category_services_by_slug(request, slug):
+    """ЧПУ-версия страницы категории: /kategorii/<slug>/."""
+    category = get_object_or_404(ServiceCategory, slug=slug)
+    return _render_category_services(request, category)
+
+
 def category_services(request, category_id):
-    """Услуги конкретной категории"""
-    category = get_object_or_404(ServiceCategory, id=category_id)
+    """Legacy-роут /services/<int:id>/. 301 на ЧПУ если есть slug."""
+    category = get_object_or_404(ServiceCategory, pk=category_id)
+    if category.slug:
+        from django.shortcuts import redirect
+        return redirect("website:category_services_by_slug", slug=category.slug, permanent=True)
+    return _render_category_services(request, category)
+
+
+def _render_category_services(request, category):
+    """Общая логика рендера страницы категории (услуги + другие категории)."""
     services_qs = (
         category.services
         .filter(is_active=True)
         .prefetch_related("options")
     )
-    
-    # Другие категории (исключаем текущую)
+
     other_categories = (
         ServiceCategory.objects
-        .exclude(id=category_id)
+        .exclude(pk=category.pk)
         .prefetch_related("services")
         .order_by("order", "name")
     )
-    
+
     return render(request, "website/category_services.html", {
         "settings": _settings(),
         "category": category,
@@ -773,8 +914,18 @@ def _render_service_detail(request, service):
     logger.info(f"Других категорий с фото: {other_categories.count()}")
     
     # 7. SEO — fallback на название услуги если поля пусты
-    seo_title = service.seo_title or f"{service.name} — {service.category.name if service.category else ''}"
-    seo_description = service.seo_description or (service.description[:160] if service.description else "")
+    _price_str = f" — от {int(service.price_from)} ₽" if service.price_from else ''
+    _raw_title = service.seo_title or f"{service.name}{_price_str} | Пенза"
+    # Обрезаем title до 65 символов по последнему пробелу
+    seo_title = _raw_title[:65].rsplit(' ', 1)[0] if len(_raw_title) > 65 else _raw_title
+    # description: убираем переносы строк из автофолбека, обрезаем до 160
+    if service.seo_description:
+        seo_description = service.seo_description
+    elif service.description:
+        _clean = service.description.replace('\n', ' ').replace('\r', ' ').strip()
+        seo_description = (_clean[:157].rsplit(' ', 1)[0] + '...') if len(_clean) > 160 else _clean
+    else:
+        seo_description = ""
     seo_h1 = service.seo_h1 or service.name
     
     related_services = service.related_services.filter(
@@ -917,6 +1068,7 @@ def _get_other_services(service, limit=8):
 """
 
 @csrf_exempt
+@ratelimit(key="ip", rate="30/m", method="GET", block=True)
 def api_available_dates(request):
     """
     API: получить список доступных дат для мастера.
@@ -972,6 +1124,7 @@ def api_available_dates(request):
         }, status=500)
         
 @csrf_exempt
+@ratelimit(key="ip", rate="30/m", method="GET", block=True)
 @require_GET
 def api_get_staff(request):
     """
@@ -1075,12 +1228,13 @@ def api_get_staff(request):
             'error': str(e)
         }, status=500)
 
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_bundle_request(request):
-    """API: Заявка на комплекс — сохранение + уведомление"""
+    """API: Заявка на комплекс — сохранение + уведомления."""
     import json
     from services_app.models import Bundle, BundleRequest
-    from django.core.mail import send_mail
+    from website.notifications import send_notification_telegram, send_notification_email
 
     try:
         data = json.loads(request.body)
@@ -1088,16 +1242,30 @@ def api_bundle_request(request):
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
 
     name = data.get('name', '').strip()
-    phone = data.get('phone', '').strip()
+    raw_phone = data.get('phone', '').strip()
     email = data.get('email', '').strip()
     comment = data.get('comment', '').strip()
     bundle_id = data.get('bundle_id')
     bundle_name = data.get('bundle_name', '')
 
-    if not name or not phone:
+    if not name or not raw_phone:
         return JsonResponse({'success': False, 'error': 'Имя и телефон обязательны'}, status=400)
 
-    # Находим комплекс
+    try:
+        phone = normalize_ru_phone(raw_phone)
+    except ValidationError as exc:
+        return JsonResponse({'success': False, 'error': str(exc.message if hasattr(exc, 'message') else exc)}, status=400)
+
+    # Idempotency: тот же клиент на тот же bundle с тем же комментарием
+    # не должен плодить дубли BundleRequest при дабл-клике / retry.
+    idem_key = _booking_idempotency_key(
+        "bundle", phone, bundle_id or "", comment[:64]
+    )
+    cached_response = cache.get(idem_key)
+    if cached_response is not None:
+        logger.info("api_bundle_request: idempotent hit %s", idem_key[-16:])
+        return JsonResponse(cached_response)
+
     bundle = None
     if bundle_id:
         try:
@@ -1106,7 +1274,6 @@ def api_bundle_request(request):
         except Bundle.DoesNotExist:
             pass
 
-    # Сохраняем в БД
     req = BundleRequest.objects.create(
         bundle=bundle,
         bundle_name=bundle_name,
@@ -1116,49 +1283,35 @@ def api_bundle_request(request):
         comment=comment,
     )
 
-    # Уведомление в Telegram
-    tg_token = getattr(django_settings, 'TELEGRAM_BOT_TOKEN', '')
-    tg_chat = getattr(django_settings, 'TELEGRAM_CHAT_ID', '')
-    if tg_token and tg_chat:
-        try:
-            text = (
-                f"🔔 Новая заявка на комплекс!\n\n"
-                f"📦 {bundle_name}\n"
-                f"👤 {name}\n"
-                f"📱 {phone}\n"
-            )
-            if email:
-                text += f"📧 {email}\n"
-            if comment:
-                text += f"💬 {comment}\n"
+    tg_text = (
+        f"🔔 Новая заявка на комплекс!\n\n"
+        f"📦 {bundle_name}\n"
+        f"👤 {name}\n"
+        f"📱 {phone}\n"
+    )
+    if email:
+        tg_text += f"📧 {email}\n"
+    if comment:
+        tg_text += f"💬 {comment}\n"
+    send_notification_telegram(tg_text)
 
-            http_requests.post(
-                f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                json={"chat_id": tg_chat, "text": text, "parse_mode": "HTML"},
-                timeout=5
-            )
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Telegram notification failed: {e}")
+    send_notification_email(
+        subject=f"Заявка на комплекс: {bundle_name}",
+        message=(
+            f"Комплекс: {bundle_name}\n"
+            f"Клиент:   {name}\n"
+            f"Телефон:  {phone}\n"
+            f"Email:    {email or '—'}\n"
+            f"Комментарий: {comment or '—'}\n"
+        ),
+    )
 
-    # Уведомление по Email
-    admin_email = getattr(django_settings, 'ADMIN_NOTIFICATION_EMAIL', '')
-    if admin_email:
-        try:
-            send_mail(
-                subject=f"Заявка на комплекс: {bundle_name}",
-                message=f"Имя: {name}\nТелефон: {phone}\nEmail: {email}\nКомментарий: {comment}",
-                from_email=None,
-                recipient_list=[admin_email],
-                fail_silently=True,
-            )
-        except Exception:
-            pass
-
-    return JsonResponse({
+    response_payload = {
         'success': True,
-        'message': 'Заявка принята! Администратор свяжется с вами.'
-    })
+        'message': 'Заявка принята! Администратор свяжется с вами.',
+    }
+    cache.set(idem_key, response_payload, BOOKING_IDEMPOTENCY_TTL)
+    return JsonResponse(response_payload)
 
 @require_GET
 def api_wizard_categories(request):
@@ -1195,21 +1348,45 @@ def api_wizard_services(request, category_id):
     return JsonResponse({"services": result})
 
 @csrf_exempt
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 @require_POST
 def api_wizard_booking(request):
-    """Создание заявки на запись"""
+    """Заявка с формы-мастера (#bookingWizard / кнопка «Записаться онлайн»).
+
+    By design НЕ создаёт запись в YClients — это «заявка на перезвон».
+    Менеджер обрабатывает вручную по уведомлению в Telegram/email.
+
+    Сохраняет BookingRequest в БД и шлёт два уведомления:
+      - Telegram: _send_booking_telegram
+      - Email:    _send_booking_email (список получателей — в SiteSettings.notification_emails)
+    """
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "error": "Неверный формат данных"}, status=400)
 
     client_name = data.get("client_name", "").strip()
-    client_phone = data.get("client_phone", "").strip()
+    raw_phone = data.get("client_phone", "").strip()
     comment = data.get("comment", "").strip()
     service_id = data.get("service_id")
 
-    if not client_name or not client_phone:
+    if not client_name or not raw_phone:
         return JsonResponse({"success": False, "error": "Укажите имя и телефон"}, status=400)
+
+    try:
+        client_phone = normalize_ru_phone(raw_phone)
+    except ValidationError as exc:
+        return JsonResponse({"success": False, "error": str(exc.message if hasattr(exc, 'message') else exc)}, status=400)
+
+    # Idempotency-ключ: телефон + услуга + обрезанный комментарий.
+    # Защищает от дубликатов BookingRequest при double-submit.
+    idem_key = _booking_idempotency_key(
+        "wizard", client_phone, service_id or "", comment[:64]
+    )
+    cached_response = cache.get(idem_key)
+    if cached_response is not None:
+        logger.info("api_wizard_booking: idempotent hit %s", idem_key[-16:])
+        return JsonResponse(cached_response)
 
     # Получаем названия
     service_name = "Не указана"
@@ -1231,37 +1408,251 @@ def api_wizard_booking(request):
         comment=comment,
     )
 
-    # Telegram уведомление
-    _send_booking_telegram(booking)
+    # Уведомления: Telegram + email (список адресов в SiteSettings.notification_emails)
+    _notify_booking_request(booking)
 
-    return JsonResponse({"success": True, "id": booking.id})
+    response_payload = {"success": True, "id": booking.id}
+    cache.set(idem_key, response_payload, BOOKING_IDEMPOTENCY_TTL)
+    return JsonResponse(response_payload)
 
 
-def _send_booking_telegram(booking):
-    """Отправка уведомления в Telegram"""
-    from django.conf import settings as django_settings
-    
-    token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
-    chat_id = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
-    if not token or not chat_id:
-        return
+def _notify_booking_request(booking):
+    """Шлёт Telegram и email о новой заявке с формы-мастера (wizard)."""
+    from website.notifications import send_notification_telegram, send_notification_email
 
-    text = (
+    tg_text = (
         f"📋 Новая заявка с сайта!\n\n"
         f"👤 {booking.client_name}\n"
         f"📞 {booking.client_phone}\n"
         f"💆 {booking.service_name}\n"
     )
     if booking.category_name:
-        text += f"📂 {booking.category_name}\n"
+        tg_text += f"📂 {booking.category_name}\n"
     if booking.comment:
-        text += f"💬 {booking.comment}\n"
+        tg_text += f"💬 {booking.comment}\n"
+    send_notification_telegram(tg_text)
+
+    email_lines = [
+        f"Категория: {booking.category_name or '—'}",
+        f"Услуга:    {booking.service_name}",
+        f"Клиент:    {booking.client_name}",
+        f"Телефон:   {booking.client_phone}",
+    ]
+    if booking.comment:
+        email_lines.append(f"Комментарий: {booking.comment}")
+    email_lines.append(f"Время заявки: {booking.created_at:%d.%m.%Y %H:%M}")
+    email_lines.append("")
+    email_lines.append("Админка: /admin/services_app/bookingrequest/")
+
+    send_notification_email(
+        subject=f"Новая заявка с сайта: {booking.service_name}",
+        message="\n".join(email_lines),
+    )
+
+
+# ── Сертификаты ───────────────────────────────────────────────────────
+
+logger = logging.getLogger(__name__)
+
+
+def certificates(request):
+    """Страница подарочных сертификатов"""
+    popular_services = (
+        Service.objects
+        .filter(is_active=True, is_popular=True)
+        .prefetch_related("options")
+        .order_by("order")[:8]
+    )
+    return render(request, "website/certificates.html", {
+        "popular_services": popular_services,
+    })
+
+
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
+@require_POST
+def api_certificate_request(request):
+    """API: Заявка на подарочный сертификат."""
+    from datetime import date, timedelta
 
     try:
-        http_requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            timeout=5,
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+
+    # --- Валидация ---
+    buyer_name = data.get("buyer_name", "").strip()
+    raw_buyer_phone = data.get("buyer_phone", "").strip()
+    if not buyer_name or not raw_buyer_phone:
+        return JsonResponse(
+            {"success": False, "error": "Имя и телефон покупателя обязательны"},
+            status=400,
         )
-    except Exception as e:
-        logger.error(f"Telegram notification failed: {e}")
+
+    try:
+        buyer_phone = normalize_ru_phone(raw_buyer_phone)
+    except ValidationError as exc:
+        return JsonResponse(
+            {"success": False, "error": str(exc.message if hasattr(exc, 'message') else exc)},
+            status=400,
+        )
+
+    cert_type = data.get("certificate_type", "nominal")
+    if cert_type not in ("nominal", "service"):
+        return JsonResponse(
+            {"success": False, "error": "Неверный тип сертификата"},
+            status=400,
+        )
+
+    nominal = 0
+    service = None
+    service_option = None
+
+    if cert_type == "nominal":
+        try:
+            nominal = int(data.get("nominal", 0))
+        except (TypeError, ValueError):
+            nominal = 0
+        if nominal <= 0:
+            return JsonResponse(
+                {"success": False, "error": "Укажите сумму сертификата"},
+                status=400,
+            )
+    else:
+        service_id = data.get("service_id")
+        if not service_id:
+            return JsonResponse(
+                {"success": False, "error": "Выберите услугу"},
+                status=400,
+            )
+        try:
+            service = Service.objects.get(id=service_id, is_active=True)
+        except Service.DoesNotExist:
+            return JsonResponse(
+                {"success": False, "error": "Услуга не найдена"},
+                status=404,
+            )
+        option_id = data.get("service_option_id")
+        if option_id:
+            try:
+                service_option = ServiceOption.objects.get(
+                    id=option_id, service=service, is_active=True,
+                )
+                nominal = service_option.price
+            except ServiceOption.DoesNotExist:
+                pass
+        if not nominal and service.price_from:
+            nominal = service.price_from
+
+    buyer_email = data.get("buyer_email", "").strip()
+    recipient_name = data.get("recipient_name", "").strip()
+    raw_recipient_phone = data.get("recipient_phone", "").strip()
+    message = data.get("message", "").strip()
+
+    recipient_phone = ""
+    if raw_recipient_phone:
+        try:
+            recipient_phone = normalize_ru_phone(raw_recipient_phone)
+        except ValidationError as exc:
+            return JsonResponse(
+                {"success": False, "error": f"Телефон получателя: {exc.message if hasattr(exc, 'message') else exc}"},
+                status=400,
+            )
+
+    # --- Создание Order ---
+    order = Order.objects.create(
+        order_type="certificate",
+        client_name=buyer_name,
+        client_phone=buyer_phone,
+        client_email=buyer_email,
+        total_amount=nominal,
+        comment=message,
+    )
+
+    # --- Создание GiftCertificate ---
+    today = date.today()
+    cert = GiftCertificate.objects.create(
+        order=order,
+        certificate_type=cert_type,
+        nominal=nominal,
+        service=service,
+        service_option=service_option,
+        buyer_name=buyer_name,
+        buyer_phone=buyer_phone,
+        buyer_email=buyer_email,
+        recipient_name=recipient_name,
+        recipient_phone=recipient_phone,
+        message=message,
+        valid_from=today,
+        valid_until=today + timedelta(days=180),
+    )
+
+    # --- Уведомления администраторам ---
+    from website.notifications import send_notification_telegram, send_notification_email
+
+    value_str = (
+        f"{nominal:,.0f} ₽".replace(",", " ")
+        if cert_type == "nominal"
+        else str(service)
+    )
+    tg_text = (
+        f"🎁 Новая заявка на сертификат!\n\n"
+        f"💰 {value_str}\n"
+        f"👤 {buyer_name}, {buyer_phone}\n"
+    )
+    if recipient_name:
+        tg_text += f"🎀 Получатель: {recipient_name}\n"
+    if recipient_phone:
+        tg_text += f"📱 {recipient_phone}\n"
+    if message:
+        tg_text += f"💬 {message}\n"
+    tg_text += f"\n№ заказа: {order.number}"
+    send_notification_telegram(tg_text)
+
+    send_notification_email(
+        subject=f"Заявка на сертификат: {order.number}",
+        message=(
+            f"Покупатель: {buyer_name}, {buyer_phone}\n"
+            f"Получатель: {recipient_name or '—'}\n"
+            f"Тип: {cert.get_certificate_type_display()}\n"
+            f"Номинал: {nominal}\n"
+            f"№ заказа: {order.number}\n"
+        ),
+    )
+
+    return JsonResponse({
+        "success": True,
+        "message": "\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430! \u041c\u0435\u043d\u0435\u0434\u0436\u0435\u0440 \u0441\u0432\u044f\u0436\u0435\u0442\u0441\u044f \u0441 \u0432\u0430\u043c\u0438 \u0434\u043b\u044f \u043e\u043f\u043b\u0430\u0442\u044b.",
+        "order_number": order.number,
+    })
+
+
+@require_GET
+def api_certificate_check(request):
+    """API: \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u0430 \u043f\u043e \u043a\u043e\u0434\u0443"""
+    code = request.GET.get("code", "").strip().upper()
+    if not code:
+        return JsonResponse(
+            {"success": False, "error": "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u0430"}, status=400,
+        )
+    try:
+        cert = GiftCertificate.objects.select_related("service").get(code=code)
+    except GiftCertificate.DoesNotExist:
+        return JsonResponse(
+            {"success": False, "error": "\u0421\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d"}, status=404,
+        )
+
+    remaining = cert.remaining_value
+    return JsonResponse({
+        "success": True,
+        "certificate": {
+            "code": cert.code,
+            "type": cert.certificate_type,
+            "type_display": cert.get_certificate_type_display(),
+            "nominal": str(cert.nominal) if cert.certificate_type == "nominal" else None,
+            "service_name": str(cert.service) if cert.service else None,
+            "remaining_value": str(remaining) if remaining is not None else None,
+            "status": cert.get_status_display(),
+            "valid": cert.is_valid,
+            "valid_until": cert.valid_until.isoformat(),
+        },
+    })

@@ -1,15 +1,345 @@
 {% extends "website/base.html" %}
-{% block title %}Контакты — {{ settings.salon_name }}{% endblock %}
+{% load static %}
+{% load social_tags %}
+
+{% block title %}Контакты — {{ settings.salon_name }} | Пенза, ул. Пушкина, 45{% endblock %}
+{% block description %}Студия массажа и эстетики «{{ settings.salon_name }}» в Пензе. Адрес: {{ settings.address }}. Телефон: {{ settings.contact_phone }}. {{ settings.working_hours }}.{% endblock %}
+
+{# На странице контактов свой полноценный блок карты и контактов — убираем дубль из глобального футера #}
+{% block footer_contacts %}{% endblock %}
+
 {% block content %}
-  <h1>Контакты</h1>
-  <div class="card">
-    <p><b>Адрес:</b> {{ settings.address }}</p>
-    <p><b>Телефон:</b> <a href="tel:{{ settings.phone }}">{{ settings.phone }}</a></p>
-    {% if settings.work_hours %}<p><b>Режим работы:</b> {{ settings.work_hours }}</p>{% endif %}
-    <p>
-      <a class="btn" href="#book">Записаться</a>
-      {% if settings.instagram %}<a href="{{ settings.instagram }}" style="margin-left:10px">Instagram</a>{% endif %}
-      {% if settings.telegram %}<a href="{{ settings.telegram }}" style="margin-left:10px">Telegram</a>{% endif %}
-    </p>
+
+<style>
+  /* Responsive-фиксы для страницы /contacts/ — все inline-grid в шаблоне
+     переопределяем через !important, чтобы на узких экранах колонки
+     корректно сворачивались в одну. */
+  .contacts-grid-2col { display:grid; }
+  .contacts-values-2col { display:grid; }
+  .contacts-requisites-dl { display:grid; }
+
+  @media (max-width: 900px) {
+    .contacts-grid-2col { grid-template-columns: 1fr !important; gap: 32px !important; }
+  }
+  @media (max-width: 640px) {
+    .contacts-hero-h1 { font-size: 1.5rem !important; line-height: 1.25 !important; }
+    .contacts-values-2col { grid-template-columns: 1fr !important; }
+    .contacts-requisites-dl { grid-template-columns: 1fr !important; gap: 4px 0 !important; }
+    .contacts-requisites-dl dt { padding-top: 12px !important; font-size: .78rem !important; text-transform: uppercase; letter-spacing: .05em; }
+    .contacts-requisites-dl dd { padding-bottom: 8px !important; border-bottom: 1px solid #eee; }
+    .contacts-requisites-dl dt:first-child { padding-top: 0 !important; }
+    .contacts-section-pad { padding: 32px 0 !important; }
+  }
+</style>
+
+{# ========================= HERO ========================= #}
+<section style="background:linear-gradient(135deg,#273A37 0%,#3d5c57 100%);color:#fff;padding:64px 0 52px;margin-bottom:0;">
+  <div class="container">
+    <div style="max-width:680px;">
+      <p style="font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin-bottom:10px;">📍 Пенза</p>
+      <h1 class="contacts-hero-h1" style="font-size:2.2rem;font-weight:700;margin-bottom:16px;color:#fff;line-height:1.2;">
+        Студия массажа и эстетики<br>«{{ settings.salon_name }}»
+      </h1>
+      {% if settings.description %}
+      <p style="font-size:1rem;opacity:.8;line-height:1.7;margin-bottom:28px;max-width:560px;">{{ settings.description }}</p>
+      {% endif %}
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <a href="tel:{{ settings.contact_phone }}"
+           style="display:inline-flex;align-items:center;gap:8px;background:#fff;color:#273A37;padding:12px 24px;border-radius:50px;font-weight:600;font-size:.95rem;text-decoration:none;">
+          📞 {{ settings.contact_phone }}
+        </a>
+        <a href="#" data-bs-toggle="modal" data-bs-target="#bookingWizard"
+           style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);padding:12px 24px;border-radius:50px;font-weight:600;font-size:.95rem;text-decoration:none;">
+          Записаться онлайн
+        </a>
+      </div>
+    </div>
   </div>
+</section>
+
+{# ========================= STATS BAR ========================= #}
+<section style="background:#f2f5f3;border-bottom:1px solid #dde7de;">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0;">
+      {% for stat in stats %}
+      <div style="padding:20px 24px;text-align:center;border-right:1px solid #dde7de;">
+        <div style="font-size:1.6rem;margin-bottom:4px;">{{ stat.icon }}</div>
+        <div style="font-size:1.1rem;font-weight:700;color:#273A37;">{{ stat.value }}</div>
+        <div style="font-size:.78rem;color:#666;margin-top:2px;">{{ stat.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{# ========================= MAP + CONTACTS ========================= #}
+<section class="contacts-section-pad" style="padding:56px 0;">
+  <div class="container">
+    <div class="contacts-grid-2col" style="grid-template-columns:1fr 380px;gap:40px;align-items:start;">
+
+      {# --- Карта --- #}
+      <div>
+        <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:20px;">🗺️ Как нас найти</h2>
+        <div style="border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);">
+          <iframe
+            src="https://yandex.ru/map-widget/v1/?um=constructor%3A1add670ea4f2f7880be94aae36cfce289a88c7a36db95772ba1f1d74138c30f3&source=constructor"
+            width="100%" height="380"
+            style="border:none;display:block;"
+            allowfullscreen loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade">
+          </iframe>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
+          <a href="https://yandex.ru/maps/?mode=routes&rtext=~{{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}&rtt=auto" target="_blank" rel="noopener"
+             style="display:inline-flex;align-items:center;gap:6px;background:#273A37;color:#fff;padding:10px 20px;border-radius:50px;font-size:.88rem;text-decoration:none;font-weight:500;">
+            🗺️ Маршрут в Яндекс Картах
+          </a>
+          <a href="https://www.google.com/maps/dir/?api=1&destination={{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}" target="_blank" rel="noopener"
+             style="display:inline-flex;align-items:center;gap:6px;background:#fff;color:#273A37;border:1px solid #ccc;padding:10px 20px;border-radius:50px;font-size:.88rem;text-decoration:none;font-weight:500;">
+            📍 Google Maps
+          </a>
+        </div>
+      </div>
+
+      {# --- Контактные карточки --- #}
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:4px;">📋 Контакты</h2>
+
+        <div style="background:#f0f7f2;border:1px solid #a8d5b5;border-radius:14px;padding:20px 22px;">
+          <div style="font-size:.72rem;font-weight:700;color:#5a8a6a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">📍 Адрес</div>
+          <div style="font-size:1rem;font-weight:600;color:#273A37;line-height:1.5;">{{ settings.address }}</div>
+          <div style="font-size:.82rem;color:#666;margin-top:4px;">Пензенская область</div>
+        </div>
+
+        <div style="background:#f0f7f2;border:1px solid #a8d5b5;border-radius:14px;padding:20px 22px;">
+          <div style="font-size:.72rem;font-weight:700;color:#5a8a6a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">📞 Телефон</div>
+          <a href="tel:{{ settings.contact_phone }}" style="font-size:1.2rem;font-weight:700;color:#273A37;text-decoration:none;">{{ settings.contact_phone }}</a>
+        </div>
+
+        <div style="background:#f0f7f2;border:1px solid #a8d5b5;border-radius:14px;padding:20px 22px;">
+          <div style="font-size:.72rem;font-weight:700;color:#5a8a6a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">🕐 Режим работы</div>
+          <div style="font-size:1rem;font-weight:600;color:#273A37;">{{ settings.working_hours }}</div>
+          <div style="font-size:.82rem;color:#666;margin-top:4px;">Без выходных</div>
+        </div>
+
+        {% if settings.payment_methods %}
+        <div style="background:#f0f7f2;border:1px solid #a8d5b5;border-radius:14px;padding:20px 22px;">
+          <div style="font-size:.72rem;font-weight:700;color:#5a8a6a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">💳 Оплата</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            {% for key, label in settings.payment_methods.items %}
+            <div style="display:flex;align-items:center;gap:8px;font-size:.88rem;color:#273A37;">
+              {% if key == "cash" %}💵{% elif key == "card" %}💳{% elif key == "sbp" %}📲{% else %}✓{% endif %}
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <a href="#" data-bs-toggle="modal" data-bs-target="#bookingWizard"
+           style="display:block;background:#273A37;color:#fff;text-align:center;padding:14px 24px;border-radius:50px;font-weight:600;font-size:1rem;text-decoration:none;margin-top:4px;">
+          Записаться онлайн
+        </a>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ========================= МИССИЯ И ЦЕННОСТИ ========================= #}
+<section class="contacts-section-pad" style="background:#273A37;color:#fff;padding:56px 0;">
+  <div class="container">
+    <div class="contacts-grid-2col" style="grid-template-columns:1fr 1fr;gap:48px;align-items:center;">
+      <div>
+        <p style="font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:#a8d5b5;margin-bottom:12px;">Наша миссия</p>
+        <h2 style="font-size:1.8rem;font-weight:700;color:#fff;margin-bottom:20px;line-height:1.3;">
+          Забота о теле — это не роскошь, а необходимость
+        </h2>
+        <p style="opacity:.75;line-height:1.8;font-size:.95rem;">
+          Мы создали «Формулу Тела», чтобы каждый житель Пензы мог позволить себе
+          профессиональный уход в комфортной и уютной атмосфере. Наши специалисты
+          помогают восстановить здоровье, снять хроническое напряжение и почувствовать
+          себя лучше — без очередей и завышенных цен.
+        </p>
+      </div>
+      <div class="contacts-values-2col" style="grid-template-columns:1fr 1fr;gap:16px;">
+        {% for val in values %}
+        <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:20px 18px;">
+          <div style="font-size:1.6rem;margin-bottom:10px;">{{ val.icon }}</div>
+          <div style="font-weight:600;font-size:.95rem;margin-bottom:6px;">{{ val.title }}</div>
+          <div style="font-size:.8rem;opacity:.65;line-height:1.5;">{{ val.desc }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ========================= СОЦИАЛЬНЫЕ СЕТИ ========================= #}
+{% if settings.social_media %}
+<section style="padding:52px 0;background:#fafafa;">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:32px;">
+      <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:8px;">Мы в социальных сетях</h2>
+      <p style="color:#666;font-size:.9rem;">Подписывайтесь — акции, советы по уходу за телом и фото работ</p>
+    </div>
+    <div style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;">
+      {% with sm=settings.social_media %}
+      {% if sm.vk %}
+      <a href="{{ sm.vk }}" target="_blank" rel="noopener"
+         style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e0e7e1;border-radius:14px;padding:16px 28px;text-decoration:none;color:#273A37;transition:box-shadow .2s;font-weight:500;min-width:180px;"
+         onmouseover="this.style.boxShadow='0 4px 16px rgba(39,58,55,.15)'" onmouseout="this.style.boxShadow='none'">
+        <span style="font-size:1.6rem;">💙</span>
+        <div>
+          <div style="font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.05em;">ВКонтакте</div>
+          <div style="font-size:.9rem;">body_aesthetic58</div>
+        </div>
+      </a>
+      {% endif %}
+      {% if sm.telegram %}
+      <a href="{{ sm.telegram }}" target="_blank" rel="noopener"
+         style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e0e7e1;border-radius:14px;padding:16px 28px;text-decoration:none;color:#273A37;transition:box-shadow .2s;font-weight:500;min-width:180px;"
+         onmouseover="this.style.boxShadow='0 4px 16px rgba(39,58,55,.15)'" onmouseout="this.style.boxShadow='none'">
+        <span style="font-size:1.6rem;">✈️</span>
+        <div>
+          <div style="font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.05em;">Telegram</div>
+          <div style="font-size:.9rem;">body_aesthetic58</div>
+        </div>
+      </a>
+      {% endif %}
+      {% if sm.max %}
+      <a href="{{ sm.max }}" target="_blank" rel="noopener"
+         style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e0e7e1;border-radius:14px;padding:16px 28px;text-decoration:none;color:#273A37;transition:box-shadow .2s;font-weight:500;min-width:180px;"
+         onmouseover="this.style.boxShadow='0 4px 16px rgba(39,58,55,.15)'" onmouseout="this.style.boxShadow='none'">
+        <span style="font-size:1.6rem;">💬</span>
+        <div>
+          <div style="font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.05em;">MAX</div>
+          <div style="font-size:.9rem;">Написать нам</div>
+        </div>
+      </a>
+      {% endif %}
+      {% endwith %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{# ========================= КАК ДОБРАТЬСЯ ========================= #}
+<section class="contacts-section-pad" style="padding:52px 0;">
+  <div class="container">
+    <div class="contacts-grid-2col" style="grid-template-columns:1fr 1fr;gap:48px;align-items:start;">
+      <div>
+        <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:20px;">🚗 Как добраться</h2>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div style="display:flex;gap:14px;align-items:flex-start;">
+            <div style="width:36px;height:36px;background:#f0f7f2;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">🚌</div>
+            <div>
+              <div style="font-weight:600;color:#273A37;margin-bottom:4px;">На автобусе</div>
+              <div style="font-size:.86rem;color:#555;line-height:1.6;">Остановка «ул. Пушкина» — маршруты № 1, 1к, 3, 4, 5. Выход у кинотеатра «Октябрь».</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start;">
+            <div style="width:36px;height:36px;background:#f0f7f2;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">🚗</div>
+            <div>
+              <div style="font-weight:600;color:#273A37;margin-bottom:4px;">На машине</div>
+              <div style="font-size:.86rem;color:#555;line-height:1.6;">Бесплатная парковка во дворе и вдоль ул. Пушкина. Навигаторы: «Пенза, ул. Пушкина, 45».</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start;">
+            <div style="width:36px;height:36px;background:#f0f7f2;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">🚖</div>
+            <div>
+              <div style="font-weight:600;color:#273A37;margin-bottom:4px;">На такси</div>
+              <div style="font-size:.86rem;color:#555;line-height:1.6;">Яндекс Такси, Uber. Скажите водителю: «Пушкина, 45» — из центра города около 5–10 минут.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:20px;">❓ Остались вопросы?</h2>
+        <div style="background:#f0f7f2;border:1px solid #a8d5b5;border-radius:16px;padding:28px;">
+          <p style="color:#444;line-height:1.7;margin-bottom:20px;font-size:.92rem;">
+            Позвоните нам или напишите в мессенджер — ответим в течение нескольких минут.
+            Поможем подобрать процедуру, расскажем о ценах и запишем на удобное время.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <a href="tel:{{ settings.contact_phone }}"
+               style="display:flex;align-items:center;gap:10px;background:#273A37;color:#fff;padding:12px 20px;border-radius:50px;text-decoration:none;font-weight:500;font-size:.9rem;">
+              📞 Позвонить: {{ settings.contact_phone }}
+            </a>
+            {% with sm=settings.social_media %}{% if sm.telegram %}
+            <a href="{{ sm.telegram }}" target="_blank" rel="noopener"
+               style="display:flex;align-items:center;gap:10px;background:#fff;color:#273A37;border:1px solid #a8d5b5;padding:12px 20px;border-radius:50px;text-decoration:none;font-weight:500;font-size:.9rem;">
+              ✈️ Написать в Telegram
+            </a>
+            {% endif %}{% endwith %}
+            {% with sm=settings.social_media %}{% if sm.vk %}
+            <a href="{{ sm.vk }}" target="_blank" rel="noopener"
+               style="display:flex;align-items:center;gap:10px;background:#fff;color:#273A37;border:1px solid #a8d5b5;padding:12px 20px;border-radius:50px;text-decoration:none;font-weight:500;font-size:.9rem;">
+              💙 Написать ВКонтакте
+            </a>
+            {% endif %}{% endwith %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ========================= РЕКВИЗИТЫ ========================= #}
+{% if settings.legal_name %}
+<section style="background:#f7f9f7;padding:48px 0;border-top:1px solid #dde7de;">
+  <div class="container">
+    <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:24px;text-align:center;">
+      📋 Реквизиты
+    </h2>
+    <div style="max-width:820px;margin:0 auto;background:#fff;border:1px solid #dde7de;border-radius:16px;padding:28px 32px;box-shadow:0 2px 10px rgba(0,0,0,.04);">
+      <dl class="contacts-requisites-dl" style="grid-template-columns:200px 1fr;gap:14px 20px;margin:0;font-size:.92rem;line-height:1.5;">
+
+        <dt style="color:#666;font-weight:400;">Наименование</dt>
+        <dd style="margin:0;color:#273A37;font-weight:600;">{{ settings.legal_name }}</dd>
+
+        {% if settings.legal_address %}
+        <dt style="color:#666;font-weight:400;">Юридический адрес</dt>
+        <dd style="margin:0;color:#273A37;">{{ settings.legal_address }}</dd>
+        {% endif %}
+
+        {% if settings.inn %}
+        <dt style="color:#666;font-weight:400;">ИНН</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.inn }}</dd>
+        {% endif %}
+
+        {% if settings.ogrn %}
+        <dt style="color:#666;font-weight:400;">ОГРНИП</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.ogrn }}</dd>
+        {% endif %}
+
+        {% if settings.bank_name or settings.bank_account %}
+        <dt style="color:#666;font-weight:400;grid-column:1 / -1;border-top:1px solid #eee;padding-top:14px;margin-top:4px;">
+          Банковские реквизиты
+        </dt>
+        {% if settings.bank_name %}
+        <dt style="color:#666;font-weight:400;">Банк</dt>
+        <dd style="margin:0;color:#273A37;">{{ settings.bank_name }}</dd>
+        {% endif %}
+        {% if settings.bank_account %}
+        <dt style="color:#666;font-weight:400;">Расчётный счёт</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.bank_account }}</dd>
+        {% endif %}
+        {% if settings.bank_bik %}
+        <dt style="color:#666;font-weight:400;">БИК</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.bank_bik }}</dd>
+        {% endif %}
+        {% if settings.bank_corr_account %}
+        <dt style="color:#666;font-weight:400;">Корр. счёт</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.bank_corr_account }}</dd>
+        {% endif %}
+        {% endif %}
+
+      </dl>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 {% endblock %}
