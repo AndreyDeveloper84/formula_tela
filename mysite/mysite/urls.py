@@ -26,6 +26,7 @@ from website.sitemaps import (
     BundleSitemap,
     CategorySitemap,
     LandingPageSitemap,
+    MasterSitemap,
     ServiceSitemap,
     StaticViewSitemap,
 )
@@ -35,6 +36,7 @@ sitemaps = {
     "services": ServiceSitemap,
     "bundles": BundleSitemap,
     "categories": CategorySitemap,
+    "masters": MasterSitemap,
     "landings": LandingPageSitemap,
 }
 

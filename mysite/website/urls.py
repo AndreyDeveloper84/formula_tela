@@ -13,6 +13,8 @@ urlpatterns = [
 
     path("promotions/", views.promotions, name="promotions"),
     path("masters/", views.masters, name="masters"),
+    path("masters/<slug:slug>/", views.master_detail_by_slug, name="master_detail_by_slug"),
+    path("master/<int:master_id>/", views.master_detail, name="master_detail"),
     path("contacts/", views.contacts, name="contacts"),
     path("book/", views.book_service, name="book_service"),
     path("bundles/", views.bundles, name="bundles"),

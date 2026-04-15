@@ -314,14 +314,18 @@ class ServiceBlockAdmin(admin.ModelAdmin):
 
 @admin.register(Master)
 class MasterAdmin(admin.ModelAdmin):
-    list_display = ["name", "specialization", "order", "is_active", "photo_preview"]
+    list_display = ["name", "slug", "specialization", "order", "is_active", "photo_preview"]
     list_editable = ["order", "is_active"]
     list_filter = ("is_active", "specialization")
-    search_fields = ("name", "specialization")
-    prepopulated_fields = {}
+    search_fields = ("name", "slug", "specialization")
+    prepopulated_fields = {"slug": ("name",)}
     fieldsets = (
          (None, {
              "fields": ("name", "specialization", "experience", "is_active", "order")
+         }),
+         ("SEO", {
+             "fields": ("slug",),
+             "description": "URL /masters/<slug>/. Автозаполняется из ФИО при вводе.",
          }),
          ("Фото", {
              "fields": ("photo", "photo_mobile"),

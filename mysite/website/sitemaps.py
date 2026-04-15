@@ -4,7 +4,7 @@ from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 
 from agents.models import LandingPage
-from services_app.models import Bundle, Service, ServiceCategory
+from services_app.models import Bundle, Master, Service, ServiceCategory
 
 
 class StaticViewSitemap(Sitemap):
@@ -46,6 +46,20 @@ class BundleSitemap(Sitemap):
 
     def location(self, obj):
         return reverse("website:bundle_detail_by_slug", kwargs={"slug": obj.slug})
+
+
+class MasterSitemap(Sitemap):
+    priority = 0.8
+    changefreq = "monthly"
+
+    def items(self):
+        return (Master.objects
+                .filter(is_active=True, slug__isnull=False)
+                .exclude(slug="")
+                .order_by("slug"))
+
+    def location(self, obj):
+        return reverse("website:master_detail_by_slug", kwargs={"slug": obj.slug})
 
 
 class CategorySitemap(Sitemap):
