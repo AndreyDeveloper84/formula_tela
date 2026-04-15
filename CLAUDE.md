@@ -188,7 +188,7 @@ pytest mysite/tests/test_booking_live.py -v -s
 - `ADMIN_NOTIFICATION_EMAIL`
 - `YANDEX_WEBMASTER_TOKEN`, `YANDEX_WEBMASTER_HOST_ID`
 - `YANDEX_METRIKA_TOKEN`, `YANDEX_METRIKA_COUNTER_ID`
-- `SITE_BASE_URL` (например: https://formulatela.ru)
+- `SITE_BASE_URL` — продакшн: `https://formulatela58.ru` (именно с «58», НЕ formulatela.ru)
 
 ---
 
