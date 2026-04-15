@@ -883,8 +883,18 @@ def _render_service_detail(request, service):
     logger.info(f"Других категорий с фото: {other_categories.count()}")
     
     # 7. SEO — fallback на название услуги если поля пусты
-    seo_title = service.seo_title or f"{service.name} — {service.category.name if service.category else ''}"
-    seo_description = service.seo_description or (service.description[:160] if service.description else "")
+    _price_str = f" — от {int(service.price_from)} ₽" if service.price_from else ''
+    _raw_title = service.seo_title or f"{service.name}{_price_str} | Пенза"
+    # Обрезаем title до 65 символов по последнему пробелу
+    seo_title = _raw_title[:65].rsplit(' ', 1)[0] if len(_raw_title) > 65 else _raw_title
+    # description: убираем переносы строк из автофолбека, обрезаем до 160
+    if service.seo_description:
+        seo_description = service.seo_description
+    elif service.description:
+        _clean = service.description.replace('\n', ' ').replace('\r', ' ').strip()
+        seo_description = (_clean[:157].rsplit(' ', 1)[0] + '...') if len(_clean) > 160 else _clean
+    else:
+        seo_description = ""
     seo_h1 = service.seo_h1 or service.name
     
     related_services = service.related_services.filter(
