@@ -413,6 +413,22 @@ class TestYandexWebmasterClientNewMethods:
         result = client.get_query_stats("2026-02-01", "2026-02-07")
         assert result == []
 
+    @patch("agents.integrations.yandex_webmaster.requests.request")
+    def test_requests_include_order_by_param(self, mock_req):
+        """Regression: Вебмастер API требует order_by, иначе HTTP 400."""
+        mock_req.return_value = MagicMock(ok=True, json=lambda: {"queries": []})
+        from agents.integrations.yandex_webmaster import YandexWebmasterClient
+        client = YandexWebmasterClient(
+            token="fake", user_id="42", host_id="https:example.ru:443"
+        )
+        client.get_query_stats("2026-02-01", "2026-02-07")
+        client.get_page_stats("2026-02-01", "2026-02-07")
+        for call in mock_req.call_args_list:
+            params = call.kwargs.get("params") or {}
+            assert params.get("order_by") == "TOTAL_SHOWS", (
+                "order_by param missing — Яндекс.Вебмастер API v4 требует его"
+            )
+
 
 # ─── Yandex Metrika: get_organic_sessions / get_page_behavior ────────────
 

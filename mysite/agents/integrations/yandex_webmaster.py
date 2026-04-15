@@ -133,6 +133,7 @@ class YandexWebmasterClient:
                         "TOTAL_SHOWS,TOTAL_CLICKS,"
                         "AVG_SHOW_POSITION,AVG_CLICK_POSITION"
                     ),
+                    "order_by": "TOTAL_SHOWS",
                     "date_from": date_from,
                     "date_to": date_to,
                     "count_indicators": limit,
@@ -184,6 +185,7 @@ class YandexWebmasterClient:
                         "TOTAL_SHOWS,TOTAL_CLICKS,"
                         "AVG_SHOW_POSITION,AVG_CLICK_POSITION"
                     ),
+                    "order_by": "TOTAL_SHOWS",
                     "date_from": date_from,
                     "date_to": date_to,
                     "count_indicators": limit,

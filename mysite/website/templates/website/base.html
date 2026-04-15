@@ -7,6 +7,7 @@
     <title>{% block title %}Студия эстетики Формула Тела{% endblock %}</title>
     <meta name="description" content="{% block description %}Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день.{% endblock %}">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if YANDEX_VERIFICATION %}<meta name="yandex-verification" content="{{ YANDEX_VERIFICATION }}">{% endif %}
     {% block extra_head %}{% endblock %}
     <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.png' %}">
 
