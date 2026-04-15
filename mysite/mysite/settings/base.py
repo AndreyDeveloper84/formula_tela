@@ -211,6 +211,11 @@ YANDEX_WEBMASTER_TOKEN   = os.getenv("YANDEX_WEBMASTER_TOKEN", "")
 YANDEX_WEBMASTER_USER_ID = os.getenv("YANDEX_WEBMASTER_USER_ID", "")  # авто-получается если пусто
 YANDEX_WEBMASTER_HOST_ID = os.getenv("YANDEX_WEBMASTER_HOST_ID", "")
 
+# Код верификации для метатега подтверждения прав в Яндекс.Вебмастере.
+# Получается в UI Вебмастера → «Подтверждение прав» → «Мета-тег».
+# Если пусто — метатег в base.html не рендерится.
+YANDEX_VERIFICATION = os.getenv("YANDEX_VERIFICATION", "")
+
 # Базовый URL сайта (без trailing slash)
 # Используется TechnicalSEOWatchdog для проверки страниц
 SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://formulatela58.ru")
