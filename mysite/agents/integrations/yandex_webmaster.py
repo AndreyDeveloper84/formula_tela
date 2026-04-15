@@ -129,10 +129,16 @@ class YandexWebmasterClient:
                 "GET",
                 path,
                 params={
-                    "query_indicator": (
-                        "TOTAL_SHOWS,TOTAL_CLICKS,"
-                        "AVG_SHOW_POSITION,AVG_CLICK_POSITION"
-                    ),
+                    # API v4 хочет повторяющийся параметр
+                    # ?query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS&...
+                    # Список в requests разворачивается именно так.
+                    # Строка через запятую приводит к HTTP 400 (enum not found).
+                    "query_indicator": [
+                        "TOTAL_SHOWS",
+                        "TOTAL_CLICKS",
+                        "AVG_SHOW_POSITION",
+                        "AVG_CLICK_POSITION",
+                    ],
                     "order_by": "TOTAL_SHOWS",
                     "date_from": date_from,
                     "date_to": date_to,
@@ -181,10 +187,16 @@ class YandexWebmasterClient:
                 "GET",
                 path,
                 params={
-                    "query_indicator": (
-                        "TOTAL_SHOWS,TOTAL_CLICKS,"
-                        "AVG_SHOW_POSITION,AVG_CLICK_POSITION"
-                    ),
+                    # API v4 хочет повторяющийся параметр
+                    # ?query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS&...
+                    # Список в requests разворачивается именно так.
+                    # Строка через запятую приводит к HTTP 400 (enum not found).
+                    "query_indicator": [
+                        "TOTAL_SHOWS",
+                        "TOTAL_CLICKS",
+                        "AVG_SHOW_POSITION",
+                        "AVG_CLICK_POSITION",
+                    ],
                     "order_by": "TOTAL_SHOWS",
                     "date_from": date_from,
                     "date_to": date_to,
