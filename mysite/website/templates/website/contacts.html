@@ -23,7 +23,7 @@
            style="display:inline-flex;align-items:center;gap:8px;background:#fff;color:#273A37;padding:12px 24px;border-radius:50px;font-weight:600;font-size:.95rem;text-decoration:none;">
           📞 {{ settings.contact_phone }}
         </a>
-        <a href="#booking-form-anchor"
+        <a href="#" data-bs-toggle="modal" data-bs-target="#bookingWizard"
            style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);padding:12px 24px;border-radius:50px;font-weight:600;font-size:.95rem;text-decoration:none;">
           Записаться онлайн
         </a>
@@ -117,7 +117,7 @@
         </div>
         {% endif %}
 
-        <a href="#booking-form-anchor"
+        <a href="#" data-bs-toggle="modal" data-bs-target="#bookingWizard"
            style="display:block;background:#273A37;color:#fff;text-align:center;padding:14px 24px;border-radius:50px;font-weight:600;font-size:1rem;text-decoration:none;margin-top:4px;">
           Записаться онлайн
         </a>
@@ -265,5 +265,61 @@
     </div>
   </div>
 </section>
+
+{# ========================= РЕКВИЗИТЫ ========================= #}
+{% if settings.legal_name %}
+<section style="background:#f7f9f7;padding:48px 0;border-top:1px solid #dde7de;">
+  <div class="container">
+    <h2 style="font-size:1.4rem;font-weight:700;color:#273A37;margin-bottom:24px;text-align:center;">
+      📋 Реквизиты
+    </h2>
+    <div style="max-width:820px;margin:0 auto;background:#fff;border:1px solid #dde7de;border-radius:16px;padding:28px 32px;box-shadow:0 2px 10px rgba(0,0,0,.04);">
+      <dl style="display:grid;grid-template-columns:200px 1fr;gap:14px 20px;margin:0;font-size:.92rem;line-height:1.5;">
+
+        <dt style="color:#666;font-weight:400;">Наименование</dt>
+        <dd style="margin:0;color:#273A37;font-weight:600;">{{ settings.legal_name }}</dd>
+
+        {% if settings.legal_address %}
+        <dt style="color:#666;font-weight:400;">Юридический адрес</dt>
+        <dd style="margin:0;color:#273A37;">{{ settings.legal_address }}</dd>
+        {% endif %}
+
+        {% if settings.inn %}
+        <dt style="color:#666;font-weight:400;">ИНН</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.inn }}</dd>
+        {% endif %}
+
+        {% if settings.ogrn %}
+        <dt style="color:#666;font-weight:400;">ОГРНИП</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.ogrn }}</dd>
+        {% endif %}
+
+        {% if settings.bank_name or settings.bank_account %}
+        <dt style="color:#666;font-weight:400;grid-column:1 / -1;border-top:1px solid #eee;padding-top:14px;margin-top:4px;">
+          Банковские реквизиты
+        </dt>
+        {% if settings.bank_name %}
+        <dt style="color:#666;font-weight:400;">Банк</dt>
+        <dd style="margin:0;color:#273A37;">{{ settings.bank_name }}</dd>
+        {% endif %}
+        {% if settings.bank_account %}
+        <dt style="color:#666;font-weight:400;">Расчётный счёт</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.bank_account }}</dd>
+        {% endif %}
+        {% if settings.bank_bik %}
+        <dt style="color:#666;font-weight:400;">БИК</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.bank_bik }}</dd>
+        {% endif %}
+        {% if settings.bank_corr_account %}
+        <dt style="color:#666;font-weight:400;">Корр. счёт</dt>
+        <dd style="margin:0;color:#273A37;font-family:Consolas,monospace;">{{ settings.bank_corr_account }}</dd>
+        {% endif %}
+        {% endif %}
+
+      </dl>
+    </div>
+  </div>
+</section>
+{% endif %}
 
 {% endblock %}
