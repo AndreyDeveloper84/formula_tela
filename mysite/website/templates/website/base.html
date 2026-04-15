@@ -156,13 +156,7 @@
                         </ul>
                         <div class="mx250">
                             <a href="{% url 'website:services' %}" class="btn-black t-btn">Записаться на процедуры</a>
-                            {% if settings.yandex_maps_link %}
-                                <a href="{{ settings.yandex_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
-                            {% elif settings.google_maps_link %}
-                                <a href="{{ settings.google_maps_link }}" class="btn-white2 t-btn" target="_blank">Построить маршрут</a>
-                            {% else %}
-                                <a href="#" class="btn-white2 t-btn">Построить маршрут</a>
-                            {% endif %}
+                            <a href="https://yandex.ru/maps/?mode=routes&rtext=~{{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}&rtt=auto" class="btn-white2 t-btn" target="_blank" rel="noopener">Построить маршрут</a>
                         </div>
                     </div>
                 </div>

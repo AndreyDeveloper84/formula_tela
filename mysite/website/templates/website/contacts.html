@@ -90,18 +90,14 @@
           </iframe>
         </div>
         <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
-          {% if settings.yandex_maps_link %}
-          <a href="{{ settings.yandex_maps_link }}" target="_blank" rel="noopener"
+          <a href="https://yandex.ru/maps/?mode=routes&rtext=~{{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}&rtt=auto" target="_blank" rel="noopener"
              style="display:inline-flex;align-items:center;gap:6px;background:#273A37;color:#fff;padding:10px 20px;border-radius:50px;font-size:.88rem;text-decoration:none;font-weight:500;">
             🗺️ Маршрут в Яндекс Картах
           </a>
-          {% endif %}
-          {% if settings.google_maps_link %}
-          <a href="{{ settings.google_maps_link }}" target="_blank" rel="noopener"
+          <a href="https://www.google.com/maps/dir/?api=1&destination={{ settings.address|default:'Пенза, ул. Пушкина, 45'|urlencode }}" target="_blank" rel="noopener"
              style="display:inline-flex;align-items:center;gap:6px;background:#fff;color:#273A37;border:1px solid #ccc;padding:10px 20px;border-radius:50px;font-size:.88rem;text-decoration:none;font-weight:500;">
             📍 Google Maps
           </a>
-          {% endif %}
         </div>
       </div>
 
