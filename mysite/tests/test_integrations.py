@@ -414,8 +414,11 @@ class TestYandexWebmasterClientNewMethods:
         assert result == []
 
     @patch("agents.integrations.yandex_webmaster.requests.request")
-    def test_requests_include_order_by_param(self, mock_req):
-        """Regression: Вебмастер API требует order_by, иначе HTTP 400."""
+    def test_request_params_shape_matches_webmaster_api_v4(self, mock_req):
+        """Regression: Вебмастер API v4 требует order_by и query_indicator как список.
+
+        Строка через запятую приводит к HTTP 400 "Not found enum value ...".
+        """
         mock_req.return_value = MagicMock(ok=True, json=lambda: {"queries": []})
         from agents.integrations.yandex_webmaster import YandexWebmasterClient
         client = YandexWebmasterClient(
@@ -428,6 +431,12 @@ class TestYandexWebmasterClientNewMethods:
             assert params.get("order_by") == "TOTAL_SHOWS", (
                 "order_by param missing — Яндекс.Вебмастер API v4 требует его"
             )
+            qi = params.get("query_indicator")
+            assert isinstance(qi, list), (
+                "query_indicator должен быть list, иначе API v4 возвращает "
+                "HTTP 400 'Not found enum value ...'"
+            )
+            assert "TOTAL_SHOWS" in qi and "TOTAL_CLICKS" in qi
 
 
 # ─── Yandex Metrika: get_organic_sessions / get_page_behavior ────────────
