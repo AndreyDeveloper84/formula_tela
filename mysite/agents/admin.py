@@ -9,7 +9,7 @@ from .models import (
     AgentTask, AgentReport, AgentRecommendationOutcome,
     ContentPlan, DailyMetric,
     SeoKeywordCluster, SeoRankSnapshot, SeoClusterSnapshot,
-    LandingPage, SeoTask, WeeklyBacklog,
+    LandingPage, SeoTask, WeeklyBacklog, RetentionSnapshot,
 )
 
 
@@ -585,3 +585,68 @@ class WeeklyBacklogAdmin(admin.ModelAdmin):
     def items_display(self, obj):
         return _pretty_json_html(obj.items)
     items_display.short_description = "Задачи"
+
+
+@admin.register(RetentionSnapshot)
+class RetentionSnapshotAdmin(admin.ModelAdmin):
+    list_display = [
+        "date", "total_clients", "new_clients", "returning_clients",
+        "retention_30d_display", "avg_check_display", "churn_rate_display",
+    ]
+    date_hierarchy = "date"
+    ordering = ["-date"]
+    readonly_fields = [
+        "date", "period_days", "total_clients", "new_clients",
+        "returning_clients", "retention_30d", "retention_60d",
+        "retention_90d", "avg_frequency", "avg_check", "avg_ltv_180d",
+        "churn_count", "churn_rate",
+        "top_churned_display", "cohort_display",
+        "created_at",
+    ]
+    fieldsets = (
+        (None, {
+            "fields": (
+                "date", "period_days", "total_clients",
+                "new_clients", "returning_clients",
+            ),
+        }),
+        ("Удержание", {
+            "fields": ("retention_30d", "retention_60d", "retention_90d"),
+        }),
+        ("Экономика", {
+            "fields": ("avg_frequency", "avg_check", "avg_ltv_180d"),
+        }),
+        ("Отток", {
+            "fields": ("churn_count", "churn_rate", "top_churned_display"),
+        }),
+        ("Когортный анализ", {
+            "fields": ("cohort_display",),
+            "classes": ("collapse",),
+        }),
+    )
+
+    def retention_30d_display(self, obj):
+        return f"{obj.retention_30d:.1f}%"
+    retention_30d_display.short_description = "R30"
+
+    def avg_check_display(self, obj):
+        return f"{obj.avg_check:,.0f} руб"
+    avg_check_display.short_description = "Ср.чек"
+
+    def churn_rate_display(self, obj):
+        return f"{obj.churn_rate:.1f}%"
+    churn_rate_display.short_description = "Отток"
+
+    def top_churned_display(self, obj):
+        return _pretty_json_html(obj.top_churned_services)
+    top_churned_display.short_description = "Услуги с макс. оттоком"
+
+    def cohort_display(self, obj):
+        return _pretty_json_html(obj.cohort_data)
+    cohort_display.short_description = "Когортная матрица"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

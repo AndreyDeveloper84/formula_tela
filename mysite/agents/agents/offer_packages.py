@@ -71,7 +71,8 @@ class OfferPackagesAgent:
             api = get_yclients_api()
             records = api.get_records(str(month_ago), str(today))
             if records:
-                revenue = sum(float(r.get("sum") or 0) for r in records)
+                from agents.agents._revenue import sum_records_revenue
+                revenue = sum_records_revenue(records)
                 svc_counts: dict[str, int] = {}
                 for r in records:
                     for s in r.get("services", []):

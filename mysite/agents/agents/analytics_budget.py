@@ -58,7 +58,8 @@ class AnalyticsBudgetAgent:
             records = api.get_records(start_date=start, end_date=end)
             if not records:
                 return {}
-            revenue = sum(float(r.get("sum") or 0) for r in records)
+            from agents.agents._revenue import sum_records_revenue
+            revenue = sum_records_revenue(records)
             statuses: dict[int, int] = {}
             for r in records:
                 sid = int((r.get("status") or {}).get("id") or 0)

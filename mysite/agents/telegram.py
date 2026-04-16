@@ -256,3 +256,84 @@ def send_weekly_seo_report(report: dict) -> bool:
 
     text = "\n".join(lines)
     return send_telegram(text)
+
+
+# ── Retention ────────────────────────────────────────────────────────
+
+
+def _delta_str(current: float, previous: float, suffix: str = "%") -> str:
+    d = current - previous
+    icon = "\u2b06\ufe0f" if d >= 0 else "\u2b07\ufe0f"
+    sign = "+" if d >= 0 else ""
+    return f"{icon} {sign}{d:.1f}{suffix}"
+
+
+def send_retention_summary(snapshot, previous=None) -> bool:
+    """Ежедневный краткий алерт при значимых изменениях удержания."""
+    if previous is not None:
+        r30_drop = previous.retention_30d - snapshot.retention_30d
+        churn_spike = snapshot.churn_rate - previous.churn_rate
+        if r30_drop < 10 and churn_spike < 10:
+            return True  # нет значимых изменений
+
+    lines = [
+        f"\U0001f4ca <b>Удержание клиентов: {snapshot.date}</b>",
+        "",
+        f"\u2022 Клиентов: {snapshot.total_clients} "
+        f"(новых {snapshot.new_clients}, повторных {snapshot.returning_clients})",
+        f"\u2022 Удержание 30д: {snapshot.retention_30d:.1f}%"
+        + (f" ({_delta_str(snapshot.retention_30d, previous.retention_30d)})" if previous else ""),
+        f"\u2022 Средний чек: {snapshot.avg_check:,.0f} руб",
+        f"\u2022 Частота: {snapshot.avg_frequency:.1f} визитов/мес",
+        f"\u2022 Отток: {snapshot.churn_rate:.1f}% ({snapshot.churn_count} клиентов)"
+        + (f" ({_delta_str(snapshot.churn_rate, previous.churn_rate)})" if previous else ""),
+    ]
+    if previous is not None:
+        r30_drop = previous.retention_30d - snapshot.retention_30d
+        if r30_drop >= 10:
+            lines.append(f"\n\u26a0\ufe0f <b>Удержание упало на {r30_drop:.1f}%!</b>")
+        churn_spike = snapshot.churn_rate - previous.churn_rate
+        if churn_spike >= 10:
+            lines.append(f"\u26a0\ufe0f <b>Отток вырос на {churn_spike:.1f}%!</b>")
+
+    return send_telegram("\n".join(lines))
+
+
+def send_retention_report(snapshot, previous=None) -> bool:
+    """Еженедельный полный отчёт удержания (понедельник)."""
+    lines = [
+        f"\U0001f4ca <b>Отчёт удержания за неделю: {snapshot.date}</b>",
+        "",
+        "\U0001f4c8 <b>Ключевые метрики:</b>",
+        f"\u2022 Всего клиентов: {snapshot.total_clients}",
+        f"\u2022 Новых: {snapshot.new_clients} / Повторных: {snapshot.returning_clients}",
+        f"\u2022 Удержание: 30д={snapshot.retention_30d:.1f}% "
+        f"| 60д={snapshot.retention_60d:.1f}% "
+        f"| 90д={snapshot.retention_90d:.1f}%",
+        f"\u2022 Частота: {snapshot.avg_frequency:.1f} визитов/мес",
+        f"\u2022 Средний чек: {snapshot.avg_check:,.0f} руб",
+        f"\u2022 LTV 180д: {snapshot.avg_ltv_180d:,.0f} руб",
+        "",
+        "\U0001f4c9 <b>Отток:</b>",
+        f"\u2022 Ушедших: {snapshot.churn_count} ({snapshot.churn_rate:.1f}%)",
+    ]
+    top = snapshot.top_churned_services or []
+    if top:
+        lines.append("\u2022 Топ-услуги оттока:")
+        for item in top[:5]:
+            if isinstance(item, dict):
+                lines.append(f"  - {item.get('service', '?')}: {item.get('count', 0)}")
+            else:
+                lines.append(f"  - {item}")
+    if previous:
+        lines.extend([
+            "",
+            "\U0001f4ca <b>Динамика (vs прошлая неделя):</b>",
+            f"\u2022 R30: {previous.retention_30d:.1f}% \u2192 {snapshot.retention_30d:.1f}%"
+            f" ({_delta_str(snapshot.retention_30d, previous.retention_30d)})",
+            f"\u2022 Отток: {previous.churn_rate:.1f}% \u2192 {snapshot.churn_rate:.1f}%"
+            f" ({_delta_str(snapshot.churn_rate, previous.churn_rate)})",
+            f"\u2022 Частота: {previous.avg_frequency:.1f} \u2192 {snapshot.avg_frequency:.1f}"
+            f" ({_delta_str(snapshot.avg_frequency, previous.avg_frequency, ' виз/мес')})",
+        ])
+    return send_telegram("\n".join(lines))

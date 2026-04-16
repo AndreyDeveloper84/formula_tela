@@ -180,6 +180,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "agents.tasks.generate_missing_landings",
         "schedule": crontab(hour=22, minute=0, day_of_week="sunday"),
     },
+    "daily-retention-metrics-8am": {
+        "task": "agents.tasks.collect_retention_metrics",
+        "schedule": crontab(hour=8, minute=0),
+    },
 }
 
 # === OpenAI ===

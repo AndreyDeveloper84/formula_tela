@@ -66,7 +66,8 @@ def _gather_yclients(start_date: str, end_date: str) -> dict:
             cancelled += 1
 
         # Выручка
-        revenue += float(rec.get("sum") or 0)
+        from agents.agents._revenue import extract_record_revenue
+        revenue += extract_record_revenue(rec)
 
     top_services = sorted(by_service.items(), key=lambda x: -x[1])[:10]
     top_masters = sorted(by_master.items(), key=lambda x: -x[1])[:5]
