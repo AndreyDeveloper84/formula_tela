@@ -485,3 +485,56 @@ class WeeklyBacklog(models.Model):
 
     def __str__(self):
         return f"Бэклог {self.week_start}"
+
+
+class RetentionSnapshot(models.Model):
+    """
+    Ежедневный снимок метрик удержания клиентов.
+    Рассчитывается из YClients записей за 180-дневный период
+    задачей collect_retention_metrics (Celery beat, 08:00 ежедневно).
+    """
+    date = models.DateField("Дата снимка", unique=True)
+    period_days = models.IntegerField("Период анализа (дней)", default=180)
+
+    # Клиенты
+    total_clients = models.IntegerField("Всего клиентов", default=0)
+    new_clients = models.IntegerField("Новых клиентов", default=0)
+    returning_clients = models.IntegerField("Повторных клиентов", default=0)
+
+    # Удержание
+    retention_30d = models.FloatField("Удержание 30д (%)", default=0.0)
+    retention_60d = models.FloatField("Удержание 60д (%)", default=0.0)
+    retention_90d = models.FloatField("Удержание 90д (%)", default=0.0)
+
+    # Экономика
+    avg_frequency = models.FloatField(
+        "Средняя частота (визитов/мес на клиента)", default=0.0,
+    )
+    avg_check = models.FloatField("Средний чек (руб)", default=0.0)
+    avg_ltv_180d = models.FloatField("Средний LTV 180д (руб)", default=0.0)
+
+    # Отток
+    churn_count = models.IntegerField("Ушедших клиентов (90д+)", default=0)
+    churn_rate = models.FloatField("Процент оттока (%)", default=0.0)
+    top_churned_services = models.JSONField(
+        "Услуги с макс. оттоком", default=list, blank=True,
+    )
+
+    # Когорты
+    cohort_data = models.JSONField(
+        "Когортная матрица", default=dict, blank=True,
+        help_text='Месячные когорты: {"2026-01": {"m0": 100, "m1": 45, ...}}',
+    )
+
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Снимок удержания"
+        verbose_name_plural = "Снимки удержания"
+        ordering = ["-date"]
+
+    def __str__(self):
+        return (
+            f"Удержание {self.date}: {self.total_clients} клиентов, "
+            f"R30={self.retention_30d:.0f}%, отток={self.churn_rate:.0f}%"
+        )

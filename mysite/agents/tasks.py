@@ -483,3 +483,199 @@ def generate_missing_landings(self):
         "generate_missing_landings: завершён — %d из %d кандидатов",
         generated, len(candidates_sorted),
     )
+
+
+@shared_task(name="agents.tasks.collect_retention_metrics", bind=True, max_retries=1)
+def collect_retention_metrics(self):
+    """
+    Ежедневный расчёт метрик удержания клиентов.
+
+    Данные: 180 дней YClients записей, группировка по клиентам.
+    Расписание: 08:00 ежедневно (между SEO-снапшотами 07:00 и агентами 09:00).
+    """
+    import datetime
+    import time as _time
+    from collections import defaultdict
+
+    from agents.agents._revenue import extract_record_revenue
+    from agents.models import RetentionSnapshot
+    from agents.telegram import send_retention_report, send_retention_summary
+
+    logger.info("collect_retention_metrics: старт")
+    start = _time.monotonic()
+    today = datetime.date.today()
+    period_days = 180
+    period_start = today - datetime.timedelta(days=period_days)
+
+    # ── 1. Fetch YClients records (paginated) ────────────────────────
+    try:
+        from services_app.yclients_api import get_yclients_api
+        api = get_yclients_api()
+    except Exception as exc:
+        logger.error("collect_retention_metrics: YClients недоступен: %s", exc)
+        return
+
+    all_records = []
+    page = 1
+    max_pages = 20
+    while page <= max_pages:
+        try:
+            batch = api.get_records(
+                start_date=str(period_start),
+                end_date=str(today),
+                count=200,
+                page=page,
+            )
+        except Exception as exc:
+            logger.warning("collect_retention_metrics: page %d error: %s", page, exc)
+            break
+        if not batch:
+            break
+        all_records.extend(batch)
+        if len(batch) < 200:
+            break
+        page += 1
+        _time.sleep(0.5)
+
+    logger.info("collect_retention_metrics: получено %d записей за %d дней", len(all_records), period_days)
+
+    if not all_records:
+        logger.warning("collect_retention_metrics: нет записей — пропускаем")
+        return
+
+    # ── 2. Group by client ───────────────────────────────────────────
+    clients = defaultdict(lambda: {
+        "visits": [],
+        "revenue": 0.0,
+        "services": [],
+    })
+    for rec in all_records:
+        client = rec.get("client") or {}
+        client_key = client.get("id") or client.get("phone")
+        if not client_key:
+            continue
+        visit_date = str(rec.get("date", ""))[:10]
+        if not visit_date or len(visit_date) < 10:
+            continue
+        clients[client_key]["visits"].append(visit_date)
+        clients[client_key]["revenue"] += extract_record_revenue(rec)
+        for svc in rec.get("services") or []:
+            name = svc.get("title") or svc.get("name") or "?"
+            clients[client_key]["services"].append(name)
+
+    # ── 3. Per-client aggregation ────────────────────────────────────
+    total_clients = len(clients)
+    if total_clients == 0:
+        logger.warning("collect_retention_metrics: 0 уникальных клиентов")
+        return
+
+    new_count = 0
+    returning_count = 0
+    ret_30 = 0
+    ret_60 = 0
+    ret_90 = 0
+    churn_count = 0
+    total_visits = 0
+    total_revenue = 0.0
+    churned_services = defaultdict(int)
+    cohort_buckets = defaultdict(lambda: defaultdict(set))
+
+    for key, data in clients.items():
+        dates = sorted(set(data["visits"]))
+        first = datetime.date.fromisoformat(dates[0])
+        last = datetime.date.fromisoformat(dates[-1])
+        visit_count = len(dates)
+        total_visits += visit_count
+        total_revenue += data["revenue"]
+
+        if visit_count == 1:
+            new_count += 1
+        else:
+            returning_count += 1
+
+        # Retention: second visit within N days of first
+        if visit_count >= 2:
+            second = datetime.date.fromisoformat(dates[1])
+            gap = (second - first).days
+            if gap <= 30:
+                ret_30 += 1
+            if gap <= 60:
+                ret_60 += 1
+            if gap <= 90:
+                ret_90 += 1
+
+        # Churn: last visit > 90 days ago
+        if (today - last).days > 90:
+            churn_count += 1
+            for svc_name in set(data["services"]):
+                churned_services[svc_name] += 1
+
+        # Cohort matrix: month of first visit
+        cohort_month = first.strftime("%Y-%m")
+        for d_str in dates:
+            visit_d = datetime.date.fromisoformat(d_str)
+            month_offset = (visit_d.year - first.year) * 12 + (visit_d.month - first.month)
+            cohort_buckets[cohort_month][f"m{month_offset}"].add(key)
+
+    # ── 4. Compute aggregates ────────────────────────────────────────
+    months_in_period = max(period_days / 30.0, 1)
+    avg_frequency = (total_visits / total_clients) / months_in_period
+    avg_check = total_revenue / total_visits if total_visits else 0.0
+    avg_ltv = total_revenue / total_clients if total_clients else 0.0
+    churn_rate = (churn_count / total_clients * 100) if total_clients else 0.0
+    retention_30d = (ret_30 / total_clients * 100) if total_clients else 0.0
+    retention_60d = (ret_60 / total_clients * 100) if total_clients else 0.0
+    retention_90d = (ret_90 / total_clients * 100) if total_clients else 0.0
+
+    top_churned = sorted(churned_services.items(), key=lambda x: -x[1])[:10]
+    top_churned_list = [{"service": s, "count": c} for s, c in top_churned]
+
+    # Cohort matrix: convert sets to counts, normalize to %
+    cohort_data = {}
+    for month, offsets in sorted(cohort_buckets.items()):
+        m0_count = len(offsets.get("m0", set())) or 1
+        cohort_data[month] = {
+            k: round(len(v) / m0_count * 100)
+            for k, v in sorted(offsets.items())
+        }
+
+    # ── 5. Save to DB ────────────────────────────────────────────────
+    snapshot, _ = RetentionSnapshot.objects.update_or_create(
+        date=today,
+        defaults={
+            "period_days": period_days,
+            "total_clients": total_clients,
+            "new_clients": new_count,
+            "returning_clients": returning_count,
+            "retention_30d": round(retention_30d, 1),
+            "retention_60d": round(retention_60d, 1),
+            "retention_90d": round(retention_90d, 1),
+            "avg_frequency": round(avg_frequency, 2),
+            "avg_check": round(avg_check),
+            "avg_ltv_180d": round(avg_ltv),
+            "churn_count": churn_count,
+            "churn_rate": round(churn_rate, 1),
+            "top_churned_services": top_churned_list,
+            "cohort_data": cohort_data,
+        },
+    )
+
+    elapsed = _time.monotonic() - start
+    logger.info(
+        "collect_retention_metrics: завершён за %.1fс — "
+        "%d клиентов, R30=%.1f%%, churn=%.1f%%",
+        elapsed, total_clients, retention_30d, churn_rate,
+    )
+
+    # ── 6. Telegram ──────────────────────────────────────────────────
+    previous = (
+        RetentionSnapshot.objects
+        .filter(date__lt=today)
+        .order_by("-date")
+        .first()
+    )
+    is_monday = today.weekday() == 0
+    if is_monday:
+        send_retention_report(snapshot, previous)
+    else:
+        send_retention_summary(snapshot, previous)
