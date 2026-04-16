@@ -401,6 +401,7 @@ class SeoTask(models.Model):
     description = models.TextField("Описание", blank=True)
     target_url  = models.CharField("Целевой URL", max_length=500, blank=True)
     payload     = models.JSONField("Данные", default=dict, blank=True)
+    escalation_count = models.PositiveIntegerField("Кол-во эскалаций", default=0)
     created_at  = models.DateTimeField("Создано", auto_now_add=True)
 
     class Meta:

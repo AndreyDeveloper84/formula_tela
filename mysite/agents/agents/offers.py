@@ -1,8 +1,11 @@
 """
 Offer Agent — анализирует загрузку мастеров и популярность услуг,
 предлагает акции для увеличения загрузки через GPT.
+
+Создаёт черновики Promotion (is_active=False) для модерации в Django Admin.
 """
 import datetime
+import json
 import logging
 
 from django.conf import settings
@@ -43,8 +46,17 @@ def _build_prompt(data: dict) -> str:
         f"{trends_section}\n"
         "Предложи 2-3 конкретные акции (со скидкой или бонусом), которые помогут загрузить "
         "мастеров на ближайшую неделю. Учитывай рыночные тренды — предлагай акции на услуги, "
-        "которые сейчас в тренде. Для каждой акции укажи: название, суть предложения, "
-        "рекомендуемую скидку (%), на какую аудиторию направлена."
+        "которые сейчас в тренде.\n\n"
+        "Отвечай СТРОГО JSON без markdown:\n"
+        '{"offers": [\n'
+        '  {"title": "Название акции", "description": "Суть предложения", '
+        '"discount_pct": 15, "target_audience": "Новые клиенты", "duration_days": 7}\n'
+        "]}\n\n"
+        "Правила:\n"
+        "- discount_pct: от 5 до 30 (не больше 30%)\n"
+        "- duration_days: от 5 до 14\n"
+        "- title: краткое, до 100 символов\n"
+        "- description: 1-2 предложения"
     )
 
 
@@ -103,6 +115,29 @@ class OfferAgent:
             "market_trends": market_trends,
         }
 
+    def _create_draft_promotions(self, offers: list, today: datetime.date) -> list:
+        """Создаёт черновики Promotion (is_active=False) из распарсенных предложений GPT."""
+        from services_app.models import Promotion
+
+        created = []
+        for offer in offers:
+            discount = min(int(offer.get("discount_pct", 10)), 30)
+            duration = max(5, min(int(offer.get("duration_days", 7)), 14))
+            try:
+                promo = Promotion.objects.create(
+                    title=str(offer.get("title", ""))[:200],
+                    description=str(offer.get("description", "")),
+                    discount_percent=discount,
+                    is_active=False,
+                    starts_at=today,
+                    ends_at=today + datetime.timedelta(days=duration),
+                )
+                created.append(promo)
+                logger.info("OfferAgent: черновик акции создан (id=%s, title=%s)", promo.pk, promo.title)
+            except Exception as exc:
+                logger.warning("OfferAgent: не удалось создать черновик акции: %s", exc)
+        return created
+
     def run(self) -> AgentTask:
         task = AgentTask.objects.create(
             agent_type=AgentTask.OFFERS,
@@ -123,30 +158,55 @@ class OfferAgent:
                         "role": "system",
                         "content": (
                             "Ты маркетолог салона красоты. "
-                            "Отвечай по-русски, давай конкретные предложения без вступлений."
+                            "Отвечай ТОЛЬКО валидным JSON без markdown."
                         ),
                     },
                     {"role": "user", "content": _build_prompt(data)},
                 ],
-                max_tokens=600,
+                response_format={"type": "json_object"},
+                max_tokens=800,
             )
-            text = response.choices[0].message.content.strip()
-            task.raw_response = text
+            raw = response.choices[0].message.content.strip()
+            task.raw_response = raw
+            parsed = json.loads(raw)
+            offers = parsed.get("offers", [])
+
+            # Создаём черновики Promotion (is_active=False)
+            created_promos = self._create_draft_promotions(offers, data["date"])
+
+            # Формируем summary из структурированных данных
+            summary_lines = []
+            for offer in offers:
+                summary_lines.append(
+                    f"• {offer.get('title', '?')} — скидка {offer.get('discount_pct', '?')}%, "
+                    f"{offer.get('target_audience', '')}"
+                )
+            summary = "\n".join(summary_lines) or raw[:500]
 
             AgentReport.objects.create(
                 task=task,
-                summary=text,
-                recommendations=[],
+                summary=summary,
+                recommendations=offers,
             )
 
             task.status = AgentTask.DONE
             task.finished_at = timezone.now()
             task.save(update_fields=["raw_response", "status", "finished_at"])
 
-            send_telegram(
-                f"🎁 <b>Предложения по акциям</b> ({data['period']})\n\n{text[:900]}"
+            # Telegram с превью созданных черновиков
+            promo_preview = "\n".join(
+                f"• {o.get('title', '?')} —{o.get('discount_pct', '?')}%"
+                for o in offers[:3]
             )
-            logger.info("OfferAgent: завершён (task_id=%s)", task.pk)
+            draft_note = (
+                f"\n\n📝 Создано черновиков: {len(created_promos)} (активируйте в админке)"
+                if created_promos else ""
+            )
+            send_telegram(
+                f"🎁 <b>Предложения по акциям</b> ({data['period']})\n\n"
+                f"{promo_preview}{draft_note}"
+            )
+            logger.info("OfferAgent: завершён (task_id=%s, черновиков=%d)", task.pk, len(created_promos))
 
         except Exception as exc:
             logger.exception("OfferAgent: ошибка (task_id=%s) — %s", task.pk, exc)
@@ -154,6 +214,8 @@ class OfferAgent:
             task.error_message = str(exc)
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "error_message", "finished_at"])
+            from agents.telegram import send_agent_error_alert
+            send_agent_error_alert(task)
         finally:
             ensure_task_finalized(task)
 

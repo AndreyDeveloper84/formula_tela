@@ -208,6 +208,8 @@ class TrendScoutAgent:
             task.error_message = str(exc)
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "error_message", "finished_at"])
+            from agents.telegram import send_agent_error_alert
+            send_agent_error_alert(task)
         finally:
             ensure_task_finalized(task)
 

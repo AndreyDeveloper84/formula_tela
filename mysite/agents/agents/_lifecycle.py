@@ -49,6 +49,12 @@ def ensure_task_finalized(task: AgentTask, *, fallback_message: str = _DEFAULT_O
             "ensure_task_finalized: orphan RUNNING task cleaned up (task_id=%s)",
             task.pk,
         )
+        # Telegram-алерт об ошибке
+        try:
+            from agents.telegram import send_agent_error_alert
+            send_agent_error_alert(task)
+        except Exception:
+            logger.debug("ensure_task_finalized: telegram alert failed (task_id=%s)", task.pk)
     except Exception:
         logger.exception(
             "ensure_task_finalized: save failed (task_id=%s)", task.pk
