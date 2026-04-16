@@ -96,10 +96,11 @@ class SupervisorAgent:
     def weekly_run(self):
         """
         Еженедельная синтез-задача (каждый понедельник в 08:00).
-        Собирает последние отчёты всех 6 агентов → GPT синтезирует приоритизированный
-        бэклог задач на неделю → отправляет в Telegram.
+        Собирает последние отчёты всех агентов + feedback по рекомендациям →
+        GPT синтезирует приоритизированный бэклог задач на неделю →
+        сохраняет в WeeklyBacklog + отправляет в Telegram.
         """
-        from agents.models import AgentReport
+        from agents.models import AgentRecommendationOutcome, AgentReport, WeeklyBacklog
         from agents.telegram import send_telegram
 
         agent_labels = {
@@ -137,11 +138,39 @@ class SupervisorAgent:
             else:
                 sections.append(f"АГЕНТ: {label}\nДанных нет")
 
+        # Статистика feedback по рекомендациям за последние 7 дней
+        import datetime as _dt
+        week_ago = _dt.date.today() - _dt.timedelta(days=7)
+        feedback_stats = {
+            "new": AgentRecommendationOutcome.objects.filter(
+                created_at__date__gte=week_ago, status=AgentRecommendationOutcome.STATUS_NEW
+            ).count(),
+            "accepted": AgentRecommendationOutcome.objects.filter(
+                decided_at__date__gte=week_ago, status=AgentRecommendationOutcome.STATUS_ACCEPTED
+            ).count(),
+            "rejected": AgentRecommendationOutcome.objects.filter(
+                decided_at__date__gte=week_ago, status=AgentRecommendationOutcome.STATUS_REJECTED
+            ).count(),
+            "done": AgentRecommendationOutcome.objects.filter(
+                decided_at__date__gte=week_ago, status=AgentRecommendationOutcome.STATUS_DONE
+            ).count(),
+        }
+
+        feedback_section = (
+            f"FEEDBACK ЗА НЕДЕЛЮ:\n"
+            f"- Новых рекомендаций: {feedback_stats['new']}\n"
+            f"- Принято: {feedback_stats['accepted']}\n"
+            f"- Отклонено: {feedback_stats['rejected']}\n"
+            f"- Выполнено: {feedback_stats['done']}"
+        )
+
         prompt = (
             "Еженедельный брифинг AI-агентов салона красоты:\n\n"
             + "\n\n".join(sections)
-            + "\n\n"
+            + f"\n\n{feedback_section}\n\n"
             "Синтезируй единый приоритизированный бэклог задач на эту неделю. "
+            "Учитывай feedback: если много отклонённых рекомендаций — "
+            "скорректируй подход, если мало выполненных — сократи объём. "
             "Для каждого агента — топ 2-3 конкретных действия. "
             "Формат: Агент → Задача → Ожидаемый результат.\n"
             "Отвечай по-русски, лаконично."
@@ -161,12 +190,25 @@ class SupervisorAgent:
                 max_tokens=1200,
             )
             text = response.choices[0].message.content.strip()
-            import datetime as _dt
-            week_str = _dt.date.today().strftime("%d.%m.%Y")
+
+            # Сохраняем бэклог в БД
+            today = _dt.date.today()
+            week_start = today - _dt.timedelta(days=today.weekday())
+            WeeklyBacklog.objects.update_or_create(
+                week_start=week_start,
+                defaults={"raw_text": text, "items": []},
+            )
+
+            week_str = today.strftime("%d.%m.%Y")
+            fb_line = (
+                f"\n\n📊 Feedback: принято {feedback_stats['accepted']}, "
+                f"отклонено {feedback_stats['rejected']}, "
+                f"выполнено {feedback_stats['done']}"
+            )
             send_telegram(
                 f"📋 <b>Еженедельный бэклог агентов</b> (неделя от {week_str})\n\n"
-                f"{text[:3800]}"
+                f"{text[:3600]}{fb_line}"
             )
-            logger.info("SupervisorAgent.weekly_run: бэклог отправлен в Telegram")
+            logger.info("SupervisorAgent.weekly_run: бэклог сохранён и отправлен в Telegram")
         except Exception as exc:
             logger.exception("SupervisorAgent.weekly_run: ошибка — %s", exc)

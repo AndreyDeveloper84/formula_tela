@@ -11,8 +11,13 @@ def run_daily_agents(self):
     Запускается Celery Beat ежедневно в 9:00.
     Supervisor решает запуск analytics/offers.
     AnalyticsBudgetAgent запускается всегда (воронка + Метрика + Директ).
+    После завершения — обновляет DailyMetric с timing данными.
     """
+    import datetime
+    import time as _time
+
     logger.info("run_daily_agents: старт")
+    start = _time.monotonic()
     try:
         from agents.agents.supervisor import SupervisorAgent
         SupervisorAgent().run()
@@ -24,6 +29,31 @@ def run_daily_agents(self):
     except Exception as exc:
         logger.exception("run_daily_agents: ошибка — %s", exc)
         raise self.retry(exc=exc, countdown=300)
+    finally:
+        # Обновляем DailyMetric с данными о запусках агентов
+        try:
+            from agents.models import AgentTask, DailyMetric
+            today = datetime.date.today()
+            today_tasks = AgentTask.objects.filter(created_at__date=today)
+            agent_runs = {}
+            total_duration = 0
+            error_count = 0
+            for t in today_tasks:
+                dur = t.duration_seconds or 0
+                agent_runs[t.agent_type] = {
+                    "duration_s": dur,
+                    "status": t.status,
+                }
+                total_duration += dur
+                if t.status == AgentTask.ERROR:
+                    error_count += 1
+            DailyMetric.objects.filter(date=today).update(
+                agent_runs=agent_runs,
+                total_duration=total_duration,
+                error_count=error_count,
+            )
+        except Exception as exc:
+            logger.debug("run_daily_agents: не удалось обновить DailyMetric timing — %s", exc)
 
 
 @shared_task(name="agents.tasks.run_weekly_agents", bind=True, max_retries=2)
@@ -251,27 +281,47 @@ def analyze_rank_changes(self):
                 }
                 alerts.append(alert)
 
-                # SeoTask для панели администратора
-                _, created = SeoTask.objects.get_or_create(
+                # SeoTask для панели администратора (с эскалацией)
+                existing = SeoTask.objects.filter(
                     task_type=SeoTask.TYPE_UPDATE_META,
                     target_url=cluster.target_url,
-                    status=SeoTask.STATUS_OPEN,
-                    defaults={
-                        "title": (
+                    status__in=[SeoTask.STATUS_OPEN, SeoTask.STATUS_IN_PROGRESS],
+                ).first()
+                if existing:
+                    existing.priority = SeoTask.PRIORITY_HIGH
+                    existing.escalation_count += 1
+                    existing.description += (
+                        f"\n\n[{today}] Повторное падение кликов: "
+                        f"{snap_prev.total_clicks} → {snap_now.total_clicks} "
+                        f"({click_change:+.0%})"
+                    )
+                    existing.payload = alert
+                    existing.save(update_fields=[
+                        "priority", "escalation_count", "description", "payload",
+                    ])
+                    logger.warning(
+                        "analyze_rank_changes: кластер '%s' — эскалация #%d, "
+                        "падение кликов %+.0f%%",
+                        cluster.name, existing.escalation_count,
+                        click_change * 100,
+                    )
+                else:
+                    SeoTask.objects.create(
+                        task_type=SeoTask.TYPE_UPDATE_META,
+                        target_url=cluster.target_url,
+                        title=(
                             f"Падение кликов: {cluster.name} "
                             f"({click_change:+.0%} за неделю)"
                         ),
-                        "description": (
+                        description=(
                             f"Кластер '{cluster.name}': клики упали с "
                             f"{snap_prev.total_clicks} до {snap_now.total_clicks} "
                             f"({click_change:+.0%}). "
                             f"Проверь позиции и мета-теги: {cluster.target_url}"
                         ),
-                        "priority": SeoTask.PRIORITY_HIGH,
-                        "payload": alert,
-                    },
-                )
-                if created:
+                        priority=SeoTask.PRIORITY_HIGH,
+                        payload=alert,
+                    )
                     tasks_created += 1
                     logger.warning(
                         "analyze_rank_changes: кластер '%s' — падение кликов %+.0f%%",
@@ -292,26 +342,46 @@ def analyze_rank_changes(self):
                 }
                 alerts.append(alert)
 
-                _, created = SeoTask.objects.get_or_create(
+                existing = SeoTask.objects.filter(
                     task_type=SeoTask.TYPE_UPDATE_META,
                     target_url=cluster.target_url,
-                    status=SeoTask.STATUS_OPEN,
-                    defaults={
-                        "title": (
+                    status__in=[SeoTask.STATUS_OPEN, SeoTask.STATUS_IN_PROGRESS],
+                ).first()
+                if existing:
+                    if pos_change >= POSITION_DROP_THRESHOLD + 2:
+                        existing.priority = SeoTask.PRIORITY_HIGH
+                    existing.escalation_count += 1
+                    existing.description += (
+                        f"\n\n[{today}] Повторная просадка позиции: "
+                        f"{snap_prev.avg_position:.1f} → {snap_now.avg_position:.1f} "
+                        f"(+{pos_change:.1f} мест)"
+                    )
+                    existing.payload = alert
+                    existing.save(update_fields=[
+                        "priority", "escalation_count", "description", "payload",
+                    ])
+                    logger.warning(
+                        "analyze_rank_changes: кластер '%s' — эскалация #%d, "
+                        "просадка позиции +%.1f мест",
+                        cluster.name, existing.escalation_count, pos_change,
+                    )
+                else:
+                    SeoTask.objects.create(
+                        task_type=SeoTask.TYPE_UPDATE_META,
+                        target_url=cluster.target_url,
+                        title=(
                             f"Просадка позиций: {cluster.name} "
                             f"(+{pos_change:.1f} мест)"
                         ),
-                        "description": (
+                        description=(
                             f"Кластер '{cluster.name}': позиция ухудшилась "
                             f"с {snap_prev.avg_position:.1f} до "
                             f"{snap_now.avg_position:.1f} (+{pos_change:.1f}). "
                             f"Страница: {cluster.target_url}"
                         ),
-                        "priority": SeoTask.PRIORITY_MEDIUM,
-                        "payload": alert,
-                    },
-                )
-                if created:
+                        priority=SeoTask.PRIORITY_MEDIUM,
+                        payload=alert,
+                    )
                     tasks_created += 1
                     logger.warning(
                         "analyze_rank_changes: кластер '%s' — просадка позиции +%.1f мест",
@@ -332,4 +402,80 @@ def analyze_rank_changes(self):
     logger.info(
         "analyze_rank_changes: завершён — %d кластеров, %d алертов, %d новых задач",
         len(today_snaps), len(alerts), tasks_created,
+    )
+
+
+@shared_task(name="agents.tasks.generate_missing_landings", bind=True, max_retries=1)
+def generate_missing_landings(self):
+    """
+    Еженедельно (воскресенье 22:00) генерирует черновики лендингов
+    для кластеров без draft/published страниц.
+    Максимум 3 страницы за запуск (лимит API + модерация).
+    """
+    from agents.agents.landing_generator import LandingPageGenerator, LandingGeneratorError
+    from agents.models import LandingPage, SeoClusterSnapshot, SeoKeywordCluster
+
+    logger.info("generate_missing_landings: старт")
+
+    # Кластеры, у которых уже есть лендинг (draft, review или published)
+    clusters_with_landing = set(
+        LandingPage.objects.filter(
+            status__in=[
+                LandingPage.STATUS_DRAFT,
+                LandingPage.STATUS_REVIEW,
+                LandingPage.STATUS_PUBLISHED,
+            ],
+            cluster__isnull=False,
+        ).values_list("cluster_id", flat=True)
+    )
+
+    # Активные кластеры без лендинга
+    candidates = SeoKeywordCluster.objects.filter(
+        is_active=True,
+    ).exclude(pk__in=clusters_with_landing)
+
+    if not candidates.exists():
+        logger.info("generate_missing_landings: все кластеры покрыты лендингами")
+        return
+
+    # Приоритизация: по impressions из последнего SeoClusterSnapshot
+    import datetime
+    recent_date = datetime.date.today() - datetime.timedelta(days=7)
+    snapshot_impressions = dict(
+        SeoClusterSnapshot.objects.filter(
+            cluster__in=candidates,
+            date__gte=recent_date,
+        ).values_list("cluster_id", "total_impressions")
+    )
+    candidates_sorted = sorted(
+        candidates,
+        key=lambda c: snapshot_impressions.get(c.pk, 0),
+        reverse=True,
+    )
+
+    generator = LandingPageGenerator()
+    generated = 0
+
+    for cluster in candidates_sorted[:3]:  # максимум 3 за запуск
+        try:
+            landing = generator.generate_landing(cluster)
+            generated += 1
+            logger.info(
+                "generate_missing_landings: создан лендинг '%s' для кластера '%s'",
+                landing.slug, cluster.name,
+            )
+        except LandingGeneratorError as exc:
+            logger.warning(
+                "generate_missing_landings: кластер '%s' — %s",
+                cluster.name, exc,
+            )
+        except Exception as exc:
+            logger.exception(
+                "generate_missing_landings: кластер '%s' — %s",
+                cluster.name, exc,
+            )
+
+    logger.info(
+        "generate_missing_landings: завершён — %d из %d кандидатов",
+        generated, len(candidates_sorted),
     )

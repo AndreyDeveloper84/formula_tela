@@ -34,6 +34,37 @@ def send_telegram(text: str) -> bool:
         return False
 
 
+def send_agent_error_alert(task) -> bool:
+    """
+    Отправляет Telegram-алерт об ошибке агента.
+
+    Параметр task — объект AgentTask (duck typing).
+    Используемые атрибуты: pk, agent_type, get_agent_type_display(), error_message.
+    """
+    agent_label = task.get_agent_type_display() if hasattr(task, "get_agent_type_display") else task.agent_type
+    error_preview = (task.error_message or "Неизвестная ошибка")[:300]
+
+    admin_path = ""
+    try:
+        admin_path = reverse("admin:agents_agenttask_change", args=[task.pk])
+        base_url = getattr(settings, "SITE_BASE_URL", "")
+        if base_url:
+            admin_path = f"{base_url.rstrip('/')}{admin_path}"
+    except Exception:
+        pass
+
+    lines = [
+        "\u26a0\ufe0f <b>Ошибка агента</b>",
+        f"\n<b>Агент:</b> {agent_label}",
+        f"<b>Task ID:</b> {task.pk}",
+        f"\n<b>Ошибка:</b>\n<code>{error_preview}</code>",
+    ]
+    if admin_path:
+        lines.append(f'\n<a href="{admin_path}">Открыть в админке</a>')
+
+    return send_telegram("\n".join(lines))
+
+
 def send_seo_alert(alerts: list[dict]) -> bool:
     """
     Отправляет Telegram-алерт о просадках SEO-кластеров.

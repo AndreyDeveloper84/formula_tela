@@ -2,11 +2,13 @@
 SEOLandingAgent — аудит SEO-лендингов услуг.
 Оценивает каждую страницу по шкале 1–5, выявляет отсутствующие блоки.
 Обогащает данными Яндекс.Вебмастера: клики, показы, CTR, средняя позиция.
+Обогащает поведенческими метриками Яндекс.Метрики: bounce_rate, time_on_page.
 Детектирует WoW-просадки кликов (≥20%) и шлёт отдельный алерт.
 Запускается по понедельникам в 08:00 через run_weekly_agents.
 """
 import json
 import logging
+import time
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -33,6 +35,33 @@ def _get_week_start(d: date) -> date:
 
 
 class SEOLandingAgent:
+
+    def _fetch_metrika_behavior(self, page_urls: list[str], date_from: str, date_to: str) -> dict:
+        """
+        Загружает поведенческие метрики из Яндекс.Метрики для списка страниц.
+        Возвращает {"/uslugi/slug/": {sessions, bounce_rate, time_on_page, goal_conversions}}.
+        Graceful degradation: возвращает пустой dict при недоступности Метрики.
+        """
+        result = {}
+        try:
+            from agents.integrations.yandex_metrika import YandexMetrikaClient, YandexMetrikaError
+            metrika = YandexMetrikaClient.from_settings()
+        except Exception as exc:
+            logger.warning("SEOLandingAgent: Метрика недоступна — %s", exc)
+            return result
+
+        for url in page_urls[:15]:  # лимит 15 страниц (rate limiting)
+            try:
+                behavior = metrika.get_page_behavior(url, date_from, date_to)
+                if behavior.get("sessions", 0) > 0:
+                    result[url] = behavior
+                time.sleep(0.3)  # rate limiting
+            except Exception as exc:
+                logger.debug("SEOLandingAgent: Метрика для %s — %s", url, exc)
+                continue
+
+        logger.info("SEOLandingAgent: Метрика — %d страниц с данными", len(result))
+        return result
 
     def _fetch_webmaster_data(self, week_start: date) -> dict:
         """
@@ -131,6 +160,7 @@ class SEOLandingAgent:
         - блоки: количество, типы, отсутствующие из REQUIRED_BLOCKS
         - пустые страницы (0 блоков)
         - данные Вебмастера: клики, показы, CTR, позиция (если доступны)
+        - поведенческие метрики Метрики: bounce_rate, time_on_page (для топ-15 по impressions)
         """
         from services_app.models import Service
 
@@ -162,14 +192,39 @@ class SEOLandingAgent:
                 "wm_impressions": wm_data.get("impressions", 0),
                 "wm_ctr": wm_data.get("ctr", 0.0),
                 "wm_avg_position": wm_data.get("avg_position"),
+                # Поведенческие метрики (заполняются ниже)
+                "metrika_bounce_rate": 0.0,
+                "metrika_time_on_page": 0.0,
+                "metrika_sessions": 0,
             })
 
+        # Поведенческие метрики Метрики для топ-15 страниц по impressions
+        top_pages_by_impressions = sorted(
+            [p for p in pages if p["wm_impressions"] > 0],
+            key=lambda x: x["wm_impressions"],
+            reverse=True,
+        )[:15]
+        if top_pages_by_impressions:
+            date_from = week_start.isoformat()
+            date_to = (week_start + timedelta(days=6)).isoformat()
+            page_urls = [f"/uslugi/{p['slug']}/" for p in top_pages_by_impressions]
+            behavior_map = self._fetch_metrika_behavior(page_urls, date_from, date_to)
+            for p in pages:
+                url = f"/uslugi/{p['slug']}/"
+                bh = behavior_map.get(url, {})
+                if bh:
+                    p["metrika_bounce_rate"] = bh.get("bounce_rate", 0.0)
+                    p["metrika_time_on_page"] = bh.get("time_on_page", 0.0)
+                    p["metrika_sessions"] = bh.get("sessions", 0)
+
         empty_pages = [p["slug"] for p in pages if p["is_empty"]]
+        metrika_available = any(p["metrika_sessions"] > 0 for p in pages)
         return {
             "total_services": len(pages),
             "empty_pages": empty_pages,
             "pages": pages,
             "webmaster_available": bool(pages_map),
+            "metrika_available": metrika_available,
             "drops": wm.get("drops", []),
             "top_queries": wm.get("top_queries", [])[:10],
         }
@@ -188,12 +243,19 @@ class SEOLandingAgent:
                     f" | кл={p['wm_clicks']} пок={p['wm_impressions']} "
                     f"CTR={p['wm_ctr']:.1%} поз={pos}"
                 )
+            metrika_part = ""
+            if p.get("metrika_sessions", 0) > 0:
+                metrika_part = (
+                    f" | bounce={p['metrika_bounce_rate']:.0f}% "
+                    f"time={p['metrika_time_on_page']:.0f}s "
+                    f"visits={p['metrika_sessions']}"
+                )
             pages_summary.append(
                 f"  slug={p['slug']} | блоков={p['block_count']} "
                 f"| отсутствуют={p['missing_required_blocks']} "
                 f"| h1={'✓' if p['has_seo_h1'] else '✗'} "
                 f"| desc_len={p['seo_description_len']}"
-                f"{wm_part}"
+                f"{wm_part}{metrika_part}"
             )
         pages_str = "\n".join(pages_summary)
 
@@ -203,11 +265,17 @@ class SEOLandingAgent:
                 "\nДанные Яндекс.Вебмастера за текущую неделю включены. "
                 "Учитывай CTR и позиции при оценке приоритетов."
             )
+        metrika_note = ""
+        if data.get("metrika_available"):
+            metrika_note = (
+                "\nДанные Яндекс.Метрики включены (bounce, time, visits). "
+                "Если bounce > 70% и time < 30s — проблема с контентом, score не выше 2."
+            )
 
         return (
             f"Аудит {data['total_services']} SEO-лендингов салона красоты.\n"
             f"Пустые страницы (0 блоков): {data['empty_pages'] or 'нет'}\n"
-            f"{wm_note}\n\n"
+            f"{wm_note}{metrika_note}\n\n"
             f"ДАННЫЕ ПО СТРАНИЦАМ:\n{pages_str}\n\n"
             "Требования к хорошей странице: H1, SEO-description, "
             "блоки faq + price_table + checklist + cta.\n\n"
@@ -218,7 +286,8 @@ class SEOLandingAgent:
             "- recommendations: список конкретных действий (2-3 пункта)\n\n"
             "Приоритизируй страницы с оценкой 1-2 (критичные).\n"
             "Если доступны данные Вебмастера — страницам с высокими показами "
-            "и низким CTR повышай приоритет.\n\n"
+            "и низким CTR повышай приоритет.\n"
+            "Если bounce > 70% и time < 30s — рекомендуй переписать intro и добавить CTA.\n\n"
             "Отвечай СТРОГО JSON без markdown:\n"
             '{"pages": [{"slug": "...", "score": 3, '
             '"missing_blocks": ["faq"], '
@@ -239,6 +308,7 @@ class SEOLandingAgent:
                 "total_services": data["total_services"],
                 "empty_pages": data["empty_pages"],
                 "webmaster_available": data["webmaster_available"],
+                "metrika_available": data.get("metrika_available", False),
                 "drops_count": len(data.get("drops", [])),
             }
             task.save(update_fields=["input_context"])
@@ -266,11 +336,16 @@ class SEOLandingAgent:
             critical = parsed.get("critical_count", 0)
             summary = parsed.get("summary", "")
 
-            AgentReport.objects.create(
+            report = AgentReport.objects.create(
                 task=task,
                 summary=summary,
                 recommendations=pages_result,
             )
+
+            # Feedback loop: трекинг рекомендаций для критичных страниц (score <= 3)
+            from agents.agents._outcomes import create_outcomes
+            critical_pages = [p for p in pages_result if p.get("score", 5) <= 3]
+            create_outcomes(report, AgentTask.SEO_LANDING, critical_pages, title_key="slug")
 
             task.status = AgentTask.DONE
             task.finished_at = timezone.now()
@@ -325,6 +400,8 @@ class SEOLandingAgent:
             task.error_message = str(exc)
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "error_message", "finished_at"])
+            from agents.telegram import send_agent_error_alert
+            send_agent_error_alert(task)
         finally:
             ensure_task_finalized(task)
 

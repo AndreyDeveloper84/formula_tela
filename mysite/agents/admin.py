@@ -6,9 +6,10 @@ from django.shortcuts import redirect, render
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from .models import (
-    AgentTask, AgentReport, ContentPlan, DailyMetric,
+    AgentTask, AgentReport, AgentRecommendationOutcome,
+    ContentPlan, DailyMetric,
     SeoKeywordCluster, SeoRankSnapshot, SeoClusterSnapshot,
-    LandingPage, SeoTask,
+    LandingPage, SeoTask, WeeklyBacklog,
 )
 
 
@@ -556,3 +557,31 @@ class SeoTaskAdmin(admin.ModelAdmin):
         return f"{icons.get(obj.priority, '')} {obj.get_priority_display()}"
     priority_badge.short_description = "Prioritet"
     priority_badge.admin_order_field = "priority"
+
+
+@admin.register(AgentRecommendationOutcome)
+class AgentRecommendationOutcomeAdmin(admin.ModelAdmin):
+    list_display = ("title_short", "agent_type", "status", "created_at", "decided_by")
+    list_filter = ("agent_type", "status")
+    list_editable = ("status",)
+    search_fields = ("title",)
+    readonly_fields = ("report", "agent_type", "title", "body_display", "created_at")
+    raw_id_fields = ("decided_by",)
+
+    def title_short(self, obj):
+        return obj.title[:80]
+    title_short.short_description = "Заголовок"
+
+    def body_display(self, obj):
+        return _pretty_json_html(obj.body)
+    body_display.short_description = "Данные"
+
+
+@admin.register(WeeklyBacklog)
+class WeeklyBacklogAdmin(admin.ModelAdmin):
+    list_display = ("week_start", "created_at")
+    readonly_fields = ("week_start", "raw_text", "items_display", "created_at")
+
+    def items_display(self, obj):
+        return _pretty_json_html(obj.items)
+    items_display.short_description = "Задачи"

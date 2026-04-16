@@ -174,11 +174,16 @@ def test_offer_agent_exception_ends_error():
 
 @pytest.mark.django_db
 def test_offer_agent_success_ends_done():
+    import json as _json
     from agents.agents.offers import OfferAgent
 
+    offer_json = _json.dumps({
+        "offers": [{"title": "Акция -20% на массаж", "description": "Скидка",
+                    "discount_pct": 20, "target_audience": "Все", "duration_days": 7}]
+    })
     fake_openai = MagicMock()
     fake_openai.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content="Акция: -20% на массаж"))]
+        choices=[MagicMock(message=MagicMock(content=offer_json))]
     )
 
     with patch("agents.agents.offers.get_openai_client", return_value=fake_openai), \

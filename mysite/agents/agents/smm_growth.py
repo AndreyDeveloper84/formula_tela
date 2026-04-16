@@ -135,8 +135,19 @@ class SMMGrowthAgent:
         )
 
     def _save_content_plan(self, posts: list, task: AgentTask, week_start: str) -> int:
-        """Bulk-create ContentPlan rows. Возвращает количество созданных записей."""
+        """Bulk-create ContentPlan rows. Возвращает количество созданных записей.
+
+        Удаляет ранее сгенерированные записи за ту же неделю (dedupe).
+        Вручную созданные записи (created_by_task=None) не затрагиваются.
+        """
         week_start_date = datetime.date.fromisoformat(week_start)
+        # Dedupe: удалить старые автогенерированные записи за эту неделю
+        deleted, _ = ContentPlan.objects.filter(
+            week_start=week_start_date,
+            created_by_task__isnull=False,
+        ).delete()
+        if deleted:
+            logger.info("SMMGrowthAgent: удалено %d старых записей за неделю %s", deleted, week_start)
         objs = []
         for p in posts:
             try:
@@ -234,6 +245,8 @@ class SMMGrowthAgent:
             task.error_message = str(exc)
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "error_message", "finished_at"])
+            from agents.telegram import send_agent_error_alert
+            send_agent_error_alert(task)
         finally:
             ensure_task_finalized(task)
 
