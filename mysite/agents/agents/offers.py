@@ -183,11 +183,15 @@ class OfferAgent:
                 )
             summary = "\n".join(summary_lines) or raw[:500]
 
-            AgentReport.objects.create(
+            report = AgentReport.objects.create(
                 task=task,
                 summary=summary,
                 recommendations=offers,
             )
+
+            # Feedback loop: трекинг рекомендаций
+            from agents.agents._outcomes import create_outcomes
+            create_outcomes(report, AgentTask.OFFERS, offers)
 
             task.status = AgentTask.DONE
             task.finished_at = timezone.now()

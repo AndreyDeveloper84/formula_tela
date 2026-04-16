@@ -11,8 +11,13 @@ def run_daily_agents(self):
     Запускается Celery Beat ежедневно в 9:00.
     Supervisor решает запуск analytics/offers.
     AnalyticsBudgetAgent запускается всегда (воронка + Метрика + Директ).
+    После завершения — обновляет DailyMetric с timing данными.
     """
+    import datetime
+    import time as _time
+
     logger.info("run_daily_agents: старт")
+    start = _time.monotonic()
     try:
         from agents.agents.supervisor import SupervisorAgent
         SupervisorAgent().run()
@@ -24,6 +29,31 @@ def run_daily_agents(self):
     except Exception as exc:
         logger.exception("run_daily_agents: ошибка — %s", exc)
         raise self.retry(exc=exc, countdown=300)
+    finally:
+        # Обновляем DailyMetric с данными о запусках агентов
+        try:
+            from agents.models import AgentTask, DailyMetric
+            today = datetime.date.today()
+            today_tasks = AgentTask.objects.filter(created_at__date=today)
+            agent_runs = {}
+            total_duration = 0
+            error_count = 0
+            for t in today_tasks:
+                dur = t.duration_seconds or 0
+                agent_runs[t.agent_type] = {
+                    "duration_s": dur,
+                    "status": t.status,
+                }
+                total_duration += dur
+                if t.status == AgentTask.ERROR:
+                    error_count += 1
+            DailyMetric.objects.filter(date=today).update(
+                agent_runs=agent_runs,
+                total_duration=total_duration,
+                error_count=error_count,
+            )
+        except Exception as exc:
+            logger.debug("run_daily_agents: не удалось обновить DailyMetric timing — %s", exc)
 
 
 @shared_task(name="agents.tasks.run_weekly_agents", bind=True, max_retries=2)

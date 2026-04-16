@@ -21,7 +21,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse, JsonResponse
 
-from agents.views import landing_page_view
+from agents.views import agents_health, landing_page_view
 from website.sitemaps import (
     BundleSitemap,
     CategorySitemap,
@@ -61,6 +61,7 @@ urlpatterns = [
     path('booking/', include('booking.urls')),  # Added trailing slash
     path('', include('website.urls')),
     path('healthz/', healthz, name='healthz'),
+    path('api/agents/health/', agents_health, name='agents_health'),
     path('robots.txt', robots_txt, name='robots_txt'),
     path('sitemap.xml', sitemap, {"sitemaps": sitemaps},
          name='django.contrib.sitemaps.views.sitemap'),

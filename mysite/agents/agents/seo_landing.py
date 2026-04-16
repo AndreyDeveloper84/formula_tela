@@ -336,11 +336,16 @@ class SEOLandingAgent:
             critical = parsed.get("critical_count", 0)
             summary = parsed.get("summary", "")
 
-            AgentReport.objects.create(
+            report = AgentReport.objects.create(
                 task=task,
                 summary=summary,
                 recommendations=pages_result,
             )
+
+            # Feedback loop: трекинг рекомендаций для критичных страниц (score <= 3)
+            from agents.agents._outcomes import create_outcomes
+            critical_pages = [p for p in pages_result if p.get("score", 5) <= 3]
+            create_outcomes(report, AgentTask.SEO_LANDING, critical_pages, title_key="slug")
 
             task.status = AgentTask.DONE
             task.finished_at = timezone.now()

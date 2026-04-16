@@ -79,6 +79,12 @@ class DailyMetric(models.Model):
     unprocessed    = models.PositiveIntegerField("Не обработано", default=0)
     top_services   = models.JSONField("Топ услуг", default=list, blank=True)
     masters_load   = models.JSONField("Загрузка мастеров", default=dict, blank=True)
+    agent_runs     = models.JSONField(
+        "Запуски агентов", default=dict, blank=True,
+        help_text='{"analytics": {"duration_s": 12, "status": "done"}, ...}'
+    )
+    total_duration = models.PositiveIntegerField("Общее время агентов (сек)", default=0)
+    error_count    = models.PositiveIntegerField("Ошибок за день", default=0)
     created_at     = models.DateTimeField("Создан", auto_now_add=True)
     updated_at     = models.DateTimeField("Обновлён", auto_now=True)
 
@@ -411,3 +417,71 @@ class SeoTask(models.Model):
 
     def __str__(self):
         return f"[{self.get_priority_display()}] {self.title}"
+
+
+class AgentRecommendationOutcome(models.Model):
+    """
+    Трекинг рекомендаций агентов с lifecycle: new → accepted/rejected → done.
+    Позволяет SupervisorAgent учитывать feedback при планировании.
+    """
+    STATUS_NEW      = "new"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
+    STATUS_DONE     = "done"
+    STATUS_CHOICES = [
+        (STATUS_NEW,      "Новая"),
+        (STATUS_ACCEPTED, "Принята"),
+        (STATUS_REJECTED, "Отклонена"),
+        (STATUS_DONE,     "Выполнена"),
+    ]
+
+    report      = models.ForeignKey(
+        AgentReport, on_delete=models.CASCADE,
+        related_name="outcomes", verbose_name="Отчёт"
+    )
+    agent_type  = models.CharField(
+        "Тип агента", max_length=20, choices=AgentTask.AGENT_CHOICES
+    )
+    title       = models.CharField("Заголовок", max_length=300)
+    body        = models.JSONField("Данные рекомендации", default=dict, blank=True)
+    status      = models.CharField(
+        "Статус", max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW
+    )
+    decided_by  = models.ForeignKey(
+        get_user_model(), on_delete=models.SET_NULL,
+        null=True, blank=True, verbose_name="Решение принял",
+        related_name="recommendation_decisions",
+    )
+    decided_at  = models.DateTimeField("Дата решения", null=True, blank=True)
+    notes       = models.TextField("Заметки", blank=True)
+    created_at  = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Рекомендация агента"
+        verbose_name_plural = "Рекомендации агентов"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["agent_type", "status"], name="agents_rec_type_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"[{self.get_status_display()}] {self.title[:80]}"
+
+
+class WeeklyBacklog(models.Model):
+    """
+    Персистентный еженедельный бэклог от SupervisorAgent.weekly_run().
+    Ранее результат отправлялся только в Telegram — теперь сохраняется в БД.
+    """
+    week_start  = models.DateField("Начало недели", unique=True)
+    raw_text    = models.TextField("Синтез GPT")
+    items       = models.JSONField("Задачи бэклога", default=list, blank=True)
+    created_at  = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Еженедельный бэклог"
+        verbose_name_plural = "Еженедельные бэклоги"
+        ordering = ["-week_start"]
+
+    def __str__(self):
+        return f"Бэклог {self.week_start}"

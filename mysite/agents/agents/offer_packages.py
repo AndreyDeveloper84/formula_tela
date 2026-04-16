@@ -172,11 +172,15 @@ class OfferPackagesAgent:
             parsed = json.loads(raw)
             hypotheses = parsed.get("hypotheses", [])
 
-            AgentReport.objects.create(
+            report = AgentReport.objects.create(
                 task=task,
                 summary=f"Сгенерировано {len(hypotheses)} гипотез офферов за {data['period']}",
                 recommendations=hypotheses,
             )
+
+            # Feedback loop: трекинг рекомендаций
+            from agents.agents._outcomes import create_outcomes
+            create_outcomes(report, AgentTask.OFFER_PACKAGES, hypotheses)
 
             task.status = AgentTask.DONE
             task.finished_at = timezone.now()

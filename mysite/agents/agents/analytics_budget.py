@@ -187,11 +187,15 @@ class AnalyticsBudgetAgent:
             actions = parsed.get("actions", [])
             leaks = parsed.get("leaks", [])
 
-            AgentReport.objects.create(
+            report = AgentReport.objects.create(
                 task=task,
                 summary=f"Утечек в воронке: {len(leaks)}. Действий: {len(actions)}.",
                 recommendations=actions,
             )
+
+            # Feedback loop: трекинг рекомендаций
+            from agents.agents._outcomes import create_outcomes
+            create_outcomes(report, AgentTask.ANALYTICS_BUDGET, actions, title_key="description")
 
             task.status = AgentTask.DONE
             task.finished_at = timezone.now()
