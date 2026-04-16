@@ -97,12 +97,13 @@ def test_services_page_has_slug_category_links(client):
 
 
 @pytest.mark.django_db
-def test_masters_page_uses_slug_service_links(client):
+def test_master_detail_page_uses_slug_service_links(client):
+    """Услуги мастера на /masters/<slug>/ ссылаются на /uslugi/<slug>/."""
     c = ServiceCategory.objects.create(name="Массажи")
     s = Service.objects.create(name="Классический массаж", category=c, is_active=True)
     m = baker.make("services_app.Master", is_active=True)
     m.services.add(s)
-    resp = client.get("/masters/")
+    resp = client.get(f"/masters/{m.slug}/")
     assert resp.status_code == 200
     content = resp.content.decode("utf-8")
     assert f"/uslugi/{s.slug}/" in content

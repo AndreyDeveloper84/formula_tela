@@ -126,16 +126,21 @@
             <div class="row">
                 {% for master in masters %}
                     <div class="col-md-3 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% else %}1{% endif %}s">
-                        <a class="item" href="{% url 'website:masters' %}">
+                        <a class="item" href="{% if master.slug %}{% url 'website:master_detail_by_slug' slug=master.slug %}{% else %}{% url 'website:masters' %}{% endif %}">
                             {% if master.photo %}
                                 <img src="{{ master.photo.url }}" class="responsive mn7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" title="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" loading="lazy">
-                                <img src="{{ master.photo.url }}" class="responsive mobb7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" title="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" loading="lazy">
                             {% else %}
                                 <img src="{% static 'images/inna.jpg' %}" class="responsive mn7" alt="{{ master.name }}" title="{{ master.name }}" loading="lazy">
+                            {% endif %}
+                            {% if master.photo_mobile %}
+                                <img src="{{ master.photo_mobile.url }}" class="responsive mobb7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" title="{{ master.name }}" loading="lazy">
+                            {% elif master.photo %}
+                                <img src="{{ master.photo.url }}" class="responsive mobb7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" title="{{ master.name }}" loading="lazy">
+                            {% else %}
                                 <img src="{% static 'images/inna1.jpg' %}" class="responsive mobb7" alt="{{ master.name }}" title="{{ master.name }}" loading="lazy">
                             {% endif %}
-                        </a>	
-                        <a class="text-center mb-40" href="{% url 'website:masters' %}">
+                        </a>
+                        <a class="text-center mb-40" href="{% if master.slug %}{% url 'website:master_detail_by_slug' slug=master.slug %}{% else %}{% url 'website:masters' %}{% endif %}">
                             <span class="semi f20 mb-15">{{ master.name }}</span>
                             {% if master.specialization %}
                                 <span class="op50">{{ master.specialization }}</span>

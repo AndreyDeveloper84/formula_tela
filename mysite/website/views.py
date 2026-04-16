@@ -155,6 +155,69 @@ def masters(request):
         "masters": items,
     })
 
+
+def master_detail_by_slug(request, slug):
+    """ЧПУ-страница мастера: /masters/<slug>/."""
+    svc_qs = (Service.objects
+              .filter(is_active=True)
+              .select_related("category")
+              .prefetch_related("options"))
+    master = get_object_or_404(
+        Master.objects.prefetch_related(Prefetch("services", queryset=svc_qs)),
+        slug=slug,
+        is_active=True,
+    )
+    return _render_master_detail(request, master)
+
+
+def master_detail(request, master_id):
+    """Legacy-роут /master/<id>/. 301 на ЧПУ если slug есть."""
+    master = get_object_or_404(Master, pk=master_id, is_active=True)
+    if master.slug:
+        from django.shortcuts import redirect
+        return redirect("website:master_detail_by_slug", slug=master.slug, permanent=True)
+    return _render_master_detail(request, master)
+
+
+def _render_master_detail(request, master):
+    """Общая сборка контекста детальной страницы мастера."""
+    services_qs = list(
+        master.services.filter(is_active=True)
+            .select_related("category")
+            .prefetch_related("options")
+    )
+    other_masters = list(
+        Master.objects.filter(is_active=True)
+            .exclude(pk=master.pk)
+            .order_by("order", "name")[:3]
+    )
+
+    seo_title = f"{master.name} — {master.specialization or 'мастер'} | Формула тела"
+    bio_text = (master.bio or "").strip()
+    if bio_text:
+        seo_description = bio_text[:160]
+    else:
+        parts = [master.name]
+        if master.specialization:
+            parts.append(master.specialization)
+        if master.experience:
+            parts.append(f"стаж {master.experience}")
+        seo_description = (
+            ", ".join(parts)
+            + ". Запись в студию эстетики «Формула тела» в Пензе."
+        )[:160]
+
+    context = {
+        "settings":        _settings(),
+        "master":          master,
+        "services":        services_qs,
+        "other_masters":   other_masters,
+        "seo_title":       seo_title,
+        "seo_description": seo_description,
+    }
+    return render(request, "website/master_detail.html", context)
+
+
 def contacts(request):
     stats = [
         {"icon": "💆", "value": "50+",       "label": "видов процедур"},

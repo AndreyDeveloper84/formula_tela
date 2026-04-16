@@ -1,0 +1,302 @@
+{% extends "website/base.html" %}
+{% load static %}
+
+{% block title %}{{ seo_title }}{% endblock %}
+{% block description %}{{ seo_description }}{% endblock %}
+
+{% block extra_head %}
+{% with canonical_url=master.get_absolute_url %}
+<link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ canonical_url }}">
+<meta property="og:title" content="{{ seo_title }}">
+<meta property="og:description" content="{{ seo_description }}">
+<meta property="og:type" content="profile">
+<meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ canonical_url }}">
+{% if master.photo %}<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{{ master.photo.url }}">{% endif %}
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": "{{ master.name|escapejs }}",
+  {% if master.specialization %}"jobTitle": "{{ master.specialization|escapejs }}",{% endif %}
+  "description": "{{ seo_description|escapejs }}",
+  {% if master.photo %}"image": "{{ request.scheme }}://{{ request.get_host }}{{ master.photo.url }}",{% endif %}
+  "url": "{{ request.scheme }}://{{ request.get_host }}{{ canonical_url }}",
+  "worksFor": {
+    "@type": "LocalBusiness",
+    "name": "{{ settings.salon_name|default:'Студия эстетики Формула Тела'|escapejs }}",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Пенза",
+      "addressCountry": "RU"
+    }
+  }
+}
+</script>
+{% endwith %}
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .master-breadcrumbs { font-size: 14px; opacity: 0.6; margin: 24px 0 16px; }
+    .master-breadcrumbs a { color: inherit; text-decoration: underline; }
+    .master-hero { padding: 20px 0 40px; }
+    .master-hero h1 { font-size: 2.2rem; margin-bottom: 8px; }
+    .master-hero .specialization { font-size: 1.1rem; opacity: 0.7; margin-bottom: 16px; }
+    .master-rating { display: inline-block; background: #f8f9fa; border-radius: 4px; padding: 4px 10px; font-size: 0.9rem; margin-bottom: 16px; }
+    .master-bio { font-size: 1rem; line-height: 1.6; margin-bottom: 24px; }
+    .master-photo img { width: 100%; border-radius: 12px; object-fit: cover; }
+
+    /* Flatpickr + модалка бронирования (копия из masters.html) */
+    .flatpickr-calendar { z-index: 10060 !important; }
+    .date-wrapper { position: relative; cursor: pointer; width: 100%; }
+    .date-wrapper #m-date-zapis, .date-wrapper .flatpickr-input { width: 100% !important; cursor: pointer !important; }
+    .date-wrapper input[readonly], .date-wrapper .flatpickr-wrapper input {
+        background-color: #fff !important; color: #000 !important;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 16px 12px;
+        padding-right: 2.25rem; appearance: none; width: 100% !important; box-sizing: border-box;
+    }
+    #modal-booking-form input.flatpickr-input[readonly] { background-color: #fff !important; color: #000 !important; cursor: pointer !important; opacity: 1 !important; }
+    @media (max-width: 576px) { #bookingModal .modal-body { padding: 20px !important; } }
+    #bookingModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
+    #bookingModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
+    #bookingModal .modal-content { max-width: 500px; width: calc(100% - 30px); pointer-events: auto; max-height: 90vh; overflow-y: auto; }
+    #m-contact-form .form-group { margin-bottom: 15px; }
+    #m-contact-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+    #m-contact-form .form-group input, #m-contact-form .form-group textarea { width: 100%; box-sizing: border-box; padding: 10px 15px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px; font-family: inherit; }
+    #m-contact-form .form-group input:focus, #m-contact-form .form-group textarea:focus { outline: none; border-color: #000; }
+    .booking-summary { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
+    .booking-summary-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+    .booking-summary-item span { opacity: 0.6; }
+    .booking-summary-item strong { text-align: right; max-width: 60%; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <div class="container">
+        <div class="master-breadcrumbs">
+            <a href="{% url 'website:home' %}">Главная</a>
+            &nbsp;/&nbsp;
+            <a href="{% url 'website:masters' %}">Мастера</a>
+            &nbsp;/&nbsp;
+            <span>{{ master.name }}</span>
+        </div>
+    </div>
+
+    <section class="master-hero">
+        <div class="container">
+            <div class="row wow fadeInUp" data-wow-delay=".2s">
+                <div class="col-lg-5 col-md-6">
+                    <div class="master-photo">
+                        {% if master.photo %}
+                            <img src="{{ master.photo.url }}" class="responsive mn7" alt="{{ master.name }}{% if master.specialization %}, {{ master.specialization }}{% endif %}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/inna.jpg' %}" class="responsive mn7" alt="{{ master.name }}" loading="lazy">
+                        {% endif %}
+                        {% if master.photo_mobile %}
+                            <img src="{{ master.photo_mobile.url }}" class="responsive mobb7" alt="{{ master.name }}" loading="lazy">
+                        {% elif master.photo %}
+                            <img src="{{ master.photo.url }}" class="responsive mobb7" alt="{{ master.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/inna1.jpg' %}" class="responsive mobb7" alt="{{ master.name }}" loading="lazy">
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-lg-7 col-md-6">
+                    <h1>{{ master.name }}</h1>
+                    {% if master.specialization %}
+                        <div class="specialization">{{ master.specialization }}</div>
+                    {% endif %}
+                    {% if master.rating %}
+                        <div class="master-rating">★ {{ master.rating }}</div>
+                    {% endif %}
+                    {% if master.experience %}
+                        <div class="op50 mb-15" style="font-size:0.95rem;">Опыт: {{ master.experience }}</div>
+                    {% endif %}
+                    {% if master.bio %}
+                        <div class="master-bio">{{ master.bio|linebreaksbr }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if master.education or master.work_experience or master.approach or master.reviews_text %}
+            <div class="row mt-40 wow fadeInUp" data-wow-delay=".4s">
+                <div class="col-12">
+                    <div class="accordion" id="master-accordion">
+                        {% if master.education %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header semi" id="pan-edu-h">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-edu">
+                                    Образование и квалификация
+                                </button>
+                            </h2>
+                            <div id="pan-edu" class="accordion-collapse collapse" data-bs-parent="#master-accordion">
+                                <div class="accordion-body">{{ master.education|safe }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if master.work_experience %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header semi" id="pan-exp-h">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-exp">
+                                    Опыт работы
+                                </button>
+                            </h2>
+                            <div id="pan-exp" class="accordion-collapse collapse" data-bs-parent="#master-accordion">
+                                <div class="accordion-body">{{ master.work_experience|safe }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if master.approach %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header semi" id="pan-app-h">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-app">
+                                    Подход к работе
+                                </button>
+                            </h2>
+                            <div id="pan-app" class="accordion-collapse collapse" data-bs-parent="#master-accordion">
+                                <div class="accordion-body">{{ master.approach|safe }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if master.reviews_text %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header semi" id="pan-rev-h">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pan-rev">
+                                    Отзывы и статистика
+                                </button>
+                            </h2>
+                            <div id="pan-rev" class="accordion-collapse collapse" data-bs-parent="#master-accordion">
+                                <div class="accordion-body">{{ master.reviews_text|safe }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if services %}
+            <div class="row mt-56">
+                <div class="col-12">
+                    <h2 class="wow fadeInUp" data-wow-delay=".2s">Услуги</h2>
+                </div>
+            </div>
+            <div class="row wow fadeInUp" data-wow-delay=".4s">
+                {% for s in services %}
+                <div class="col-xl-3 col-lg-4 col-md-6 col-sm-6">
+                    <a href="{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% else %}{% url 'website:service_detail' service_id=s.id %}{% endif %}" class="item">
+                        {% if s.image %}
+                            <img src="{{ s.image.url }}" class="responsive" alt="{{ s.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/us1.jpg' %}" class="responsive" alt="{{ s.name }}" loading="lazy">
+                        {% endif %}
+                    </a>
+                    <a class="text-center mb-40" href="{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% else %}{% url 'website:service_detail' service_id=s.id %}{% endif %}">
+                        <span class="semi f20 mb-15">{{ s.name }}</span>
+                        {% with first_option=s.options.all|first %}
+                            {% if first_option %}
+                                <span class="op50">{{ first_option.duration_min }} мин — от {{ first_option.price|floatformat:0 }} ₽</span>
+                            {% elif s.price_from %}
+                                <span class="op50">от {{ s.price_from|floatformat:0 }} ₽</span>
+                            {% endif %}
+                        {% endwith %}
+                    </a>
+                    {% if s.options.all %}
+                        <a class="btn-black t-btn" href="#" onclick="openBookingModalWithMaster({{ s.id }}, '{{ s.name|escapejs }}', '{{ master.name|escapejs }}'); return false;" style="display:block;width:100%;text-align:center;">Записаться</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if other_masters %}
+    <section class="master mb-72">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-30 wow fadeInUp" data-wow-delay=".2s">
+                <h2 class="m-0">Другие мастера</h2>
+                <a href="{% url 'website:masters' %}" class="op50 mn7">Все мастера →</a>
+            </div>
+            <div class="row">
+                {% for om in other_masters %}
+                <div class="col-md-4 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% else %}0.8{% endif %}s">
+                    <a class="item" href="{% if om.slug %}{% url 'website:master_detail_by_slug' slug=om.slug %}{% else %}{% url 'website:master_detail' master_id=om.id %}{% endif %}">
+                        {% if om.photo %}
+                            <img src="{{ om.photo.url }}" class="responsive mn7" alt="{{ om.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/inna.jpg' %}" class="responsive mn7" alt="{{ om.name }}" loading="lazy">
+                        {% endif %}
+                        {% if om.photo_mobile %}
+                            <img src="{{ om.photo_mobile.url }}" class="responsive mobb7" alt="{{ om.name }}" loading="lazy">
+                        {% elif om.photo %}
+                            <img src="{{ om.photo.url }}" class="responsive mobb7" alt="{{ om.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{% static 'images/inna1.jpg' %}" class="responsive mobb7" alt="{{ om.name }}" loading="lazy">
+                        {% endif %}
+                    </a>
+                    <a class="text-center mb-40" href="{% if om.slug %}{% url 'website:master_detail_by_slug' slug=om.slug %}{% else %}{% url 'website:master_detail' master_id=om.id %}{% endif %}">
+                        <span class="semi f20 mb-15">{{ om.name }}</span>
+                        {% if om.specialization %}<span class="op50">{{ om.specialization }}</span>{% endif %}
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {# ====== Модалка бронирования + JS ====== #}
+    {# TODO: вынести в components/booking_modal.html когда появится второе место использования #}
+    <div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
+        <div class="modal-dialog" id="bookingModalDialog"><div class="modal-content" style="border:none;border-radius:12px;">
+            <div id="booking-step-1">
+                <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi" id="bookingModalLabel">Записаться</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body" style="padding:30px;">
+                    <div class="mb-20" id="modal-service-title" style="font-size:18px;font-weight:600;"></div>
+                    <div id="modal-loading" style="text-align:center;padding:40px;display:none;"><div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p></div>
+                    <form id="modal-booking-form" style="display:none;"><div class="in-form">
+                        <select id="m-duration-select" class="form-select" required><option value="">Выберите длительность</option></select>
+                        <div id="m-quantity-container"><select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select></div>
+                        <input type="hidden" id="m-option-select" value="">
+                        <select id="m-master-select" class="form-select" required><option value="">Сначала выберите вариант услуги</option></select>
+                        <input type="text" id="m-date-disabled" class="text-def" value="Сначала выберите мастера" disabled style="display:block;">
+                        <div class="date-wrapper" id="m-date-wrapper" style="display:none;"><input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required></div>
+                        <select id="m-time-zapis" class="form-select" required disabled><option value="">Сначала выберите дату</option></select>
+                        <input type="text" id="m-price-display" class="text-def semi" value="Стоимость: — ₽" disabled>
+                    </div><button type="submit" id="m-submit-booking" class="btn-black t-btn submit" style="width:100%;margin-top:15px;">Записаться онлайн</button></form>
+                </div>
+            </div>
+            <div id="booking-step-2" style="display:none;">
+                <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi">Подтверждение записи</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body" style="padding:30px;">
+                    <div class="booking-summary"><div class="booking-summary-item"><span>Услуга:</span><strong id="m-summary-service"></strong></div><div class="booking-summary-item"><span>Мастер:</span><strong id="m-summary-master"></strong></div><div class="booking-summary-item"><span>Дата и время:</span><strong id="m-summary-datetime"></strong></div><div class="booking-summary-item"><span>Стоимость:</span><strong id="m-summary-price"></strong></div></div>
+                    <form id="m-contact-form">
+                        <div class="form-group"><label for="m-client-name">Ваше имя *</label><input type="text" id="m-client-name" placeholder="Иван Петров" required></div>
+                        <div class="form-group"><label for="m-client-phone">Телефон *</label><input type="tel" id="m-client-phone" placeholder="+7 (900) 123-45-67" required></div>
+                        <div class="form-group"><label for="m-client-email">Email</label><input type="email" id="m-client-email" placeholder="email@example.com"></div>
+                        <div class="form-group"><label for="m-client-comment">Комментарий</label><textarea id="m-client-comment" rows="3" placeholder="Дополнительные пожелания"></textarea></div>
+                        <div id="m-modal-alert"></div>
+                        <button type="submit" id="m-confirm-booking" class="btn-black t-btn" style="width:100%;margin-top:10px;">Подтвердить запись</button>
+                    </form>
+                </div>
+            </div>
+            <div id="booking-step-3" style="display:none;"><div class="modal-body" style="padding:50px 30px;text-align:center;">
+                <div style="font-size:48px;margin-bottom:15px;">✅</div><h4 class="semi" style="margin-bottom:10px;">Вы записаны!</h4>
+                <p id="m-success-message" style="opacity:0.7;"></p><button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top:20px;">Закрыть</button>
+            </div></div>
+        </div></div>
+    </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+{# TODO: вынести в components/booking_modal_js.html #}
+{% include "website/components/booking_modal_master_js.html" %}
+{% endblock %}

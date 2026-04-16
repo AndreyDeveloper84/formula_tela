@@ -103,7 +103,8 @@ class YandexWebmasterClient:
             {
                 "host_id": h.get("host_id", ""),
                 "url": h.get("unicode_host_url") or h.get("ascii_host_url", ""),
-                "verified": h.get("verified_state") == "VERIFIED",
+                "verified": h.get("verified") is True
+                or h.get("verified_state") == "VERIFIED",
             }
             for h in hosts
         ]

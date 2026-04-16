@@ -620,6 +620,11 @@ class SiteSettings(models.Model):
 
 class Master(models.Model):
     name = models.CharField(max_length=150, verbose_name="ФИО")
+    slug = models.SlugField(
+        max_length=100, unique=True, blank=True, null=True,
+        verbose_name="URL-slug",
+        help_text="ЧПУ для /masters/<slug>/. Автозаполняется из ФИО.",
+    )
     bio = models.TextField(blank=True, verbose_name="Описание / опыт")
     photo = models.ImageField(upload_to="masters/", blank=True, null=True, verbose_name="Фото")
     services = models.ManyToManyField(Service, related_name="masters", verbose_name="Оказывает услуги")
@@ -639,14 +644,30 @@ class Master(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
-    
+
     class Meta:
         verbose_name = "Мастер"
         verbose_name_plural = "Мастера"
         ordering = ["order", "name"]
+        indexes = [
+            models.Index(fields=["slug"]),
+        ]
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            self.slug = generate_unique_slug(
+                Master, self.name, pk=self.pk, max_length=100
+            )
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        if self.slug:
+            return reverse("website:master_detail_by_slug", kwargs={"slug": self.slug})
+        return reverse("website:master_detail", kwargs={"master_id": self.pk})
 
 class ServicePackage(models.Model):
     title = models.CharField(max_length=200, verbose_name="Название комплекса")
