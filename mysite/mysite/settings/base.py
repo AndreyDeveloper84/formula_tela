@@ -155,6 +155,10 @@ CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
+# Выделяем задачи formula_tela в отдельную queue, чтобы business-markets
+# worker (тот же Redis, DB 0) не воровал наши задачи. Без этого оба worker'а
+# слушают дефолтную queue "celery" → race condition → задачи теряются.
+CELERY_DEFAULT_QUEUE = "formula_tela"
 CELERY_BEAT_SCHEDULE = {
     "daily-agents-9am": {
         "task": "agents.tasks.run_daily_agents",
