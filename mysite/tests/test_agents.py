@@ -86,8 +86,13 @@ def test_analytics_agent_run_error(mock_openai_cls):
 @patch("agents.agents.offers.get_openai_client")
 def test_offer_agent_run_done(mock_openai_cls, mock_tg):
     """OfferAgent завершается со статусом DONE и создаёт AgentReport."""
+    import json
+    offer_response = json.dumps({
+        "offers": [{"title": "Акция -20% на маникюр", "description": "Скидка",
+                    "discount_pct": 20, "target_audience": "Все", "duration_days": 7}]
+    })
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content="Предлагаю акцию -20% на маникюр."))]
+        choices=[MagicMock(message=MagicMock(content=offer_response))]
     )
 
     from agents.agents.offers import OfferAgent
@@ -96,7 +101,8 @@ def test_offer_agent_run_done(mock_openai_cls, mock_tg):
     task = OfferAgent().run()
 
     assert task.status == AgentTask.DONE
-    assert task.report.summary == "Предлагаю акцию -20% на маникюр."
+    assert isinstance(task.report.recommendations, list)
+    assert len(task.report.recommendations) == 1
 
 
 # ──────────────────────────────────────────────
