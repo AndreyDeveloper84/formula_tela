@@ -74,12 +74,16 @@ mysite/                  <- корень git
 - `SeoKeywordCluster` — кластер ключевых запросов; поля: name, service_slug, keywords (JSON), target_url, is_active, geo, service_category (FK к ServiceCategory)
 - `SeoRankSnapshot` — еженедельные метрики Яндекс.Вебмастера; поля: week_start, page_url, query, clicks, impressions, ctr, avg_position, source; unique_together по (week_start, page_url, query)
 - `LandingPage` — SEO-посадочная страница; status: draft/review/published/rejected (default='draft'); поля: cluster (FK), slug, meta_title, meta_description, h1, blocks (JSON), generated_by_agent, moderated_by (FK User), published_at
-- `SeoTask` — задача для SEO-специалиста; task_type: create_landing/update_meta/add_faq/fix_technical/rewrite_cta/add_content_block; priority: high/medium/low; status: open/in_progress/done
+- `SeoTask` — задача для SEO-специалиста; task_type: create_landing/update_meta/add_faq/fix_technical/rewrite_cta/add_content_block; priority: high/medium/low; status: open/in_progress/done; `escalation_count` для дедупликации
+- `AgentRecommendationOutcome` — lifecycle рекомендаций агентов; статусы: new/accepted/rejected/done; FK на AgentReport, decided_by (FK User), body (JSON)
+- `WeeklyBacklog` — еженедельный бэклог SupervisorAgent; week_start (unique), raw_text, items (JSON)
 
 Расписание Celery beat:
 - `daily-rank-snapshots-7am` → `agents.tasks.collect_rank_snapshots` (каждый день в 07:00)
-- `daily-agents-9am` → `agents.tasks.run_daily_agents` (каждый день в 09:00)
+- `weekly-trend-scout-monday-0730` → `agents.tasks.collect_trends` (понедельник в 07:30)
 - `weekly-agents-monday-8am` → `agents.tasks.run_weekly_agents` (понедельник в 08:00)
+- `daily-agents-9am` → `agents.tasks.run_daily_agents` (каждый день в 09:00)
+- `weekly-generate-landings-sunday-2200` → `agents.tasks.generate_missing_landings` (воскресенье в 22:00)
 
 ### website
 Frontend views: главная, каталог услуг, детальная страница услуги, мастера, форма-мастер записи, контакты, акции, пакеты. Все модели данных живут в `services_app`.
@@ -104,6 +108,7 @@ Frontend views: главная, каталог услуг, детальная с
 - `/sitemap.xml` — динамический sitemap (static pages + services + categories + published landings)
 - `/<slug>/` — SEO-посадочная страница (только published, catch-all последним в urlpatterns)
 - `/healthz/` — health check -> `{"status": "ok"}`
+- `/api/agents/health/` — мониторинг агентов -> `{"status": "healthy|degraded|unhealthy", "agents": {...}}`
 
 **Booking API (в website/urls.py):**
 - `/api/booking/get_staff/` — мастера из YClients
@@ -457,9 +462,36 @@ python manage.py check
 - **Централизованный OpenAI клиент** (`agents/agents/__init__.py::get_openai_client()`) с поддержкой `OPENAI_PROXY`; все 8 агентов используют его
 - **Proxy для Telegram API** в `agents/telegram.py` (РФ блокирует api.telegram.org)
 
+#### Замыкание цикла агентов
+- **OfferAgent → Promotion draft**: JSON mode + auto-create `Promotion(is_active=False)` черновики для модерации
+- **ContentPlan dedupe**: SMMGrowthAgent удаляет старые автогенерированные записи перед `bulk_create`
+- **LandingPage QC pipeline**: таск `generate_missing_landings` (воскресенье 22:00) — автогенерация лендингов для кластеров без страниц (макс. 3/запуск)
+
+#### Надёжность агентов
+- **Telegram ERROR алерты**: `send_agent_error_alert()` — уведомление в Telegram при ошибке агента (во всех 7 агентах + `_lifecycle.py`)
+- **SeoTask эскалация**: повторные алерты обновляют существующую задачу (приоритет → HIGH, description обновляется, `escalation_count` инкрементируется)
+- **SeoTask.escalation_count** — поле для отслеживания повторных алертов
+
+#### Поведенческая аналитика
+- **SEOLandingAgent + Метрика**: интеграция `get_page_behavior()` для топ-15 страниц по impressions (bounce_rate, time_on_page)
+- GPT-промпт обогащён поведенческими правилами: bounce > 70% + time < 30s → score ≤ 2
+
+#### Feedback loop
+- **AgentRecommendationOutcome** модель: lifecycle рекомендаций (new → accepted/rejected → done), FK на AgentReport, Admin с `list_editable`
+- **WeeklyBacklog** модель: персистенция результатов `SupervisorAgent.weekly_run()` (ранее только Telegram)
+- **_outcomes.py** хелпер: `create_outcomes()` для создания Outcome из рекомендаций (подключён в 4 агентах)
+- **SupervisorAgent feedback**: `weekly_run()` читает статистику Outcome за неделю, GPT учитывает feedback
+
+#### Мониторинг
+- **GET `/api/agents/health/`**: JSON endpoint — healthy/degraded/unhealthy, per-agent SLA, stuck_tasks, error_rate_24h
+- **DailyMetric timing**: поля `agent_runs` (JSON), `total_duration`, `error_count` — заполняются из `run_daily_agents`
+
 ### Следующие задачи
-- Доработка логики OfferAgent по загрузке мастеров
-- Расширение SupervisorAgent для более гранулярного управления
+- Circuit breaker для внешних API (Метрика, Вебмастер, VK, Директ)
+- Новые методы Метрики: `get_exit_pages()`, `get_scroll_depth()`
+- Обогащение SEOLandingAgent: exit pages, поведенческие алерты в Telegram
+- Telegram дайджест рекомендаций (пятница 17:00)
+- Расширение `check_agents` статистикой по AgentRecommendationOutcome
 
 ---
 
@@ -471,7 +503,7 @@ python manage.py check
 
 ---
 
-*Последнее обновление: 2026-04-15*
+*Последнее обновление: 2026-04-16*
 
 ---
 
