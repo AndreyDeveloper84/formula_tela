@@ -288,8 +288,9 @@ def analyze_rank_changes(self):
                     status__in=[SeoTask.STATUS_OPEN, SeoTask.STATUS_IN_PROGRESS],
                 ).first()
                 if existing:
+                    from django.db.models import F
                     existing.priority = SeoTask.PRIORITY_HIGH
-                    existing.escalation_count += 1
+                    existing.escalation_count = F('escalation_count') + 1
                     existing.description += (
                         f"\n\n[{today}] Повторное падение кликов: "
                         f"{snap_prev.total_clicks} → {snap_now.total_clicks} "
@@ -299,6 +300,7 @@ def analyze_rank_changes(self):
                     existing.save(update_fields=[
                         "priority", "escalation_count", "description", "payload",
                     ])
+                    existing.refresh_from_db(fields=["escalation_count"])
                     logger.warning(
                         "analyze_rank_changes: кластер '%s' — эскалация #%d, "
                         "падение кликов %+.0f%%",
@@ -348,9 +350,10 @@ def analyze_rank_changes(self):
                     status__in=[SeoTask.STATUS_OPEN, SeoTask.STATUS_IN_PROGRESS],
                 ).first()
                 if existing:
+                    from django.db.models import F
                     if pos_change >= POSITION_DROP_THRESHOLD + 2:
                         existing.priority = SeoTask.PRIORITY_HIGH
-                    existing.escalation_count += 1
+                    existing.escalation_count = F('escalation_count') + 1
                     existing.description += (
                         f"\n\n[{today}] Повторная просадка позиции: "
                         f"{snap_prev.avg_position:.1f} → {snap_now.avg_position:.1f} "
@@ -360,6 +363,7 @@ def analyze_rank_changes(self):
                     existing.save(update_fields=[
                         "priority", "escalation_count", "description", "payload",
                     ])
+                    existing.refresh_from_db(fields=["escalation_count"])
                     logger.warning(
                         "analyze_rank_changes: кластер '%s' — эскалация #%d, "
                         "просадка позиции +%.1f мест",

@@ -436,7 +436,7 @@ class AgentRecommendationOutcome(models.Model):
     ]
 
     report      = models.ForeignKey(
-        AgentReport, on_delete=models.CASCADE,
+        AgentReport, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="outcomes", verbose_name="Отчёт"
     )
     agent_type  = models.CharField(
