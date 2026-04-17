@@ -10,6 +10,7 @@ class AgentTask(models.Model):
     SEO_LANDING      = "seo_landing"
     ANALYTICS_BUDGET = "analytics_budget"
     TREND_SCOUT      = "trend_scout"
+    SEO_GROWTH       = "seo_growth"
     AGENT_CHOICES = [
         (ANALYTICS,        "Аналитика"),
         (OFFERS,           "Акции"),
@@ -18,6 +19,7 @@ class AgentTask(models.Model):
         (SEO_LANDING,      "SEO-аудит лендингов"),
         (ANALYTICS_BUDGET, "Бюджет и воронка"),
         (TREND_SCOUT,      "Разведка трендов"),
+        (SEO_GROWTH,       "SEO & Growth"),
     ]
 
     PENDING = "pending"
