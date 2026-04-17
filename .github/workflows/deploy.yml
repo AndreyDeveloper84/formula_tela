@@ -99,8 +99,10 @@ jobs:
 
             python manage.py check --deploy || true
             
-            # Перезапускаем
+            # Перезапускаем Django + Celery
             sudo systemctl restart "$SERVICE"
+            sudo systemctl restart formula-tela-worker || echo "⚠️ formula-tela-worker not found"
+            sudo systemctl restart formula-tela-beat || echo "⚠️ formula-tela-beat not found"
 
       - name: Health check
         run: |
