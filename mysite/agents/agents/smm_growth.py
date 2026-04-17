@@ -141,10 +141,12 @@ class SMMGrowthAgent:
         Вручную созданные записи (created_by_task=None) не затрагиваются.
         """
         week_start_date = datetime.date.fromisoformat(week_start)
-        # Dedupe: удалить старые автогенерированные записи за эту неделю
+        # Dedupe: удалить старые автогенерированные ЧЕРНОВИКИ за эту неделю.
+        # Опубликованные (is_published=True) не трогаем — менеджер одобрил.
         deleted, _ = ContentPlan.objects.filter(
             week_start=week_start_date,
             created_by_task__isnull=False,
+            is_published=False,
         ).delete()
         if deleted:
             logger.info("SMMGrowthAgent: удалено %d старых записей за неделю %s", deleted, week_start)
