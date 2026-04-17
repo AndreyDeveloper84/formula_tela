@@ -101,8 +101,8 @@ jobs:
             
             # Перезапускаем Django + Celery
             sudo systemctl restart "$SERVICE"
-            sudo systemctl restart celery-worker || echo "⚠️ celery-worker not found"
-            sudo systemctl restart celery-beat || echo "⚠️ celery-beat not found"
+            sudo systemctl restart formula-tela-worker || echo "⚠️ formula-tela-worker not found"
+            sudo systemctl restart formula-tela-beat || echo "⚠️ formula-tela-beat not found"
 
       - name: Health check
         run: |
