@@ -256,6 +256,20 @@ class ServiceCategory(models.Model):
         help_text="Для ЧПУ-ссылок, например: ruchnye-massazhi"
     )
 
+    # --- SEO ---
+    seo_title = models.CharField(
+        "SEO Title", max_length=120, blank=True, default="",
+        help_text="Для <title>. Без суффикса «| Формула Тела» — шаблон добавит сам.",
+    )
+    seo_h1 = models.CharField(
+        "H1 заголовок", max_length=200, blank=True, default="",
+        help_text="Если пусто — используется название категории.",
+    )
+    seo_description = models.CharField(
+        "SEO Description", max_length=300, blank=True, default="",
+        help_text="Для <meta description>. До 160 символов.",
+    )
+
     class Meta:
         ordering = ["order", "name"]
         verbose_name = "Категория услуг"

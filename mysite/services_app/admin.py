@@ -34,7 +34,15 @@ class ServiceCategoryAdmin(admin.ModelAdmin):
     list_editable = ("name", "description", "order")
     search_fields = ("name",)
     prepopulated_fields = {"slug": ("name",)}
-    fields = ("name", "slug", "description", "order", "image", "image_mobile")
+    fieldsets = (
+        (None, {
+            "fields": ("name", "slug", "description", "order", "image", "image_mobile"),
+        }),
+        ("SEO", {
+            "fields": ("seo_title", "seo_h1", "seo_description"),
+            "description": "Заполняется через apply_seo_audit или вручную.",
+        }),
+    )
 
     def image_preview(self, obj):
         if obj.image:
