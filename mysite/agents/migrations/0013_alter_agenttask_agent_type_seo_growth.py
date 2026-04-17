@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("agents", "0010_agentrecommendationoutcome_weeklybacklog_dailymetric_timing"),
+        ("agents", "0012_retentionsnapshot"),
     ]
 
     operations = [
