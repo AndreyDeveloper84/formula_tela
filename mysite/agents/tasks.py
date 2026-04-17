@@ -73,6 +73,9 @@ def run_weekly_agents(self):
         from agents.agents.seo_landing import SEOLandingAgent
         SEOLandingAgent().run()
 
+        from agents.agents.seo_growth import SEOGrowthAgent
+        SEOGrowthAgent().run()
+
         from agents.agents.supervisor import SupervisorAgent
         SupervisorAgent().weekly_run()
 
