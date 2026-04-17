@@ -1,6 +1,7 @@
 {% extends "website/base.html" %}
 {% load static service_extras humanize %}
-{% block title %}{{ category.name }} — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+{% block title %}{{ category.seo_title|default:category.name }} | {{ settings.salon_name|default:"Формула Тела" }}{% endblock %}
+{% block description %}{{ category.seo_description|default:"" }}{% endblock %}
 
 {% block content %}
 
@@ -8,7 +9,7 @@
     <section class="banner2 cat1">
         <div class="container"> 
             <div class="b2 d-flex flex-column">
-                <h2>{{ category.name }}</h2>
+                <h1>{{ category.seo_h1|default:category.name }}</h1>
                 {% if category.description %}
                     <p class="text-banner">{{ category.description }}</p>
                 {% endif %}
