@@ -504,6 +504,52 @@ class TestHealthEndpoint:
         assert data["stuck_tasks"] == 0
 
 
+class TestSEOGrowthAgent:
+    """SEOGrowthAgent — стратегический анализ."""
+
+    @pytest.mark.django_db
+    @patch("agents.agents.seo_growth.send_telegram", return_value=True)
+    @patch("agents.agents.seo_growth.get_openai_client")
+    def test_run_creates_hypotheses(self, mock_openai, mock_tg):
+        growth_json = json.dumps({
+            "analysis": {
+                "traffic_trend": "стагнация",
+                "main_problems": ["Низкий CTR на главных страницах"],
+                "main_opportunities": ["Незанятые запросы по массажу спины"],
+            },
+            "hypotheses": [
+                {
+                    "title": "Переписать title для массажа спины",
+                    "action": "Добавить гео 'Пенза' в title",
+                    "metric": "CTR",
+                    "expected_change": "+20%",
+                    "reasoning": "Title не содержит гео, конкуренты содержат",
+                    "priority": "high",
+                    "type": "quick_win",
+                    "kpi": "CTR в Вебмастере",
+                },
+            ],
+            "kpi_targets": [
+                {"metric": "органический трафик", "current": "500", "target": "750", "timeframe": "3 месяца"},
+            ],
+        })
+        mock_openai.return_value = _make_openai_mock(growth_json)
+
+        from agents.agents.seo_growth import SEOGrowthAgent
+        from agents.models import AgentRecommendationOutcome, AgentTask
+
+        with patch.object(SEOGrowthAgent, "_gather_webmaster_data", return_value={}), \
+             patch.object(SEOGrowthAgent, "_gather_metrika_data", return_value={}):
+            task = SEOGrowthAgent().run()
+
+        assert task.status == AgentTask.DONE
+        assert len(task.report.recommendations) == 1
+        assert task.report.recommendations[0]["type"] == "quick_win"
+
+        outcomes = AgentRecommendationOutcome.objects.filter(report=task.report)
+        assert outcomes.count() == 1
+
+
 class TestDailyMetricTiming:
     """5.2 DailyMetric timing fields."""
 

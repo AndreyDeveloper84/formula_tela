@@ -111,6 +111,7 @@ class SupervisorAgent:
             AgentTask.SEO_LANDING:      "SEO-лендинги",
             AgentTask.ANALYTICS_BUDGET: "Бюджет и воронка",
             AgentTask.TREND_SCOUT:      "Разведка трендов",
+            AgentTask.SEO_GROWTH:       "SEO & Growth стратегия",
         }
 
         # Собираем последние DONE-отчёты по каждому типу
@@ -183,7 +184,13 @@ class SupervisorAgent:
                 messages=[
                     {
                         "role": "system",
-                        "content": "Ты СЕО-советник салона красоты. Отвечай чётко и по-русски.",
+                        "content": (
+                            "Ты growth-директор салона красоты в Пензе. "
+                            "Синтезируй данные всех агентов в единую стратегию. "
+                            "Выделяй quick wins (результат за 1-3 дня) и стратегические задачи. "
+                            "Приоритизируй по потенциалу ROI. "
+                            "Отвечай чётко и по-русски."
+                        ),
                     },
                     {"role": "user", "content": prompt},
                 ],
