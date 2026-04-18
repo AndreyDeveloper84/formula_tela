@@ -98,18 +98,28 @@ def collect_trends(self):
         raise self.retry(exc=exc, countdown=300)
 
 
-@shared_task(name="agents.tasks.collect_rank_snapshots", bind=True, max_retries=1)
+@shared_task(
+    name="agents.tasks.collect_rank_snapshots",
+    bind=True,
+    max_retries=1,
+    soft_time_limit=90,
+    time_limit=120,
+)
 def collect_rank_snapshots(self):
     """
     Ежедневный сбор данных Яндекс.Вебмастера и агрегация по кластерам.
 
     Алгоритм:
-    1. get_query_stats(today-3, today) — Вебмастер имеет задержку 2-3 дня.
+    1. get_query_stats(today-7, today) — Вебмастер имеет задержку 2-3 дня,
+       окно 7 дней гарантирует наличие данных.
     2. Для каждого активного SeoKeywordCluster:
        - Сопоставляет cluster.keywords с query stats (case-insensitive exact match).
        - Агрегирует: sum(clicks), sum(impressions), weighted avg(ctr), weighted avg(position).
     3. SeoClusterSnapshot.objects.update_or_create(cluster, date=today, defaults=...).
     4. Цепочка: запускает analyze_rank_changes.delay().
+
+    soft_time_limit=90с — убивает задачу если прокси/API зависает,
+    чтобы не блокировать worker slot для run_daily_agents в 09:00.
 
     При ошибке API — логирует warning, возвращает без retry.
     """
@@ -121,7 +131,7 @@ def collect_rank_snapshots(self):
 
     logger.info("collect_rank_snapshots: старт")
     today = datetime.date.today()
-    date_from = (today - datetime.timedelta(days=3)).isoformat()
+    date_from = (today - datetime.timedelta(days=7)).isoformat()
     date_to = today.isoformat()
 
     # Шаг 1: загружаем данные из Вебмастера
