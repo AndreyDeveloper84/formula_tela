@@ -52,6 +52,13 @@ def robots_txt(_request):
         "Disallow: /admin/",
         "Disallow: /api/",
         "",
+        "User-agent: Yandex",
+        "Allow: /",
+        "Disallow: /admin/",
+        "Disallow: /api/",
+        "Disallow: /*?utm_*",
+        "Disallow: /*?ref=*",
+        "",
         f"Sitemap: {settings.SITE_BASE_URL}/sitemap.xml",
         f"Host: {settings.SITE_BASE_URL.replace('https://', '').replace('http://', '')}",
     ]

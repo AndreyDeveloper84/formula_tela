@@ -8,6 +8,12 @@
     <meta name="description" content="{% block description %}Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день.{% endblock %}">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {% if YANDEX_VERIFICATION %}<meta name="yandex-verification" content="{{ YANDEX_VERIFICATION }}">{% endif %}
+    {% block canonical %}<link rel="canonical" href="https://formulatela58.ru{{ request.path }}" />{% endblock %}
+    {% block og_tags %}
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Формула Тела">
+    <meta property="og:locale" content="ru_RU">
+    {% endblock %}
     {% block extra_head %}{% endblock %}
     <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.png' %}">
 

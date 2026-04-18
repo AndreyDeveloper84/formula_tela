@@ -139,7 +139,10 @@ class Service(models.Model):
         default=0,
         verbose_name="Порядок сортировки"
     )
-    
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создана")
+    updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлена")
+
     class Meta:
         verbose_name = "Услуга"
         verbose_name_plural = "Услуги"
@@ -746,6 +749,9 @@ class Bundle(models.Model):
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_popular = models.BooleanField(default=False, verbose_name="Популярный")
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлён")
 
     class Meta:
         verbose_name = "Комплекс (набор услуг)"

@@ -1,6 +1,16 @@
 {% extends "website/base.html" %}
 {% load static social_tags %}
-{% block title %}Главная — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+{% block title %}Массаж и уходы в Пензе — студия «Формула Тела» | Запись онлайн{% endblock %}
+{% block description %}Студия массажа и эстетики в Пензе. Ручной и аппаратный массаж, лазерная эпиляция, уходы для лица. Опытные мастера, онлайн-запись. Тел. 8 (8412) 39-34-33.{% endblock %}
+{% block og_tags %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Формула Тела">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Студия массажа и эстетики «Формула Тела» в Пензе">
+<meta property="og:description" content="Массаж, лазерная эпиляция, уходы для лица. Запись онлайн — 8 (8412) 39-34-33.">
+<meta property="og:url" content="https://formulatela58.ru/">
+<meta property="og:image" content="https://formulatela58.ru{% static 'images/og-cover.jpg' %}">
+{% endblock %}
 {% block body_class %}home{% endblock %}
 {% block extra_css %}
 <style>
@@ -49,7 +59,7 @@
             <div class="row">
                 <div class="col-xl-10 wow fadeInUp" data-wow-delay=".2s">
                     <div class="heading">
-                        <h1>ФОРМУЛА ТЕЛА</h1>
+                        <h1>Студия массажа и эстетики «Формула Тела» в Пензе</h1>
                         <p class="text-banner">{{ settings.description|default:"Центр эстетики и восстановления, где наука и забота о теле объединяются. Индивидуальные программы коррекции фигуры, восстановления и омоложения — для вашего идеального самочувствия и уверенности каждый день." }}</p>
                         <a href="{% url 'website:services' %}" class="btn-white t-btn">Записаться на процедуры</a>  
                         <a href="{% url 'website:certificates' %}" class="t-btn"><i>Подарочные</i> сертификаты</a>

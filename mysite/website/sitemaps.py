@@ -8,8 +8,17 @@ from services_app.models import Bundle, Master, Service, ServiceCategory
 
 
 class StaticViewSitemap(Sitemap):
-    priority = 0.8
     changefreq = "weekly"
+
+    _priorities = {
+        "website:home": 1.0,
+        "website:services": 0.9,
+        "website:masters": 0.7,
+        "website:promotions": 0.6,
+        "website:contacts": 0.6,
+        "website:bundles": 0.6,
+        "website:certificates": 0.6,
+    }
 
     def items(self):
         return ["website:home", "website:services", "website:promotions",
@@ -18,6 +27,9 @@ class StaticViewSitemap(Sitemap):
 
     def location(self, item):
         return reverse(item)
+
+    def priority(self, item):
+        return self._priorities.get(item, 0.5)
 
 
 class ServiceSitemap(Sitemap):
@@ -30,11 +42,8 @@ class ServiceSitemap(Sitemap):
     def location(self, obj):
         return reverse("website:service_detail_by_slug", kwargs={"slug": obj.slug})
 
-    # NB: lastmod removed — у Service нет полей created_at/updated_at в БД,
-    # а добавление их через миграцию + auto_now выходит за рамки hotfix'а.
-    # Если SEO потребуется lastmod — добавить отдельным коммитом:
-    #   1) AddField Service.updated_at + created_at (auto_now / auto_now_add)
-    #   2) Вернуть метод lastmod(self, obj): return obj.updated_at
+    def lastmod(self, obj):
+        return obj.updated_at
 
 
 class BundleSitemap(Sitemap):
@@ -47,9 +56,12 @@ class BundleSitemap(Sitemap):
     def location(self, obj):
         return reverse("website:bundle_detail_by_slug", kwargs={"slug": obj.slug})
 
+    def lastmod(self, obj):
+        return obj.updated_at
+
 
 class MasterSitemap(Sitemap):
-    priority = 0.8
+    priority = 0.7
     changefreq = "monthly"
 
     def items(self):
@@ -63,7 +75,7 @@ class MasterSitemap(Sitemap):
 
 
 class CategorySitemap(Sitemap):
-    priority = 0.7
+    priority = 0.8
     changefreq = "weekly"
 
     def items(self):
@@ -79,26 +91,24 @@ class CategorySitemap(Sitemap):
 
 
 class LandingPageSitemap(Sitemap):
-    """
-    Landing-страницы временно закрыты от индексации.
+    """Landing-страницы, прошедшие QC-проверку (SEOLandingQCAgent).
 
-    Причина: агенты SEOLanding Agent генерируют лендинги автоматически,
-    но качество генерации пока не отслеживается — есть дубли H1, устаревшие
-    ссылки, пересечения с /uslugi/<slug>/. Пока не настроен агент,
-    отслеживающий качество, их не стоит отдавать в Яндекс/Google.
-
-    items() возвращает пустой список → в sitemap.xml ничего не попадает.
-    Плюс на самой странице (templates/agents/landing_page.html) стоит
-    <meta name="robots" content="noindex, nofollow">.
-
-    Когда SEO-агент будет готов — вернуть items() + lastmod() и убрать
-    noindex из шаблона.
+    Только published + с заполненным published_at попадают в sitemap.
+    QC-агент проверяет H1/slug уникальность, наличие блоков, дубли контента
+    и устанавливает published_at при переводе в published.
     """
     priority = 0.8
     changefreq = "monthly"
 
     def items(self):
-        return []
+        return (
+            LandingPage.objects
+            .filter(status=LandingPage.STATUS_PUBLISHED, published_at__isnull=False)
+            .order_by("slug")
+        )
 
     def location(self, obj):
         return reverse("landing_page", kwargs={"slug": obj.slug})
+
+    def lastmod(self, obj):
+        return obj.published_at
