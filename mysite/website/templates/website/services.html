@@ -1,6 +1,7 @@
 {% extends "website/base.html" %}
 {% load static service_extras humanize %}
-{% block title %}Услуги — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
+{% block title %}Все услуги студии в Пензе — массаж, эпиляция, уходы | «Формула Тела»{% endblock %}
+{% block description %}Все услуги студии «Формула Тела» в Пензе: массаж, лазерная эпиляция, уходы для лица. Выберите категорию и запишитесь онлайн. Тел. 8 (8412) 39-34-33.{% endblock %}
 
 {% block content %}
     <!-- ========================= Баннер (опционально) ========================= -->
@@ -22,7 +23,7 @@
     <!-- ========================= Услуги салона ========================= -->
     <section class="service">
         <div class="container"> 
-            <h2 class="wow fadeInUp" data-wow-delay=".2s">Услуги салона</h2>
+            <h1 class="wow fadeInUp" data-wow-delay=".2s">Услуги студии «Формула Тела» в Пензе</h1>
             <div class="row">
                 {% for cat in categories %}
                     <div class="col-xl-3 col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% elif forloop.counter == 6 %}1.4{% elif forloop.counter == 7 %}1.6{% else %}1.8{% endif %}s">

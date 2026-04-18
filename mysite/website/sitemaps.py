@@ -91,26 +91,24 @@ class CategorySitemap(Sitemap):
 
 
 class LandingPageSitemap(Sitemap):
-    """
-    Landing-страницы временно закрыты от индексации.
+    """Landing-страницы, прошедшие QC-проверку (SEOLandingQCAgent).
 
-    Причина: агенты SEOLanding Agent генерируют лендинги автоматически,
-    но качество генерации пока не отслеживается — есть дубли H1, устаревшие
-    ссылки, пересечения с /uslugi/<slug>/. Пока не настроен агент,
-    отслеживающий качество, их не стоит отдавать в Яндекс/Google.
-
-    items() возвращает пустой список → в sitemap.xml ничего не попадает.
-    Плюс на самой странице (templates/agents/landing_page.html) стоит
-    <meta name="robots" content="noindex, nofollow">.
-
-    Когда SEO-агент будет готов — вернуть items() + lastmod() и убрать
-    noindex из шаблона.
+    Только published + с заполненным published_at попадают в sitemap.
+    QC-агент проверяет H1/slug уникальность, наличие блоков, дубли контента
+    и устанавливает published_at при переводе в published.
     """
     priority = 0.8
     changefreq = "monthly"
 
     def items(self):
-        return []
+        return (
+            LandingPage.objects
+            .filter(status=LandingPage.STATUS_PUBLISHED, published_at__isnull=False)
+            .order_by("slug")
+        )
 
     def location(self, obj):
         return reverse("landing_page", kwargs={"slug": obj.slug})
+
+    def lastmod(self, obj):
+        return obj.published_at
