@@ -59,7 +59,7 @@ class YandexWebmasterClient:
         """
         url = self.BASE_URL + path
         headers = {"Authorization": f"OAuth {self.token}"}
-        kwargs.setdefault("timeout", 20)
+        kwargs.setdefault("timeout", 30)
         proxy_url = getattr(settings, "OPENAI_PROXY", "")
         if proxy_url:
             kwargs.setdefault("proxies", {"https": proxy_url, "http": proxy_url})
@@ -69,7 +69,12 @@ class YandexWebmasterClient:
                 raise YandexWebmasterError(
                     f"HTTP {r.status_code}: {r.text[:300]}"
                 )
-            return r.json()
+            try:
+                return r.json()
+            except (ValueError, Exception) as exc:
+                raise YandexWebmasterError(
+                    f"Invalid JSON response: {r.text[:200]}"
+                ) from exc
         except requests.RequestException as exc:
             raise YandexWebmasterError(f"Network error: {exc}") from exc
 
@@ -249,7 +254,7 @@ class YandexWebmasterClient:
         try:
             return self.get_top_queries(date_from, date_to, limit=limit)
         except YandexWebmasterError as exc:
-            logger.warning(
+            logger.exception(
                 "YandexWebmasterClient.get_query_stats: ошибка — %s", exc
             )
             return []
@@ -271,7 +276,7 @@ class YandexWebmasterClient:
         try:
             return self.get_top_pages(date_from, date_to, limit=limit)
         except YandexWebmasterError as exc:
-            logger.warning(
+            logger.exception(
                 "YandexWebmasterClient.get_page_stats: ошибка — %s", exc
             )
             return []
