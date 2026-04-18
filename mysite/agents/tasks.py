@@ -462,6 +462,8 @@ def generate_missing_landings(self):
 
     generator = LandingPageGenerator()
     generated = 0
+    errors = []
+    total = min(len(candidates_sorted), 3)
 
     for cluster in candidates_sorted[:3]:  # максимум 3 за запуск
         try:
@@ -472,11 +474,13 @@ def generate_missing_landings(self):
                 landing.slug, cluster.name,
             )
         except LandingGeneratorError as exc:
+            errors.append((cluster.name, str(exc)))
             logger.warning(
                 "generate_missing_landings: кластер '%s' — %s",
                 cluster.name, exc,
             )
         except Exception as exc:
+            errors.append((cluster.name, str(exc)))
             logger.exception(
                 "generate_missing_landings: кластер '%s' — %s",
                 cluster.name, exc,
@@ -484,8 +488,16 @@ def generate_missing_landings(self):
 
     logger.info(
         "generate_missing_landings: завершён — %d из %d кандидатов",
-        generated, len(candidates_sorted),
+        generated, total,
     )
+
+    if errors:
+        from agents.telegram import send_telegram
+        details = "\n".join(f"• {name}: {err[:100]}" for name, err in errors)
+        send_telegram(
+            f"⚠️ generate_missing_landings: {len(errors)} из {total} ошибок\n\n"
+            f"{details}"
+        )
 
 
 @shared_task(name="agents.tasks.collect_retention_metrics", bind=True, max_retries=1)
@@ -516,6 +528,8 @@ def collect_retention_metrics(self):
         api = get_yclients_api()
     except Exception as exc:
         logger.error("collect_retention_metrics: YClients недоступен: %s", exc)
+        from agents.telegram import send_telegram
+        send_telegram(f"⚠️ collect_retention_metrics: YClients недоступен\n{exc}")
         return
 
     all_records = []
@@ -682,3 +696,28 @@ def collect_retention_metrics(self):
         send_retention_report(snapshot, previous)
     else:
         send_retention_summary(snapshot, previous)
+
+
+@shared_task(name="agents.tasks.run_landing_qc", bind=True, max_retries=1)
+def run_landing_qc(self):
+    """QC-проверка draft/review LandingPage: уникальность H1/slug, блоки, ссылки, дубли.
+
+    Прошедшие все critical checks → status=published, published_at=now().
+    Не прошедшие → status=review, SeoTask создаётся, Telegram-алерт.
+
+    Расписание: ежедневно 06:00 UTC (09:00 MSK) — перед run_daily_agents.
+    """
+    from agents.agents.seo_landing_qc import SEOLandingQCAgent
+    from agents.models import AgentTask
+    from agents.telegram import send_agent_error_alert
+
+    logger.info("run_landing_qc: старт")
+    task = AgentTask.objects.create(agent_type="landing_qc", status=AgentTask.PENDING)
+    try:
+        agent = SEOLandingQCAgent()
+        agent.run(task)
+        logger.info("run_landing_qc: завершён")
+    except Exception as exc:
+        logger.exception("run_landing_qc: ошибка — %s", exc)
+        send_agent_error_alert("Landing QC", task.pk, str(exc))
+        raise

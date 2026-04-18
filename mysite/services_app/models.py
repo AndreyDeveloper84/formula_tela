@@ -139,7 +139,10 @@ class Service(models.Model):
         default=0,
         verbose_name="Порядок сортировки"
     )
-    
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создана")
+    updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлена")
+
     class Meta:
         verbose_name = "Услуга"
         verbose_name_plural = "Услуги"
@@ -254,6 +257,20 @@ class ServiceCategory(models.Model):
         null=True,
         verbose_name="URL-slug",
         help_text="Для ЧПУ-ссылок, например: ruchnye-massazhi"
+    )
+
+    # --- SEO ---
+    seo_title = models.CharField(
+        "SEO Title", max_length=120, blank=True, default="",
+        help_text="Для <title>. Без суффикса «| Формула Тела» — шаблон добавит сам.",
+    )
+    seo_h1 = models.CharField(
+        "H1 заголовок", max_length=200, blank=True, default="",
+        help_text="Если пусто — используется название категории.",
+    )
+    seo_description = models.CharField(
+        "SEO Description", max_length=300, blank=True, default="",
+        help_text="Для <meta description>. До 160 символов.",
     )
 
     class Meta:
@@ -732,6 +749,9 @@ class Bundle(models.Model):
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_popular = models.BooleanField(default=False, verbose_name="Популярный")
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлён")
 
     class Meta:
         verbose_name = "Комплекс (набор услуг)"
