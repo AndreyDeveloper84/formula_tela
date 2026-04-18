@@ -2,6 +2,25 @@
 {% load static service_extras humanize %}
 {% block title %}Все услуги студии в Пензе — массаж, эпиляция, уходы | «Формула Тела»{% endblock %}
 {% block description %}Все услуги студии «Формула Тела» в Пензе: массаж, лазерная эпиляция, уходы для лица. Выберите категорию и запишитесь онлайн. Тел. 8 (8412) 39-34-33.{% endblock %}
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Услуги студии «Формула Тела» в Пензе",
+  "itemListOrder": "https://schema.org/ItemListUnordered",
+  "numberOfItems": {{ categories|length }},
+  "itemListElement": [{% for cat in categories %}
+    {
+      "@type": "ListItem",
+      "position": {{ forloop.counter }},
+      "url": "https://formulatela58.ru{% if cat.slug %}{% url 'website:category_services_by_slug' slug=cat.slug %}{% endif %}",
+      "name": "{{ cat.name|escapejs }}"
+    }{% if not forloop.last %},{% endif %}{% endfor %}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
     <!-- ========================= Баннер (опционально) ========================= -->

@@ -11,6 +11,44 @@
 <meta property="og:url" content="https://formulatela58.ru/">
 <meta property="og:image" content="https://formulatela58.ru{% static 'images/og-cover.jpg' %}">
 {% endblock %}
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HealthAndBeautyBusiness",
+  "name": "{{ settings.salon_name|default:'Формула Тела'|escapejs }}",
+  "description": "Студия массажа и эстетики в Пензе. Ручной и аппаратный массаж, лазерная эпиляция, уходы для лица.",
+  "url": "https://formulatela58.ru/",
+  "telephone": "{{ settings.contact_phone|default:'8 (8412) 39-34-33' }}",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "ул. Пушкина, 45",
+    "addressLocality": "Пенза",
+    "addressRegion": "Пензенская область",
+    "postalCode": "440000",
+    "addressCountry": "RU"
+  },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": "53.2018",
+    "longitude": "45.0030"
+  },
+  "openingHoursSpecification": {
+    "@type": "OpeningHoursSpecification",
+    "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+    "opens": "09:00",
+    "closes": "21:00"
+  },
+  "priceRange": "₽₽",
+  "currenciesAccepted": "RUB",
+  "paymentAccepted": "Cash, Credit Card, SBP",
+  "areaServed": {
+    "@type": "City",
+    "name": "Пенза"
+  }
+}
+</script>
+{% endblock %}
 {% block body_class %}home{% endblock %}
 {% block extra_css %}
 <style>

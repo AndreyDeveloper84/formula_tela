@@ -2,6 +2,34 @@
 {% load static service_extras humanize %}
 {% block title %}{{ category.seo_title|default:category.name }} | {{ settings.salon_name|default:"Формула Тела" }}{% endblock %}
 {% block description %}{{ category.seo_description|default:"" }}{% endblock %}
+{% block og_tags %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Формула Тела">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="{{ category.seo_title|default:category.name|escapejs }}">
+<meta property="og:description" content="{{ category.seo_description|default:''|escapejs }}">
+{% if category.slug %}<meta property="og:url" content="https://formulatela58.ru{% url 'website:category_services_by_slug' slug=category.slug %}">{% endif %}
+{% if category.image %}<meta property="og:image" content="https://formulatela58.ru{{ category.image.url }}">{% endif %}
+{% endblock %}
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "{{ category.seo_h1|default:category.name|escapejs }}",
+  "itemListOrder": "https://schema.org/ItemListUnordered",
+  "numberOfItems": {{ services|length }},
+  "itemListElement": [{% for s in services %}
+    {
+      "@type": "ListItem",
+      "position": {{ forloop.counter }},
+      "url": "https://formulatela58.ru{% if s.slug %}{% url 'website:service_detail_by_slug' slug=s.slug %}{% endif %}",
+      "name": "{{ s.name|escapejs }}"
+    }{% if not forloop.last %},{% endif %}{% endfor %}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 
