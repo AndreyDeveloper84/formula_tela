@@ -184,6 +184,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "agents.tasks.collect_retention_metrics",
         "schedule": crontab(hour=8, minute=0),
     },
+    "daily-landing-qc-6am": {
+        "task": "agents.tasks.run_landing_qc",
+        "schedule": crontab(hour=6, minute=0),
+    },
 }
 
 # === OpenAI ===

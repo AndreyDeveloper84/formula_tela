@@ -6,9 +6,11 @@
 {% block description %}{{ landing.meta_description }}{% endblock %}
 
 {% block extra_head %}
-{# Landing-страницы временно закрыты от индексации — пока не настроен агент,
-   отслеживающий качество генерации. Канонический трафик — через /uslugi/<slug>/. #}
+{% if landing.status != "published" %}
+{# Не-published лендинги закрыты от индексации. QC-агент проверяет качество
+   и переводит в published — только тогда noindex убирается. #}
 <meta name="robots" content="noindex, nofollow">
+{% endif %}
 {% endblock %}
 
 {% block extra_css %}
