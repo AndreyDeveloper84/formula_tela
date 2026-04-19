@@ -1,0 +1,115 @@
+"""HTTP-views подсистемы оплат.
+
+Пока единственный view — webhook YooKassa. Customer-facing endpoints
+(/api/services/order/, /api/payments/status/) появятся в PR #5.
+"""
+import json
+import logging
+
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
+
+from payments.exceptions import PaymentClientError, PaymentConfigError
+from payments.ip_whitelist import yookassa_ip_only
+from payments.tasks import fulfill_paid_order
+from payments.yookassa_client import get_yookassa_client
+from services_app.models import Order
+from website.notifications import send_notification_telegram
+
+logger = logging.getLogger(__name__)
+
+
+@csrf_exempt
+@require_POST
+@yookassa_ip_only
+@ratelimit(key="ip", rate="120/m", method="POST", block=True)
+def yookassa_webhook(request):
+    """Принимает callback от YooKassa при смене статуса платежа.
+
+    Flow:
+      1. Parse JSON payload, извлечь payment.id
+      2. Verify через YooKassaClient.find_payment(id) — double-check
+         подлинности (spoofed POST отсекается)
+      3. Найти Order по payment_id; если нет — логируем и 200 (YooKassa
+         не должна ретраить из-за отсутствия заказа на нашей стороне)
+      4. По статусу:
+         - succeeded: Order.payment_status=succeeded, paid_at=now(),
+           status=paid, fulfill_paid_order.delay(order.id)
+         - canceled:  Order.payment_status=canceled, Telegram админу
+         - прочие: игнорируем
+      5. Всегда 200, чтобы YooKassa не спамила retry
+
+    Идемпотентно: повторная доставка того же события для уже-succeeded
+    заказа не дёргает fulfill второй раз.
+    """
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        logger.warning("yookassa_webhook: invalid JSON from %s", request.META.get("REMOTE_ADDR"))
+        return HttpResponseBadRequest("invalid json")
+
+    payment_obj = payload.get("object") or {}
+    payment_id = payment_obj.get("id")
+    if not payment_id:
+        logger.warning("yookassa_webhook: missing payment id")
+        return HttpResponseBadRequest("missing payment id")
+
+    # Verify через API — защита от spoofed POST.
+    try:
+        client = get_yookassa_client()
+        verified = client.find_payment(payment_id)
+    except PaymentConfigError:
+        logger.error("yookassa_webhook: YOOKASSA creds missing — ответ 503")
+        return HttpResponse(status=503)
+    except PaymentClientError as exc:
+        logger.error("yookassa_webhook: verify failed for %s: %s", payment_id, exc)
+        return HttpResponse(status=502)
+
+    status = verified.get("status", "")
+    try:
+        order = Order.objects.get(payment_id=payment_id)
+    except Order.DoesNotExist:
+        logger.warning(
+            "yookassa_webhook: order not found for payment_id=%s (status=%s)",
+            payment_id, status,
+        )
+        return JsonResponse({"detail": "order not found"}, status=200)
+
+    if status == "succeeded":
+        _handle_succeeded(order)
+    elif status == "canceled":
+        _handle_canceled(order)
+    else:
+        logger.info(
+            "yookassa_webhook: order=%s status=%s — no-op",
+            order.number, status,
+        )
+
+    return JsonResponse({"ok": True}, status=200)
+
+
+def _handle_succeeded(order: Order) -> None:
+    if order.payment_status == "succeeded":
+        logger.info("yookassa_webhook: order=%s already succeeded, skip", order.number)
+        return
+    order.payment_status = "succeeded"
+    order.status = "paid"
+    order.paid_at = timezone.now()
+    order.save(update_fields=["payment_status", "status", "paid_at", "updated_at"])
+    fulfill_paid_order.delay(order.id)
+    logger.info("yookassa_webhook: order=%s → succeeded, fulfill scheduled", order.number)
+
+
+def _handle_canceled(order: Order) -> None:
+    if order.payment_status == "canceled":
+        return
+    order.payment_status = "canceled"
+    order.status = "cancelled"
+    order.save(update_fields=["payment_status", "status", "updated_at"])
+    send_notification_telegram(
+        f"⚠️ Платёж отменён: заказ {order.number} ({order.total_amount} ₽)"
+    )
+    logger.info("yookassa_webhook: order=%s → canceled", order.number)

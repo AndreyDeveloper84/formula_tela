@@ -71,6 +71,7 @@ urlpatterns = [
     path('', include('website.urls')),
     path('healthz/', healthz, name='healthz'),
     path('api/agents/health/', agents_health, name='agents_health'),
+    path('api/payments/', include('payments.urls')),
     path('robots.txt', robots_txt, name='robots_txt'),
     path('sitemap.xml', sitemap, {"sitemaps": sitemaps},
          name='django.contrib.sitemaps.views.sitemap'),
