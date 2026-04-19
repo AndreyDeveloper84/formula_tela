@@ -7,6 +7,7 @@ import json
 import logging
 
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -113,6 +114,27 @@ def _handle_canceled(order: Order) -> None:
         f"⚠️ Платёж отменён: заказ {order.number} ({order.total_amount} ₽)"
     )
     logger.info("yookassa_webhook: order=%s → canceled", order.number)
+
+
+@require_GET
+def payment_success_page(request):
+    """HTML-страница, на которую редиректит YooKassa после оплаты.
+
+    Читает ?order=<number>, пробрасывает номер в шаблон; JS-поллер
+    (см. static/js/payment-status-poll.js) опрашивает /api/payments/status/
+    до fulfilled=True.
+    """
+    order_number = request.GET.get("order", "").strip()
+    return render(request, "payments/success.html", {"order_number": order_number})
+
+
+@require_GET
+def payment_cancelled_page(request):
+    """HTML-страница для отменённого платежа. Показывается когда клиент
+    закрыл окно YooKassa или платёж canceled. Предлагает оплатить заново
+    или выбрать другой способ."""
+    order_number = request.GET.get("order", "").strip()
+    return render(request, "payments/cancelled.html", {"order_number": order_number})
 
 
 @require_GET
