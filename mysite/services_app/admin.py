@@ -666,7 +666,7 @@ class GiftCertificateAdmin(admin.ModelAdmin):
         }),
     )
 
-    actions = ["mark_as_paid", "mark_as_delivered"]
+    actions = ["mark_as_paid", "mark_as_delivered", "resend_certificate_email"]
 
     @admin.display(description="Номинал")
     def nominal_display(self, obj):
@@ -676,11 +676,21 @@ class GiftCertificateAdmin(admin.ModelAdmin):
 
     @admin.action(description="Отметить как оплаченные")
     def mark_as_paid(self, request, queryset):
-        from django.utils import timezone
-        updated = queryset.filter(status="pending").update(
-            status="paid", paid_at=timezone.now(),
+        from payments.tasks import fulfill_paid_certificate
+
+        pending = list(queryset.filter(status="pending").select_related("order"))
+        if not pending:
+            self.message_user(request, "Нет сертификатов в статусе «ожидание»")
+            return
+
+        for cert in pending:
+            fulfill_paid_certificate.delay(cert.order_id)
+
+        self.message_user(
+            request,
+            f"Запущена активация {len(pending)} сертификат(а). "
+            f"Email с PDF будет отправлен автоматически.",
         )
-        self.message_user(request, f"Оплачено сертификатов: {updated}")
 
     @admin.action(description="Отметить как вручённые и отправить в Telegram")
     def mark_as_delivered(self, request, queryset):
@@ -755,5 +765,39 @@ class GiftCertificateAdmin(admin.ModelAdmin):
         msg = f"Вручено сертификатов: {len(certs)}"
         if sent:
             msg += f", отправлено в Telegram: {sent}"
+        self.message_user(request, msg)
+
+    @admin.action(description="Повторно отправить PDF-сертификат на email")
+    def resend_certificate_email(self, request, queryset):
+        from payments.certificate_pdf import generate_certificate_pdf
+        from website.notifications import send_certificate_email
+
+        certs = list(queryset.filter(status="paid").select_related("order", "bundle"))
+        if not certs:
+            self.message_user(
+                request, "Нет оплаченных сертификатов для отправки", level="warning"
+            )
+            return
+
+        sent = 0
+        errors = 0
+        for cert in certs:
+            if not cert.order.client_email:
+                continue
+            pdf_bytes = None
+            try:
+                pdf_bytes = generate_certificate_pdf(cert, cert.order)
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).error(
+                    "resend PDF failed cert=%s: %s", cert.code, exc
+                )
+                errors += 1
+            send_certificate_email(cert.order, cert, pdf_bytes=pdf_bytes)
+            sent += 1
+
+        msg = f"Отправлено писем: {sent}"
+        if errors:
+            msg += f" (PDF не сгенерирован для {errors} шт. — письмо без вложения)"
         self.message_user(request, msg)
 
