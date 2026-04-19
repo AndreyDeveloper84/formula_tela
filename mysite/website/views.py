@@ -1518,6 +1518,7 @@ def certificates(request):
     )
     return render(request, "website/certificates.html", {
         "popular_services": popular_services,
+        "settings": _settings(),
     })
 
 
