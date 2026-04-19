@@ -43,6 +43,7 @@ class PaymentService:
             return_url=return_url,
             metadata={"order_id": str(order.id), "order_number": order.number},
             idempotence_key=order.number,
+            receipt=self._build_receipt(order),
         )
         order.payment_id = result["id"]
         order.payment_url = result["confirmation_url"]
@@ -59,3 +60,32 @@ class PaymentService:
         if order.service:
             return f"Оплата услуги: {order.service.name} ({order.number})"
         return f"Заказ {order.number}"
+
+    def _build_receipt(self, order: Order) -> dict:
+        customer = {}
+        if order.client_phone:
+            customer["phone"] = order.client_phone
+        if order.client_email:
+            customer["email"] = order.client_email
+
+        if order.service:
+            item_desc = order.service.name
+            if order.service_option and order.service_option.name:
+                item_desc = f"{item_desc} — {order.service_option.name}"
+        else:
+            item_desc = f"Заказ {order.number}"
+        item_desc = item_desc[:128]
+
+        vat_code = getattr(settings, "YOOKASSA_VAT_CODE", 1)
+
+        return {
+            "customer": customer,
+            "items": [{
+                "description": item_desc,
+                "quantity": "1.00",
+                "amount": {"value": f"{order.total_amount:.2f}", "currency": "RUB"},
+                "vat_code": vat_code,
+                "payment_mode": "full_payment",
+                "payment_subject": "service",
+            }],
+        }

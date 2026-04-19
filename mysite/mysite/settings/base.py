@@ -150,6 +150,8 @@ YOOKASSA_RETURN_URL = os.getenv(
 # не от официальных IP YooKassa. Выключать только в локальной разработке и
 # тестах (ngrok, CI).
 YOOKASSA_WEBHOOK_STRICT_IP = os.getenv("YOOKASSA_WEBHOOK_STRICT_IP", "1") not in ("0", "false", "False")
+# Код НДС для чека 54-ФЗ: 1=без НДС (ИП на УСН), 2=0%, 3=10%, 4=20%.
+YOOKASSA_VAT_CODE = int(os.getenv("YOOKASSA_VAT_CODE", "1"))
 
 # === Django cache (rate limit + booking idempotency) ===
 # Redis DB 1 — изолирован от Celery broker (DB 0), чтобы ключи кэша не

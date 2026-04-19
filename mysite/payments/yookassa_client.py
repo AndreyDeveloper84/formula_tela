@@ -41,6 +41,7 @@ class YooKassaClient:
         return_url: str,
         metadata: dict,
         idempotence_key: str,
+        receipt: dict | None = None,
     ) -> dict:
         """Создать платёж. Возвращает {id, status, confirmation_url}."""
         payload = {
@@ -50,6 +51,8 @@ class YooKassaClient:
             "metadata": metadata,
             "capture": True,
         }
+        if receipt:
+            payload["receipt"] = receipt
         try:
             payment = Payment.create(payload, idempotence_key)
         except ApiError as exc:
