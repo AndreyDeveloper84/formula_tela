@@ -632,6 +632,17 @@ class SiteSettings(models.Model):
         "Корреспондентский счёт", max_length=20, blank=True, default="",
     )
 
+    # ── Feature flags ─────────────────────────────────────────────────
+    online_payment_enabled = models.BooleanField(
+        "Онлайн-оплата через YooKassa",
+        default=False,
+        help_text=(
+            "Пока выключено — на сайте при записи на услугу клиент видит только "
+            "офлайн-способы (наличные/картой в салоне). Включать после модерации "
+            "YooKassa и прописанных YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY в .env."
+        ),
+    )
+
     class Meta:
         verbose_name = "Настройки сайта"
         verbose_name_plural = "Настройки сайта"
@@ -987,6 +998,7 @@ ORDER_TYPE_CHOICES = [
     ("certificate", "Сертификат"),
     ("bundle", "Комплекс"),
     ("booking", "Запись"),
+    ("service", "Услуга"),
 ]
 
 ORDER_STATUS_CHOICES = [
@@ -997,9 +1009,23 @@ ORDER_STATUS_CHOICES = [
     ("cancelled", "Отменён"),
 ]
 
+PAYMENT_METHOD_CHOICES = [
+    ("online", "Онлайн"),
+    ("cash", "Наличными в салоне"),
+    ("card_offline", "Картой в салоне"),
+]
+
+PAYMENT_STATUS_CHOICES = [
+    ("not_required", "Не требуется"),
+    ("pending", "Ожидает оплаты"),
+    ("waiting_for_capture", "Ожидает подтверждения"),
+    ("succeeded", "Оплачен"),
+    ("canceled", "Отменён"),
+]
+
 
 class Order(models.Model):
-    """Универсальный заказ — сертификат, комплекс, запись"""
+    """Универсальный заказ — сертификат, комплекс, запись, услуга"""
     number = models.CharField(
         max_length=20, unique=True, blank=True,
         verbose_name="Номер заказа",
@@ -1022,23 +1048,63 @@ class Order(models.Model):
         verbose_name="Сумма",
     )
 
-    # Поля для будущего эквайринга (nullable)
+    # ── Платёжные поля (YooKassa) ─────────────────────────────────────
     payment_method = models.CharField(
-        max_length=30, blank=True, verbose_name="Способ оплаты",
+        max_length=20, blank=True, default="",
+        choices=PAYMENT_METHOD_CHOICES,
+        verbose_name="Способ оплаты",
+    )
+    payment_status = models.CharField(
+        max_length=25, default="not_required",
+        choices=PAYMENT_STATUS_CHOICES,
+        verbose_name="Статус оплаты",
     )
     payment_id = models.CharField(
         max_length=100, blank=True, verbose_name="ID платежа",
+        help_text="YooKassa payment id (uuid)",
+    )
+    payment_url = models.URLField(
+        blank=True, default="", verbose_name="Ссылка на оплату",
+        help_text="confirmation_url от YooKassa",
     )
     paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата оплаты")
 
     comment = models.TextField(blank=True, verbose_name="Комментарий")
     admin_note = models.TextField(blank=True, verbose_name="Заметка администратора")
 
+    # ── Связи с товаром/услугой ───────────────────────────────────────
     # Для order_type="bundle"
     bundle = models.ForeignKey(
         "Bundle", on_delete=models.SET_NULL,
         null=True, blank=True, related_name="orders",
         verbose_name="Комплекс",
+    )
+    # Для order_type="service"
+    service = models.ForeignKey(
+        "Service", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="orders",
+        verbose_name="Услуга",
+    )
+    service_option = models.ForeignKey(
+        "ServiceOption", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="orders",
+        verbose_name="Вариант услуги",
+    )
+
+    # ── Параметры записи (service/booking) ────────────────────────────
+    staff_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID мастера (YClients)",
+    )
+    scheduled_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Дата/время визита",
+    )
+    yclients_record_id = models.CharField(
+        max_length=50, blank=True, default="",
+        verbose_name="YClients record id",
+    )
+    yclients_record_hash = models.CharField(
+        max_length=100, blank=True, default="",
+        verbose_name="YClients record hash",
     )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
@@ -1051,6 +1117,7 @@ class Order(models.Model):
         indexes = [
             models.Index(fields=["status", "order_type"]),
             models.Index(fields=["number"]),
+            models.Index(fields=["payment_status"]),
         ]
 
     def __str__(self):

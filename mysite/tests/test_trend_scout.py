@@ -267,7 +267,7 @@ class TestTrendScoutAgent:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = mock_resp
 
-        with patch("agents.agents.trend_scout.get_openai_client", return_value=mock_client):
+        with patch("agents.agents._openai_cache.get_openai_client", return_value=mock_client):
             yield mock_client
 
     @pytest.fixture

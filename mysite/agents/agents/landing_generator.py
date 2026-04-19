@@ -23,7 +23,7 @@ import logging
 
 from django.conf import settings
 
-from agents.agents import get_openai_client
+from agents.agents._openai_cache import cached_chat_completion
 from agents.models import LandingPage, SeoKeywordCluster, SeoTask
 from agents.telegram import notify_new_landing
 
@@ -54,7 +54,6 @@ class LandingPageGenerator:
     }
 
     def __init__(self):
-        self.client = get_openai_client()
         self.model = settings.OPENAI_MODEL
 
     # ── Публичные методы ──────────────────────────────────────────────────────
@@ -459,8 +458,7 @@ class LandingPageGenerator:
         Raises LandingGeneratorError при ошибке API.
         """
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            return cached_chat_completion(
                 messages=[
                     {
                         "role": "system",
@@ -473,11 +471,11 @@ class LandingPageGenerator:
                     },
                     {"role": "user", "content": prompt},
                 ],
+                model=self.model,
                 response_format={"type": "json_object"},
                 temperature=0.7,
                 max_tokens=self.MAX_TOKENS,
             )
-            return response.choices[0].message.content.strip()
         except Exception as exc:
             raise LandingGeneratorError(f"GPT API error: {exc}") from exc
 

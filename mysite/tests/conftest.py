@@ -23,6 +23,15 @@ settings.CACHES = {
 settings.RATELIMIT_ENABLE = False
 
 
+@pytest.fixture(autouse=True)
+def _clear_openai_cache():
+    """Сбрасываем OpenAI prompt cache между тестами — иначе одинаковый prompt
+    в разных тестах вернёт cached value вместо мока."""
+    from django.core.cache import cache
+    cache.clear()
+    yield
+
+
 # ── Модельные фикстуры ───────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -135,6 +144,23 @@ def order(db):
         client_name="Иванов Иван",
         client_phone="+79991234567",
         total_amount=Decimal("3000"),
+    )
+
+
+@pytest.fixture
+def service_order(db, service, service_option):
+    """Заказ на услугу с онлайн-оплатой — для тестов PaymentService."""
+    return baker.make(
+        "services_app.Order",
+        order_type="service",
+        status="pending",
+        payment_method="online",
+        payment_status="not_required",
+        client_name="Петров Пётр",
+        client_phone="+79001112233",
+        total_amount=Decimal("3000"),
+        service=service,
+        service_option=service_option,
     )
 
 
