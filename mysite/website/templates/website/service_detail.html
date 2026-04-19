@@ -628,9 +628,31 @@
                             <textarea id="client-comment" class="form-control" rows="3"
                                       placeholder="Комментарий"></textarea>
                         </div>
-                        
+
+                        <div class="payment-method-group mt-20 mb-10">
+                            <div class="semi mb-10">Способ оплаты</div>
+                            {% if settings.online_payment_enabled %}
+                            <label class="d-flex align-items-center mb-10" style="cursor:pointer;">
+                                <input type="radio" name="payment-method" value="online"
+                                       class="form-check-input me-2" checked>
+                                <span class="ms-10">Оплатить онлайн (банковской картой)</span>
+                            </label>
+                            {% endif %}
+                            <label class="d-flex align-items-center mb-10" style="cursor:pointer;">
+                                <input type="radio" name="payment-method" value="card_offline"
+                                       class="form-check-input me-2"
+                                       {% if not settings.online_payment_enabled %}checked{% endif %}>
+                                <span class="ms-10">Оплата картой в салоне</span>
+                            </label>
+                            <label class="d-flex align-items-center" style="cursor:pointer;">
+                                <input type="radio" name="payment-method" value="cash"
+                                       class="form-check-input me-2">
+                                <span class="ms-10">Оплата наличными в салоне</span>
+                            </label>
+                        </div>
+
                         <div id="modal-alert"></div>
-                        
+
                         <button type="submit" id="confirm-booking"
                                 class="btn-black t-btn" style="width: 100%; margin-top: 15px;">
                             Подтвердить запись
@@ -953,32 +975,57 @@ async function handleConfirmBooking(e) {
     const originalText = btn.textContent;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Создаём запись...';
     btn.disabled = true;
-    const requestData = {
-        ...bookingData,
-        client: {
-            name: document.getElementById('client-name').value.trim(),
-            phone: document.getElementById('client-phone').value.replace(/\D/g, ''),
-            email: document.getElementById('client-email').value.trim() || 'no-email@formulatela.ru'
-        },
-        comment: document.getElementById('client-comment').value.trim()
+
+    const paymentMethodEl = document.querySelector('input[name="payment-method"]:checked');
+    const paymentMethod = paymentMethodEl ? paymentMethodEl.value : 'cash';
+    const optionIdStr = (document.getElementById('option-select') || {}).value || '';
+    const optionId = parseInt(optionIdStr, 10);
+
+    const payload = {
+        service_option_id: optionId,
+        staff_id: bookingData.staff_id,
+        date: bookingData.date,
+        time: bookingData.time,
+        client_name: document.getElementById('client-name').value.trim(),
+        client_phone: document.getElementById('client-phone').value.trim(),
+        client_email: document.getElementById('client-email').value.trim(),
+        comment: document.getElementById('client-comment').value.trim(),
+        payment_method: paymentMethod
     };
+
     try {
-        const resp = await fetch(API_BASE_URL + '/api/booking/create/', {
+        const resp = await fetch(API_BASE_URL + '/api/services/order/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(payload)
         });
         const data = await resp.json();
         if (resp.ok && data.success) {
-            showModalAlert('Запись создана! ID: ' + data.data.booking_id, 'success');
-            setTimeout(() => window.location.reload(), 2000);
+            // Онлайн-оплата — редиректим клиента на страницу YooKassa.
+            if (data.payment_method === 'online' && data.payment_url) {
+                window.location.href = data.payment_url;
+                return;
+            }
+            // Офлайн — показываем success-сообщение и идём на страницу спасибо.
+            showModalAlert(data.message || 'Запись подтверждена!', 'success');
+            const orderNumber = data.order_number || '';
+            setTimeout(() => {
+                window.location.href = '/payments/success/?order=' + encodeURIComponent(orderNumber);
+            }, 1500);
         } else {
-            showModalAlert(data.error || 'Ошибка при создании записи', 'danger');
-            btn.textContent = originalText; btn.disabled = false;
+            let err = data.error || 'Ошибка при создании записи';
+            if (data.errors) {
+                const fields = Object.keys(data.errors).join(', ');
+                err = err + ' (' + fields + ')';
+            }
+            showModalAlert(err, 'danger');
+            btn.textContent = originalText;
+            btn.disabled = false;
         }
     } catch (err) {
         showModalAlert('Ошибка соединения с сервером', 'danger');
-        btn.textContent = originalText; btn.disabled = false;
+        btn.textContent = originalText;
+        btn.disabled = false;
     }
 }
 

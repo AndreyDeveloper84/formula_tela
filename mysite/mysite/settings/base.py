@@ -146,6 +146,10 @@ YOOKASSA_RETURN_URL = os.getenv(
     "YOOKASSA_RETURN_URL",
     "https://formulatela58.ru/payments/success/?order={order_number}",
 )
+# Webhook IP whitelist. Если True (default) — webhook отвечает 403 на запросы
+# не от официальных IP YooKassa. Выключать только в локальной разработке и
+# тестах (ngrok, CI).
+YOOKASSA_WEBHOOK_STRICT_IP = os.getenv("YOOKASSA_WEBHOOK_STRICT_IP", "1") not in ("0", "false", "False")
 
 # === Django cache (rate limit + booking idempotency) ===
 # Redis DB 1 — изолирован от Celery broker (DB 0), чтобы ключи кэша не

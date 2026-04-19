@@ -529,22 +529,78 @@ class BookingRequestAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
     list_display = (
         "number", "order_type", "client_name", "client_phone",
-        "total_amount", "status", "created_at",
+        "total_amount", "payment_method", "payment_status",
+        "status", "created_at",
     )
-    list_filter = ("status", "order_type", "created_at")
+    list_filter = (
+        "status", "order_type", "payment_method", "payment_status",
+        "created_at",
+    )
     list_editable = ("status",)
-    search_fields = ("number", "client_name", "client_phone", "client_email")
-    readonly_fields = ("number", "created_at", "updated_at")
+    search_fields = (
+        "number", "client_name", "client_phone", "client_email",
+        "payment_id", "yclients_record_id",
+    )
+    readonly_fields = (
+        "number", "created_at", "updated_at",
+        "payment_id", "payment_url", "paid_at",
+        "yclients_record_id", "yclients_record_hash",
+    )
+    autocomplete_fields = ("service", "service_option", "bundle")
+    actions = ["action_recreate_payment_link"]
+
     fieldsets = (
         ("Заказ", {"fields": ("number", "order_type", "status", "total_amount")}),
         ("Клиент", {"fields": ("client_name", "client_phone", "client_email")}),
         ("Оплата", {
-            "fields": ("payment_method", "payment_id", "paid_at"),
+            "fields": (
+                "payment_method", "payment_status",
+                "payment_id", "payment_url", "paid_at",
+            ),
+        }),
+        ("Услуга / запись", {
+            "fields": (
+                "service", "service_option",
+                "staff_id", "scheduled_at",
+                "yclients_record_id", "yclients_record_hash",
+            ),
             "classes": ["collapse"],
         }),
+        ("Комплекс", {"fields": ("bundle",), "classes": ["collapse"]}),
         ("Примечания", {"fields": ("comment", "admin_note")}),
         ("Даты", {"fields": ("created_at", "updated_at")}),
     )
+
+    def action_recreate_payment_link(self, request, queryset):
+        """Пересоздать платёжную ссылку YooKassa для online-заказов.
+
+        Применим к Order(payment_method=online, payment_status in pending/canceled)
+        — полезно если клиент потерял ссылку или платёж отменился и хочется
+        попробовать заново без создания нового заказа.
+        """
+        from payments.exceptions import PaymentError
+        from payments.services import PaymentService
+
+        done, skipped, failed = 0, 0, 0
+        for order in queryset:
+            if order.payment_method != "online" or order.payment_status not in ("pending", "canceled"):
+                skipped += 1
+                continue
+            order.payment_id = ""
+            order.payment_url = ""
+            try:
+                PaymentService().create_for_order(order)
+                done += 1
+            except PaymentError as exc:
+                order.admin_note = f"{order.admin_note}\n[recreate] {exc}".strip()
+                order.save(update_fields=["admin_note", "updated_at"])
+                failed += 1
+        self.message_user(
+            request,
+            f"Пересоздано: {done}, пропущено (не online/pending): {skipped}, ошибок: {failed}",
+        )
+
+    action_recreate_payment_link.short_description = "Пересоздать платёжную ссылку (YooKassa)"
 
 
 class CertificateRedemptionInline(admin.TabularInline):

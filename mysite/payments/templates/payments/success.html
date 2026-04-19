@@ -1,0 +1,63 @@
+{% extends "website/base.html" %}
+{% load static %}
+
+{% block title %}Оплата принята — Формула Тела{% endblock %}
+{% block canonical %}<meta name="robots" content="noindex, follow">{% endblock %}
+
+{% block content %}
+<section class="service mt-40 mb-72">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-7">
+                <div class="booking-summary"
+                     style="background:#f5f5f5;padding:30px;border-radius:12px;">
+                    <h1 class="semi mb-20">Оплата получена</h1>
+
+                    {% if order_number %}
+                        <p class="mb-15">
+                            Номер заказа: <strong>{{ order_number }}</strong>
+                        </p>
+                    {% endif %}
+
+                    <div id="payment-spinner" class="mb-15">
+                        <div class="spinner-border text-primary" role="status"
+                             style="width:2rem;height:2rem;"></div>
+                        <span class="ms-10 op50" id="payment-status-text">
+                            Проверяем статус оплаты…
+                        </span>
+                    </div>
+
+                    <div id="payment-pending-block" style="display:none;"
+                         class="alert alert-info">
+                        <span id="payment-pending-text"></span>
+                    </div>
+
+                    <div id="payment-success-block" style="display:none;">
+                        <div class="alert alert-success mb-20">
+                            <strong>Запись подтверждена.</strong>
+                            <span id="payment-record" class="op50 d-block mt-10"></span>
+                        </div>
+                        <p class="op50 mb-20">
+                            Мастер ждёт вас в указанное время.
+                            Если нужно перенести или отменить визит —
+                            позвоните в салон.
+                        </p>
+                    </div>
+
+                    <a href="{% url 'website:home' %}"
+                       class="btn-black t-btn d-inline-block mt-10">
+                        На главную
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+{% if order_number %}
+<script>document.body.setAttribute("data-order", "{{ order_number|escapejs }}");</script>
+<script src="{% static 'js/payment-status-poll.js' %}"></script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "website/base.html" %}
+
+{% block title %}Оплата отменена — Формула Тела{% endblock %}
+{% block canonical %}<meta name="robots" content="noindex, follow">{% endblock %}
+
+{% block content %}
+<section class="service mt-40 mb-72">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-7">
+                <div class="booking-summary"
+                     style="background:#f5f5f5;padding:30px;border-radius:12px;">
+                    <h1 class="semi mb-20">Оплата отменена</h1>
+
+                    {% if order_number %}
+                        <p class="op50 mb-15">
+                            Номер заказа: <strong>{{ order_number }}</strong>
+                        </p>
+                    {% endif %}
+
+                    <p class="mb-20">
+                        Платёж не прошёл, с вас ничего не списано.
+                        Вы можете попробовать оплатить ещё раз
+                        или выбрать оплату картой либо наличными в салоне.
+                    </p>
+
+                    <a href="{% url 'website:services' %}"
+                       class="btn-black t-btn d-inline-block mt-10 me-10">
+                        Выбрать услугу заново
+                    </a>
+                    <a href="{% url 'website:home' %}"
+                       class="btn-white t-btn d-inline-block mt-10">
+                        На главную
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

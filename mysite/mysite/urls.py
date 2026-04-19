@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 from django.http import HttpResponse, JsonResponse
 
 from agents.views import agents_health, landing_page_view
+from payments.views import payment_cancelled_page, payment_success_page
 from website.sitemaps import (
     BundleSitemap,
     CategorySitemap,
@@ -71,6 +72,9 @@ urlpatterns = [
     path('', include('website.urls')),
     path('healthz/', healthz, name='healthz'),
     path('api/agents/health/', agents_health, name='agents_health'),
+    path('api/payments/', include('payments.urls')),
+    path('payments/success/', payment_success_page, name='payment_success_page'),
+    path('payments/cancelled/', payment_cancelled_page, name='payment_cancelled_page'),
     path('robots.txt', robots_txt, name='robots_txt'),
     path('sitemap.xml', sitemap, {"sitemaps": sitemaps},
          name='django.contrib.sitemaps.views.sitemap'),

@@ -1641,6 +1641,149 @@ def api_certificate_request(request):
     })
 
 
+@csrf_exempt
+@require_POST
+@ratelimit(key="ip", rate="10/m", method="POST", block=True)
+def api_service_order_create(request):
+    """POST /api/services/order/ — оформление заказа на услугу.
+
+    Единая точка входа для 3 способов оплаты (online/cash/card_offline):
+    - Валидация payload через ServiceOrderCreateSerializer
+    - Создаёт Order(type="service") с нормализованным телефоном
+    - payment_method=online + SiteSettings.online_payment_enabled → создаёт
+      YooKassa-платёж через PaymentService, возвращает payment_url для редиректа.
+    - payment_method=cash/card_offline → создаёт запись в YClients сразу
+      через YClientsBookingService, возвращает yclients_record_id.
+    - Idempotency через кэш: двойной submit за 60с возвращает тот же ответ.
+    """
+    from website.serializers import ServiceOrderCreateSerializer
+    from payments.booking_service import YClientsBookingService
+    from payments.exceptions import (
+        BookingClientError,
+        BookingValidationError,
+        PaymentConfigError,
+        PaymentError,
+    )
+    from payments.services import PaymentService
+    from website.notifications import send_notification_telegram
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "invalid json"}, status=400)
+
+    serializer = ServiceOrderCreateSerializer(data=body)
+    if not serializer.is_valid():
+        return JsonResponse(
+            {"success": False, "error": "validation", "errors": serializer.errors},
+            status=400,
+        )
+    data = serializer.validated_data
+    payment_method = data["payment_method"]
+    option: ServiceOption = data["service_option"]
+
+    # Feature flag: online недоступен пока YooKassa не настроена
+    if payment_method == "online":
+        site = _settings()
+        if not site or not site.online_payment_enabled:
+            return JsonResponse(
+                {"success": False, "error": "online_payment_disabled"},
+                status=400,
+            )
+
+    # Idempotency (double-click, retry сетевого глитча)
+    idem_key = _booking_idempotency_key(
+        "service_order",
+        data["client_phone"],
+        data["staff_id"],
+        data["service_option_id"],
+        data["scheduled_at"].isoformat(),
+        payment_method,
+    )
+    cached = cache.get(idem_key)
+    if cached is not None:
+        logger.info("api_service_order_create: idempotent hit %s", idem_key[-16:])
+        return JsonResponse(cached)
+
+    order = Order.objects.create(
+        order_type="service",
+        status="pending",
+        payment_method=payment_method,
+        payment_status="pending" if payment_method == "online" else "not_required",
+        client_name=data["client_name"],
+        client_phone=data["client_phone"],
+        client_email=data.get("client_email", ""),
+        total_amount=option.price,
+        service=option.service,
+        service_option=option,
+        staff_id=data["staff_id"],
+        scheduled_at=data["scheduled_at"],
+        comment=data.get("comment", ""),
+    )
+
+    if payment_method == "online":
+        try:
+            payment_url = PaymentService().create_for_order(order)
+        except PaymentConfigError:
+            logger.error("api_service_order_create: YooKassa not configured")
+            order.delete()
+            return JsonResponse(
+                {"success": False, "error": "online_payment_unavailable"},
+                status=503,
+            )
+        except PaymentError as exc:
+            logger.exception("api_service_order_create: PaymentService failed")
+            order.delete()
+            return JsonResponse(
+                {"success": False, "error": "payment_create_failed", "detail": str(exc)},
+                status=502,
+            )
+        response = {
+            "success": True,
+            "order_number": order.number,
+            "payment_method": "online",
+            "payment_url": payment_url,
+        }
+    else:
+        # Offline: создаём YClients-запись сразу, клиент платит в салоне.
+        try:
+            result = YClientsBookingService().create_record(order)
+        except (BookingValidationError, BookingClientError) as exc:
+            logger.warning(
+                "api_service_order_create: YClients failed for order=%s: %s",
+                order.number, exc,
+            )
+            order.status = "cancelled"
+            order.admin_note = f"create_booking failed: {exc}"
+            order.save(update_fields=["status", "admin_note", "updated_at"])
+            return JsonResponse(
+                {"success": False, "error": "booking_failed", "detail": str(exc)},
+                status=502,
+            )
+        # Оффлайн-оплата — уведомление админу что клиент зайдёт и оплатит на кассе.
+        send_notification_telegram(
+            f"📝 Новая запись (оплата в салоне): {order.number}\n"
+            f"Клиент: {order.client_name} {order.client_phone}\n"
+            f"Услуга: {option.service.name}\n"
+            f"Мастер ID: {order.staff_id}, время: {order.scheduled_at:%d.%m.%Y %H:%M}\n"
+            f"Способ оплаты: {order.get_payment_method_display()}\n"
+            f"Сумма к оплате: {order.total_amount} ₽\n"
+            f"YClients record: {result['record_id']}"
+        )
+        response = {
+            "success": True,
+            "order_number": order.number,
+            "payment_method": payment_method,
+            "yclients_record_id": result["record_id"],
+            "message": "Запись подтверждена. Оплата — в салоне.",
+        }
+
+    cache.set(idem_key, response, BOOKING_IDEMPOTENCY_TTL)
+    return JsonResponse(response)
+
+
 @require_GET
 def api_certificate_check(request):
     """API: \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u0430 \u043f\u043e \u043a\u043e\u0434\u0443"""
