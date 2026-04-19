@@ -149,7 +149,11 @@ def order(db):
 
 @pytest.fixture
 def service_order(db, service, service_option):
-    """Заказ на услугу с онлайн-оплатой — для тестов PaymentService."""
+    """Заказ на услугу с онлайн-оплатой — для тестов PaymentService и
+    YClientsBookingService. staff_id/scheduled_at заполнены как в реальном
+    сценарии (клиент выбрал мастера и слот при создании заказа)."""
+    from datetime import datetime, timezone as dt_tz
+
     return baker.make(
         "services_app.Order",
         order_type="service",
@@ -161,6 +165,8 @@ def service_order(db, service, service_option):
         total_amount=Decimal("3000"),
         service=service,
         service_option=service_option,
+        staff_id=4416525,
+        scheduled_at=datetime(2026, 5, 15, 10, 0, tzinfo=dt_tz.utc),
     )
 
 
