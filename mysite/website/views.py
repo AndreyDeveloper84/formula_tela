@@ -51,16 +51,7 @@ def _settings():
 
 def home(request):
     # Популярные услуги + первый активный вариант ServiceOption для каждой
-    from django.db.models import Prefetch
-    options_qs = ServiceOption.objects.filter(is_active=True).order_by(
-        "order", "duration_min", "unit_type", "units"
-    )
-
-    services = (
-        Service.objects.filter(is_active=True, is_popular=True)
-        .prefetch_related(Prefetch("options", queryset=options_qs))
-        .select_related("category")
-    )[:6]
+    services = Service.objects.active().popular().with_options().with_category()[:6]
 
     top_items = []
     for svc in services:
@@ -69,25 +60,15 @@ def home(request):
         top_items.append({"service": svc, "options": opts})
 
     # Категории услуг для секции "Услуги салона"
-    categories = (
-        ServiceCategory.objects.prefetch_related("services")
-        .filter(services__is_active=True)
-        .distinct()
-        .order_by("order", "name")[:8]
-    )
+    categories = ServiceCategory.objects.with_active_services().order_by("order", "name")[:8]
 
     # Мастера для секции "Наши мастера"
-    masters = Master.objects.filter(is_active=True).prefetch_related("services").all().order_by("name")[:4]
+    masters = Master.objects.active().with_services().order_by("name")[:4]
 
-    promos = (
-        Promotion.objects.filter(is_active=True)
-        .order_by("order", "-starts_at", "title")[:3]
-    )
+    promos = Promotion.objects.active()[:3]
 
     popular_bundles_qs = (
-        Bundle.objects.filter(is_active=True, is_popular=True)
-        .prefetch_related("items", "items__option", "items__option__service")
-        .order_by("order", "id")[:3]
+        Bundle.objects.active().popular().with_items().order_by("order", "id")[:3]
     )
     popular_bundles = []
     for b in popular_bundles_qs:
@@ -99,7 +80,7 @@ def home(request):
             "price":        b.fixed_price or min_price,
         })
 
-    reviews = Review.objects.filter(is_active=True).order_by("order", "-date", "-created_at")[:3]
+    reviews = Review.objects.active()[:3]
 
     ctx = {
         "settings": _settings(),
@@ -121,11 +102,8 @@ def services(request):
     )
     
     # Промо для баннера (если нужно)
-    promos = (
-        Promotion.objects.filter(is_active=True)
-        .order_by("order", "-starts_at", "title")[:1]
-    )
-    
+    promos = Promotion.objects.active()[:1]
+
     return render(request, "website/services.html", {
         "settings": _settings(),
         "categories": categories,
@@ -134,11 +112,7 @@ def services(request):
 
 
 def promotions(request):
-    items = (
-        Promotion.objects.filter(is_active=True)
-        .prefetch_related("options", "options__service")
-        .order_by("order", "-starts_at", "title")
-    )
+    items = Promotion.objects.active().with_options()
     return render(request, "website/promotions.html", {
         "settings": _settings(),
         "promotions": items,
@@ -146,10 +120,7 @@ def promotions(request):
 
 
 def masters(request):
-    items = Master.objects.filter(is_active=True).prefetch_related(
-        "services",
-        "services__options",
-    ).all().order_by("order", "name")
+    items = Master.objects.active().with_services_and_options()
     return render(request, "website/masters.html", {
         "settings": _settings(),
         "masters": items,
@@ -158,10 +129,7 @@ def masters(request):
 
 def master_detail_by_slug(request, slug):
     """ЧПУ-страница мастера: /masters/<slug>/."""
-    svc_qs = (Service.objects
-              .filter(is_active=True)
-              .select_related("category")
-              .prefetch_related("options"))
+    svc_qs = Service.objects.active().with_category().prefetch_related("options")
     master = get_object_or_404(
         Master.objects.prefetch_related(Prefetch("services", queryset=svc_qs)),
         slug=slug,
@@ -182,14 +150,10 @@ def master_detail(request, master_id):
 def _render_master_detail(request, master):
     """Общая сборка контекста детальной страницы мастера."""
     services_qs = list(
-        master.services.filter(is_active=True)
-            .select_related("category")
-            .prefetch_related("options")
+        master.services.active().with_category().prefetch_related("options")
     )
     other_masters = list(
-        Master.objects.filter(is_active=True)
-            .exclude(pk=master.pk)
-            .order_by("order", "name")[:3]
+        Master.objects.active().exclude(pk=master.pk).order_by("order", "name")[:3]
     )
 
     seo_title = f"{master.name} — {master.specialization or 'мастер'} | Формула тела"
@@ -257,20 +221,14 @@ def _min_option(service):
     return opts[0] if opts else None
     
 def bundles(request):
-    opt_qs = (ServiceOption.objects
-              .filter(is_active=True)
-              .order_by("order", "duration_min", "unit_type", "units"))
-
-    svc_qs = (Service.objects
-              .prefetch_related(Prefetch("options", queryset=opt_qs)))
+    svc_qs = Service.objects.with_options()
 
     items_qs = (BundleItem.objects
                 .select_related("bundle", "option", "option__service")
                 .prefetch_related(Prefetch("option__service", queryset=svc_qs))
                 .order_by("order"))
 
-    bundles_qs = (Bundle.objects
-                  .filter(is_active=True)
+    bundles_qs = (Bundle.objects.active()
                   .prefetch_related(Prefetch("items", queryset=items_qs))
                   .order_by("order", "id"))
 
@@ -286,12 +244,13 @@ def bundles(request):
             "price": b.fixed_price,
         })
 
-    # Лечебные комплексы — услуги с "комплекс" в названии
-    complex_opt_qs = (ServiceOption.objects
-                      .filter(is_active=True)
+    # Лечебные комплексы — услуги с "комплекс" в названии.
+    # Нестандартный порядок (units, duration_min) — используем with_options и
+    # .order_by поверх для этой выборки.
+    complex_opt_qs = (ServiceOption.objects.active()
                       .order_by("order", "units", "duration_min"))
-    complex_services = (Service.objects
-                        .filter(is_active=True, name__icontains='комплекс')
+    complex_services = (Service.objects.active()
+                        .filter(name__icontains='комплекс')
                         .prefetch_related(Prefetch('options', queryset=complex_opt_qs))
                         .order_by('name'))
 
@@ -304,10 +263,7 @@ def bundles(request):
 
 def bundle_detail_by_slug(request, slug):
     """Детальная страница комплекса по ЧПУ-url /kompleks/<slug>/."""
-    opt_qs = (ServiceOption.objects
-              .filter(is_active=True)
-              .order_by("order", "duration_min", "unit_type", "units"))
-    svc_qs = Service.objects.prefetch_related(Prefetch("options", queryset=opt_qs))
+    svc_qs = Service.objects.with_options()
     items_qs = (BundleItem.objects
                 .select_related("option", "option__service", "option__service__category")
                 .prefetch_related(Prefetch("option__service", queryset=svc_qs))
@@ -338,9 +294,7 @@ def _render_bundle_detail(request, bundle):
 
     # Похожие комплексы — другие активные, кроме этого
     other_bundles_qs = (
-        Bundle.objects.filter(is_active=True)
-        .exclude(pk=bundle.pk)
-        .order_by("order", "id")[:3]
+        Bundle.objects.active().exclude(pk=bundle.pk).order_by("order", "id")[:3]
     )
     other_bundles = []
     for b in other_bundles_qs:
@@ -858,11 +812,7 @@ def category_services(request, category_id):
 
 def _render_category_services(request, category):
     """Общая логика рендера страницы категории (услуги + другие категории)."""
-    services_qs = (
-        category.services
-        .filter(is_active=True)
-        .prefetch_related("options")
-    )
+    services_qs = category.services.active().prefetch_related("options")
 
     other_categories = (
         ServiceCategory.objects
@@ -991,10 +941,13 @@ def _render_service_detail(request, service):
         seo_description = ""
     seo_h1 = service.seo_h1 or service.name
     
-    related_services = service.related_services.filter(
-        is_active=True
-    ).select_related('category').prefetch_related('options').order_by('order')
-    
+    related_services = (
+        service.related_services.active()
+        .with_category()
+        .prefetch_related('options')
+        .order_by('order')
+    )
+
     related_with_prices = []
     for rs in related_services:
         min_price = None
@@ -1065,10 +1018,7 @@ def api_service_options(request):
             'error': 'Услуга не найдена'
         }, status=404)
     
-    options = ServiceOption.objects.filter(
-        service=service,
-        is_active=True
-    ).order_by('order', 'duration_min', 'unit_type', 'units')
+    options = ServiceOption.objects.active().for_service(service).ordered()
     
     data = []
     for opt in options:
@@ -1382,7 +1332,7 @@ def api_wizard_categories(request):
     categories = ServiceCategory.objects.prefetch_related("services").order_by("order", "name")
     result = []
     for cat in categories:
-        active_count = cat.services.filter(is_active=True).count()
+        active_count = cat.services.active().count()
         if active_count > 0:
             result.append({
                 "id": cat.id,
@@ -1394,13 +1344,16 @@ def api_wizard_categories(request):
 @require_GET
 def api_wizard_services(request, category_id):
     """Услуги категории с первым вариантом (цена, длительность)"""
-    services = Service.objects.filter(
-        category_id=category_id, is_active=True
-    ).prefetch_related("options").order_by("name")
+    services = (
+        Service.objects.active()
+        .filter(category_id=category_id)
+        .prefetch_related("options")
+        .order_by("name")
+    )
 
     result = []
     for svc in services:
-        first_opt = svc.options.filter(is_active=True).order_by("order", "price").first()
+        first_opt = svc.options.active().order_by("order", "price").first()
         result.append({
             "id": svc.id,
             "name": svc.name,
@@ -1521,8 +1474,7 @@ logger = logging.getLogger(__name__)
 def certificates(request):
     """Страница подарочных сертификатов"""
     popular_services = (
-        Service.objects
-        .filter(is_active=True, is_popular=True)
+        Service.objects.active().popular()
         .prefetch_related("options")
         .order_by("order")[:8]
     )
