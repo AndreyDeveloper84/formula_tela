@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
+    "payments",
 ]
 
 MIDDLEWARE = [

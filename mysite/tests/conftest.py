@@ -148,6 +148,23 @@ def order(db):
 
 
 @pytest.fixture
+def service_order(db, service, service_option):
+    """Заказ на услугу с онлайн-оплатой — для тестов PaymentService."""
+    return baker.make(
+        "services_app.Order",
+        order_type="service",
+        status="pending",
+        payment_method="online",
+        payment_status="not_required",
+        client_name="Петров Пётр",
+        client_phone="+79001112233",
+        total_amount=Decimal("3000"),
+        service=service,
+        service_option=service_option,
+    )
+
+
+@pytest.fixture
 def gift_certificate(db, order, service):
     """Оплаченный подарочный сертификат на 3000 руб."""
     from datetime import date, timedelta
