@@ -1516,8 +1516,14 @@ def certificates(request):
         .prefetch_related("options")
         .order_by("order")[:8]
     )
+    bundles_as_certs = (
+        Bundle.objects.filter(is_active=True, is_certificate=True)
+        .prefetch_related("items__option__service")
+        .order_by("order")
+    )
     return render(request, "website/certificates.html", {
         "popular_services": popular_services,
+        "bundles": bundles_as_certs,
         "settings": _settings(),
     })
 
@@ -1551,7 +1557,7 @@ def api_certificate_request(request):
         )
 
     cert_type = data.get("certificate_type", "nominal")
-    if cert_type not in ("nominal", "service"):
+    if cert_type not in ("nominal", "service", "bundle"):
         return JsonResponse(
             {"success": False, "error": "Неверный тип сертификата"},
             status=400,
@@ -1560,6 +1566,7 @@ def api_certificate_request(request):
     nominal = 0
     service = None
     service_option = None
+    bundle = None
 
     if cert_type == "nominal":
         try:
@@ -1571,6 +1578,21 @@ def api_certificate_request(request):
                 {"success": False, "error": "Укажите сумму сертификата"},
                 status=400,
             )
+    elif cert_type == "bundle":
+        bundle_id = data.get("bundle_id")
+        if not bundle_id:
+            return JsonResponse(
+                {"success": False, "error": "Выберите комплекс"},
+                status=400,
+            )
+        try:
+            bundle = Bundle.objects.get(id=bundle_id, is_active=True, is_certificate=True)
+        except Bundle.DoesNotExist:
+            return JsonResponse(
+                {"success": False, "error": "Комплекс не найден"},
+                status=404,
+            )
+        nominal = int(bundle.total_price() or 0)
     else:
         service_id = data.get("service_id")
         if not service_id:
@@ -1642,6 +1664,7 @@ def api_certificate_request(request):
         nominal=nominal,
         service=service,
         service_option=service_option,
+        bundle=bundle,
         buyer_name=buyer_name,
         buyer_phone=buyer_phone,
         buyer_email=buyer_email,
@@ -1671,11 +1694,12 @@ def api_certificate_request(request):
     # --- Офлайн: уведомления администраторам ---
     from website.notifications import send_notification_email, send_notification_telegram
 
-    value_str = (
-        f"{nominal:,.0f} ₽".replace(",", " ")
-        if cert_type == "nominal"
-        else str(service)
-    )
+    if cert_type == "nominal":
+        value_str = f"{nominal:,.0f} ₽".replace(",", " ")
+    elif cert_type == "bundle" and bundle:
+        value_str = bundle.name
+    else:
+        value_str = str(service) if service else "—"
     tg_text = (
         f"🎁 Новая заявка на сертификат!\n\n"
         f"💰 {value_str}\n"

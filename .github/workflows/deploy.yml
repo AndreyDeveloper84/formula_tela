@@ -80,6 +80,9 @@ jobs:
               echo "✅ .env restored"
             fi
             
+            # Системные зависимости WeasyPrint (idempotent)
+            apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info 2>/dev/null || true
+
             # Активируем venv
             source "$VENV/bin/activate"
             pip install -r requirements.txt

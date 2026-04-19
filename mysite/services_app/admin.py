@@ -386,9 +386,9 @@ class BundleItemInline(admin.TabularInline):
 
 @admin.register(Bundle)
 class BundleAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "slug", "is_active", "is_popular", "order")
-    list_editable = ("is_active", "is_popular", "order")
-    list_filter = ("is_active", "is_popular")
+    list_display = ("id", "name", "slug", "is_active", "is_popular", "is_certificate", "order")
+    list_editable = ("is_active", "is_popular", "is_certificate", "order")
+    list_filter = ("is_active", "is_popular", "is_certificate")
     search_fields = ("name", "description", "slug", "seo_title")
     prepopulated_fields = {"slug": ("name",)}
     inlines = [BundleItemInline]
@@ -400,6 +400,10 @@ class BundleAdmin(admin.ModelAdmin):
             "description": "URL вида /kompleks/<slug>/. slug автозаполняется из названия.",
         }),
         ("Настройки", {"fields": ("is_active", "is_popular", "order")}),
+        ("Сертификат", {
+            "fields": ("is_certificate", "certificate_theme"),
+            "description": "Включите, чтобы комплекс появился на странице /certificates/ как подарочный сертификат.",
+        }),
     )
 
 

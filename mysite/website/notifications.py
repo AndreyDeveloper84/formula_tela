@@ -11,7 +11,7 @@ import logging
 
 import requests as http_requests
 from django.conf import settings as django_settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage, send_mail
 
 logger = logging.getLogger(__name__)
 
@@ -58,16 +58,21 @@ def get_notification_recipients() -> list[str]:
     return [fallback] if fallback else []
 
 
-def send_certificate_email(order, cert) -> bool:
-    """Отправляет покупателю email с кодом сертификата после оплаты."""
+def send_certificate_email(order, cert, pdf_bytes: bytes | None = None) -> bool:
+    """Отправляет покупателю email с кодом сертификата после оплаты.
+
+    Если передан pdf_bytes — прикрепляет PDF-файл сертификата.
+    """
     if not order.client_email:
         return False
 
-    value_str = (
-        f"{cert.nominal:,.0f} ₽".replace(",", " ")
-        if cert.certificate_type == "nominal"
-        else str(cert.service)
-    )
+    if cert.certificate_type == "nominal":
+        value_str = f"{cert.nominal:,.0f} ₽".replace(",", " ")
+    elif cert.certificate_type == "bundle" and cert.bundle:
+        value_str = cert.bundle.name
+    else:
+        value_str = str(cert.service) if cert.service else "—"
+
     recipient_line = (
         f"Получатель: {cert.recipient_name}\n" if cert.recipient_name else ""
     )
@@ -87,13 +92,19 @@ def send_certificate_email(order, cert) -> bool:
         f"Пенза, ул. Пушкина, 45"
     )
     try:
-        send_mail(
+        email = EmailMessage(
             subject=f"Ваш сертификат {cert.code} — Формула тела",
-            message=body,
+            body=body,
             from_email=None,
-            recipient_list=[order.client_email],
-            fail_silently=True,
+            to=[order.client_email],
         )
+        if pdf_bytes:
+            email.attach(
+                f"certificate_{cert.code}.pdf",
+                pdf_bytes,
+                "application/pdf",
+            )
+        email.send(fail_silently=True)
         return True
     except Exception as exc:
         logger.error("send_certificate_email failed: %s", exc)
