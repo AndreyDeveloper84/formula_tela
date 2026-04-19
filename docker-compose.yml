@@ -69,7 +69,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: formula_tela_worker
-    command: celery -A mysite worker -l info --concurrency 2
+    command: celery -A mysite worker -Q formula_tela -l info --concurrency 2
     volumes:
       - ./mysite:/app/mysite
     environment:

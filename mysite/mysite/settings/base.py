@@ -167,10 +167,13 @@ CACHES = {
 
 # === Celery ===
 from celery.schedules import crontab  # noqa: E402
+from kombu import Queue  # noqa: E402
 
 CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
-CELERY_TIMEZONE = TIME_ZONE
+# Расписание Celery считаем в локальном часовом поясе салона, чтобы "12:00"
+# означало именно 12:00 по Москве, а не 09:00 UTC.
+CELERY_TIMEZONE = os.getenv("CELERY_TIMEZONE", "Europe/Moscow")
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 # Выделяем задачи formula_tela в отдельную queue, чтобы business-markets
@@ -179,34 +182,41 @@ CELERY_ACCEPT_CONTENT = ["json"]
 # CELERY_DEFAULT_QUEUE — старое имя Celery 3.x, игнорируется в Celery 5+.
 # Правильное имя: CELERY_TASK_DEFAULT_QUEUE (namespace CELERY_ + task_default_queue).
 CELERY_TASK_DEFAULT_QUEUE = "formula_tela"
+CELERY_TASK_QUEUES = (Queue("formula_tela"),)
+CELERY_TASK_ROUTES = {
+    "agents.tasks.*": {"queue": "formula_tela"},
+    "payments.tasks.*": {"queue": "formula_tela"},
+}
 CELERY_BEAT_SCHEDULE = {
-    "daily-agents-9am": {
+    "daily-agents-12pm-msk": {
         "task": "agents.tasks.run_daily_agents",
-        "schedule": crontab(hour=9, minute=0),
+        "schedule": crontab(hour=12, minute=0),
     },
-    "weekly-agents-monday-8am": {
+    "weekly-agents-monday-11am-msk": {
         "task": "agents.tasks.run_weekly_agents",
-        "schedule": crontab(hour=8, minute=0, day_of_week="monday"),
+        "schedule": crontab(hour=11, minute=0, day_of_week="monday"),
     },
-    "daily-rank-snapshots-7am": {
+    "daily-rank-snapshots-10am-msk": {
         "task": "agents.tasks.collect_rank_snapshots",
-        "schedule": crontab(hour=7, minute=0),
+        "schedule": crontab(hour=10, minute=0),
     },
-    "weekly-trend-scout-monday-0730": {
+    "weekly-trend-scout-monday-1030-msk": {
         "task": "agents.tasks.collect_trends",
-        "schedule": crontab(hour=7, minute=30, day_of_week="monday"),
+        "schedule": crontab(hour=10, minute=30, day_of_week="monday"),
     },
-    "weekly-generate-landings-sunday-2200": {
+    # Исторически задача шла в воскресенье 22:00 UTC, что соответствует
+    # понедельнику 01:00 по Москве. Фиксируем локальное время явно.
+    "weekly-generate-landings-monday-0100-msk": {
         "task": "agents.tasks.generate_missing_landings",
-        "schedule": crontab(hour=22, minute=0, day_of_week="sunday"),
+        "schedule": crontab(hour=1, minute=0, day_of_week="monday"),
     },
-    "daily-retention-metrics-8am": {
+    "daily-retention-metrics-11am-msk": {
         "task": "agents.tasks.collect_retention_metrics",
-        "schedule": crontab(hour=8, minute=0),
+        "schedule": crontab(hour=11, minute=0),
     },
-    "daily-landing-qc-6am": {
+    "daily-landing-qc-9am-msk": {
         "task": "agents.tasks.run_landing_qc",
-        "schedule": crontab(hour=6, minute=0),
+        "schedule": crontab(hour=9, minute=0),
     },
 }
 

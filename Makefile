@@ -28,7 +28,7 @@ psql:         ## Открыть psql в контейнере БД
 	docker-compose exec db psql -U mysite_user -d mysite_db
 
 worker:       ## Celery worker (локально, требует `make db`)
-	cd mysite && celery -A mysite worker -l info
+	cd mysite && celery -A mysite worker -Q formula_tela -l info
 
 beat:         ## Celery beat планировщик (локально, требует `make db`)
 	cd mysite && celery -A mysite beat -l info
