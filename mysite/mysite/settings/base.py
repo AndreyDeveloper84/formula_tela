@@ -133,6 +133,19 @@ YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "")
 YCLIENTS_USER_TOKEN = os.getenv("YCLIENTS_USER_TOKEN", "")
 YCLIENTS_COMPANY_ID = os.getenv("YCLIENTS_COMPANY_ID", "")
 
+# === YooKassa API Configuration ===
+# Онлайн-оплата услуг. Кнопка «Оплатить онлайн» показывается клиентам
+# только когда SiteSettings.online_payment_enabled = True И креденшелы ниже
+# заполнены — это feature flag, переключается через /admin/ без деплоя.
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "")
+# Куда YooKassa редиректит клиента после оплаты. Поддерживает плейсхолдер
+# {order_number}, подставляется в PaymentService.create_for_order.
+YOOKASSA_RETURN_URL = os.getenv(
+    "YOOKASSA_RETURN_URL",
+    "https://formulatela58.ru/payments/success/?order={order_number}",
+)
+
 # === Django cache (rate limit + booking idempotency) ===
 # Redis DB 1 — изолирован от Celery broker (DB 0), чтобы ключи кэша не
 # пересекались с очередью задач. Локально достаточно дефолтного
@@ -158,7 +171,9 @@ CELERY_ACCEPT_CONTENT = ["json"]
 # Выделяем задачи formula_tela в отдельную queue, чтобы business-markets
 # worker (тот же Redis, DB 0) не воровал наши задачи. Без этого оба worker'а
 # слушают дефолтную queue "celery" → race condition → задачи теряются.
-CELERY_DEFAULT_QUEUE = "formula_tela"
+# CELERY_DEFAULT_QUEUE — старое имя Celery 3.x, игнорируется в Celery 5+.
+# Правильное имя: CELERY_TASK_DEFAULT_QUEUE (namespace CELERY_ + task_default_queue).
+CELERY_TASK_DEFAULT_QUEUE = "formula_tela"
 CELERY_BEAT_SCHEDULE = {
     "daily-agents-9am": {
         "task": "agents.tasks.run_daily_agents",
