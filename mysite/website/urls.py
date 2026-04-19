@@ -28,6 +28,8 @@ urlpatterns = [
     path('api/booking/available_times/', views.api_available_times, name='api_available_times'),
     path('api/booking/create/', views.api_create_booking, name='api_create_booking'),
     path('api/booking/service_options/', views.api_service_options, name='api_service_options'),
+    # Customer-facing API — оплата услуги онлайн или офлайн (см. payments/)
+    path('api/services/order/', views.api_service_order_create, name='api_service_order_create'),
     # API endpoints для комплексов
     path('api/bundle/request/', views.api_bundle_request, name='api_bundle_request'),
     # API endpoints для сертификатов

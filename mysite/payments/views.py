@@ -9,7 +9,7 @@ import logging
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
 from payments.exceptions import PaymentClientError, PaymentConfigError
@@ -113,3 +113,30 @@ def _handle_canceled(order: Order) -> None:
         f"⚠️ Платёж отменён: заказ {order.number} ({order.total_amount} ₽)"
     )
     logger.info("yookassa_webhook: order=%s → canceled", order.number)
+
+
+@require_GET
+def payment_status(request):
+    """GET /api/payments/status/?order=<number>
+
+    Лёгкий endpoint для polling со страницы /payments/success/.
+    Фронт дёргает его каждые 2-3 сек и ждёт payment_status=succeeded +
+    fulfilled=True (YClients record создан).
+    """
+    order_number = request.GET.get("order", "").strip()
+    if not order_number:
+        return HttpResponseBadRequest("order param required")
+    try:
+        order = Order.objects.only(
+            "number", "payment_status", "status", "yclients_record_id"
+        ).get(number=order_number)
+    except Order.DoesNotExist:
+        return JsonResponse({"success": False, "error": "not found"}, status=404)
+    return JsonResponse({
+        "success": True,
+        "order_number": order.number,
+        "payment_status": order.payment_status,
+        "order_status": order.status,
+        "yclients_record_id": order.yclients_record_id,
+        "fulfilled": bool(order.yclients_record_id),
+    })
