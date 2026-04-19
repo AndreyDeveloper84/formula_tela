@@ -86,7 +86,7 @@ class SEOGrowthAgent:
             by_service[name] = by_service.get(name, 0) + 1
         top_services = sorted(by_service.items(), key=lambda x: x[1], reverse=True)[:10]
 
-        active_services = Service.objects.filter(is_active=True).count()
+        active_services = Service.objects.active().count()
 
         return {
             "total_leads": total,

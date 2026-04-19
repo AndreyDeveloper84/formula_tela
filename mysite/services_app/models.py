@@ -2,6 +2,15 @@ from django.db import models
 from django.db.models import Q
 from decimal import Decimal
 
+from .managers import (
+    BundleQuerySet,
+    MasterQuerySet,
+    PromotionQuerySet,
+    ReviewQuerySet,
+    ServiceCategoryQuerySet,
+    ServiceOptionQuerySet,
+    ServiceQuerySet,
+)
 from .validators import validate_image_upload, validate_video_upload
 
 
@@ -143,6 +152,8 @@ class Service(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создана")
     updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлена")
 
+    objects = ServiceQuerySet.as_manager()
+
     class Meta:
         verbose_name = "Услуга"
         verbose_name_plural = "Услуги"
@@ -204,6 +215,8 @@ class ServiceOption(models.Model):
         null=True,
         verbose_name="ID услуги в YCLIENTS"
     )
+
+    objects = ServiceOptionQuerySet.as_manager()
 
     class Meta:
         verbose_name = "Вариант услуги"
@@ -272,6 +285,8 @@ class ServiceCategory(models.Model):
         "SEO Description", max_length=300, blank=True, default="",
         help_text="Для <meta description>. До 160 символов.",
     )
+
+    objects = ServiceCategoryQuerySet.as_manager()
 
     class Meta:
         ordering = ["order", "name"]
@@ -662,6 +677,8 @@ class Master(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
 
+    objects = MasterQuerySet.as_manager()
+
     class Meta:
         verbose_name = "Мастер"
         verbose_name_plural = "Мастера"
@@ -752,6 +769,8 @@ class Bundle(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создан")
     updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлён")
+
+    objects = BundleQuerySet.as_manager()
 
     class Meta:
         verbose_name = "Комплекс (набор услуг)"
@@ -896,6 +915,8 @@ class Promotion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
 
+    objects = PromotionQuerySet.as_manager()
+
     class Meta:
         verbose_name = "Акция"
         verbose_name_plural = "Акции"
@@ -922,7 +943,9 @@ class Review(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
-    
+
+    objects = ReviewQuerySet.as_manager()
+
     class Meta:
         verbose_name = "Отзыв"
         verbose_name_plural = "Отзывы"
@@ -930,10 +953,10 @@ class Review(models.Model):
         indexes = [
             models.Index(fields=["is_active", "order"]),
         ]
-    
+
     def __str__(self):
         return f"{self.author_name} - {self.date}"
-    
+
     def get_initial_letter(self):
         """Возвращает первую букву имени для аватара"""
         return self.author_name[0].upper() if self.author_name else "?"

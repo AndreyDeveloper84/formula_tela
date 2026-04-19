@@ -86,11 +86,7 @@ class SEOLandingQCAgent:
         task.save(update_fields=["status"])
 
         try:
-            landings = list(
-                LandingPage.objects.filter(
-                    status__in=[LandingPage.STATUS_DRAFT, "review"]
-                ).order_by("slug")
-            )
+            landings = list(LandingPage.objects.needs_qc().order_by("slug"))
 
             if not landings:
                 logger.info("SEOLandingQCAgent: нет draft/review лендингов для проверки")

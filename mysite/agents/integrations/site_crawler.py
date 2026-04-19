@@ -77,7 +77,7 @@ class TechnicalSEOWatchdog:
         from services_app.models import Service
 
         urls = []
-        services = Service.objects.filter(is_active=True).only("slug", "name")
+        services = Service.objects.active().only("slug", "name")
         for svc in services:
             if not svc.slug:
                 logger.warning(
@@ -281,7 +281,7 @@ class TechnicalSEOWatchdog:
 
         # --- Шаг 3: строим ожидаемые URL из БД ---
         db_service_urls = set()
-        services = Service.objects.filter(is_active=True).only("slug")
+        services = Service.objects.active().only("slug")
         for svc in services:
             if svc.slug:
                 db_service_urls.add(f"{self.base_url}/uslugi/{svc.slug}/")
