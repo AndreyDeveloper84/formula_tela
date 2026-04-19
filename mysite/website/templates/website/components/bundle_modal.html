@@ -49,6 +49,23 @@
                             <textarea id="bm-comment" rows="3" placeholder="Пожелания по дате, времени или мастеру"></textarea>
                         </div>
 
+                        <div class="payment-method-group mt-20 mb-10">
+                            <div class="semi mb-10">Способ оплаты</div>
+                            {% if settings.online_payment_enabled %}
+                            <label class="d-flex align-items-center mb-10" style="cursor:pointer;">
+                                <input type="radio" name="bundle-payment-method" value="online"
+                                       class="form-check-input me-2" checked>
+                                <span class="ms-10">Оплатить онлайн (банковской картой)</span>
+                            </label>
+                            {% endif %}
+                            <label class="d-flex align-items-center" style="cursor:pointer;">
+                                <input type="radio" name="bundle-payment-method" value="cash"
+                                       class="form-check-input me-2"
+                                       {% if not settings.online_payment_enabled %}checked{% endif %}>
+                                <span class="ms-10">Наличными или картой при посещении</span>
+                            </label>
+                        </div>
+
                         <div id="bm-alert"></div>
 
                         <button type="submit" id="bm-submit" class="btn-black t-btn" style="width: 100%; margin-top: 10px;">

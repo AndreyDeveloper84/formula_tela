@@ -58,6 +58,48 @@ def get_notification_recipients() -> list[str]:
     return [fallback] if fallback else []
 
 
+def send_certificate_email(order, cert) -> bool:
+    """Отправляет покупателю email с кодом сертификата после оплаты."""
+    if not order.client_email:
+        return False
+
+    value_str = (
+        f"{cert.nominal:,.0f} ₽".replace(",", " ")
+        if cert.certificate_type == "nominal"
+        else str(cert.service)
+    )
+    recipient_line = (
+        f"Получатель: {cert.recipient_name}\n" if cert.recipient_name else ""
+    )
+    message_line = f"Пожелание: {cert.message}\n" if cert.message else ""
+
+    body = (
+        f"Здравствуйте, {cert.buyer_name}!\n\n"
+        f"Ваш подарочный сертификат оплачен.\n\n"
+        f"Код сертификата: {cert.code}\n"
+        f"Номинал: {value_str}\n"
+        f"{recipient_line}"
+        f"{message_line}"
+        f"Действителен до: {cert.valid_until}\n\n"
+        f"Для использования сертификата назовите код при записи или визите.\n"
+        f"Проверить баланс: formulatela58.ru/certificates/?code={cert.code}\n\n"
+        f"Студия «Формула тела» — 8 (8412) 39-34-33\n"
+        f"Пенза, ул. Пушкина, 45"
+    )
+    try:
+        send_mail(
+            subject=f"Ваш сертификат {cert.code} — Формула тела",
+            message=body,
+            from_email=None,
+            recipient_list=[order.client_email],
+            fail_silently=True,
+        )
+        return True
+    except Exception as exc:
+        logger.error("send_certificate_email failed: %s", exc)
+        return False
+
+
 def send_notification_email(subject: str, message: str) -> bool:
     """Отправляет email администраторам.
 

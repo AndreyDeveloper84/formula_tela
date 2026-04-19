@@ -16,10 +16,12 @@ import logging
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
 
+from django.utils import timezone
+
 from payments.booking_service import YClientsBookingService
 from payments.exceptions import BookingClientError, BookingValidationError
-from services_app.models import Order
-from website.notifications import send_notification_telegram
+from services_app.models import GiftCertificate, Order
+from website.notifications import send_certificate_email, send_notification_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,83 @@ def fulfill_paid_order(self, order_id: int):
         f"Мастер ID: {order.staff_id}, время: {order.scheduled_at:%d.%m.%Y %H:%M}\n"
         f"YClients record: {result['record_id']}"
     )
+
+
+@shared_task(
+    name="payments.tasks.fulfill_paid_certificate",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    ignore_result=True,
+)
+def fulfill_paid_certificate(self, order_id: int):
+    """Активировать сертификат после успешной оплаты, уведомить админа и покупателя."""
+    try:
+        order = Order.objects.get(pk=order_id)
+    except Order.DoesNotExist:
+        logger.error("fulfill_paid_certificate: order id=%s not found", order_id)
+        return
+
+    try:
+        cert = GiftCertificate.objects.get(order=order)
+    except GiftCertificate.DoesNotExist:
+        logger.error("fulfill_paid_certificate: no certificate for order=%s", order.number)
+        return
+
+    if cert.status == "paid":
+        logger.info("fulfill_paid_certificate: order=%s already paid, skip", order.number)
+        return
+
+    cert.status = "paid"
+    cert.paid_at = timezone.now()
+    cert.is_active = True
+    cert.save(update_fields=["status", "paid_at", "is_active", "updated_at"])
+
+    value_str = (
+        f"{cert.nominal:,.0f} ₽".replace(",", " ")
+        if cert.certificate_type == "nominal"
+        else str(cert.service)
+    )
+    send_notification_telegram(
+        f"🎁 Сертификат оплачен: {cert.code}\n"
+        f"Тип: {cert.get_certificate_type_display()} — {value_str}\n"
+        f"Покупатель: {order.client_name} {order.client_phone}\n"
+        f"Получатель: {cert.recipient_name or '—'} {cert.recipient_phone or ''}\n"
+        f"Действителен до: {cert.valid_until}\n"
+        f"Заказ: {order.number}"
+    )
+
+    if order.client_email:
+        send_certificate_email(order, cert)
+
+    logger.info("fulfill_paid_certificate: order=%s cert=%s activated", order.number, cert.code)
+
+
+@shared_task(
+    name="payments.tasks.fulfill_paid_bundle",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    ignore_result=True,
+)
+def fulfill_paid_bundle(self, order_id: int):
+    """Подтвердить оплату комплекса, уведомить админа."""
+    try:
+        order = Order.objects.select_related("bundle").get(pk=order_id)
+    except Order.DoesNotExist:
+        logger.error("fulfill_paid_bundle: order id=%s not found", order_id)
+        return
+
+    bundle = order.bundle
+    send_notification_telegram(
+        f"📦 Комплекс оплачен: {bundle.name if bundle else '—'}\n"
+        f"Сумма: {order.total_amount} ₽\n"
+        f"Клиент: {order.client_name} {order.client_phone}\n"
+        f"Email: {order.client_email or '—'}\n"
+        f"Заказ: {order.number}\n"
+        f"⚠️ Запись на сессии — вручную через YClients"
+    )
+    logger.info("fulfill_paid_bundle: order=%s notified", order.number)
 
 
 def _append_admin_note(order: Order, text: str) -> None:

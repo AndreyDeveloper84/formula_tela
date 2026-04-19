@@ -33,8 +33,8 @@ JS для модалки заявки на комплекс. Подключае�
 
     async function submitBundleRequest() {
         const btn = document.getElementById('bm-submit');
-        const alert = document.getElementById('bm-alert');
-        btn.disabled = true; btn.textContent = 'Отправка...'; alert.innerHTML = '';
+        const alertEl = document.getElementById('bm-alert');
+        btn.disabled = true; btn.textContent = 'Отправка...'; alertEl.innerHTML = '';
 
         const name = document.getElementById('bm-name').value.trim();
         const phone = document.getElementById('bm-phone').value.trim();
@@ -42,9 +42,12 @@ JS для модалки заявки на комплекс. Подключае�
         const comment = document.getElementById('bm-comment').value.trim();
 
         if (!name || !phone) {
-            alert.innerHTML = '<div class="alert alert-danger">Заполните имя и телефон</div>';
+            alertEl.innerHTML = '<div class="alert alert-danger">Заполните имя и телефон</div>';
             btn.disabled = false; btn.textContent = 'Отправить заявку'; return;
         }
+
+        const pmEl = document.querySelector('input[name="bundle-payment-method"]:checked');
+        const paymentMethod = pmEl ? pmEl.value : 'cash';
 
         try {
             const r = await fetch(`${API}/api/bundle/request/`, {
@@ -53,18 +56,23 @@ JS для модалки заявки на комплекс. Подключае�
                 body: JSON.stringify({
                     bundle_id: curBundleId,
                     bundle_name: curBundleName,
-                    name: name, phone: phone, email: email, comment: comment
+                    name: name, phone: phone, email: email, comment: comment,
+                    payment_method: paymentMethod
                 })
             });
             const d = await r.json();
             if (d.success) {
+                if (d.payment_url) {
+                    window.location.href = d.payment_url;
+                    return;
+                }
                 document.getElementById('bundle-step-1').style.display = 'none';
                 document.getElementById('bundle-step-2').style.display = 'block';
             } else {
-                alert.innerHTML = `<div class="alert alert-danger">${d.error || 'Ошибка'}</div>`;
+                alertEl.innerHTML = `<div class="alert alert-danger">${d.error || 'Ошибка'}</div>`;
             }
         } catch(e) {
-            alert.innerHTML = '<div class="alert alert-danger">Ошибка подключения к серверу</div>';
+            alertEl.innerHTML = '<div class="alert alert-danger">Ошибка подключения к серверу</div>';
         } finally {
             btn.disabled = false; btn.textContent = 'Отправить заявку';
         }

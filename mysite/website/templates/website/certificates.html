@@ -196,6 +196,23 @@
                             <textarea id="cm-message" rows="2" placeholder="С днём рождения!"></textarea>
                         </div>
 
+                        <div class="payment-method-group mt-20 mb-10">
+                            <div class="semi mb-10">Способ оплаты</div>
+                            {% if settings.online_payment_enabled %}
+                            <label class="d-flex align-items-center mb-10" style="cursor:pointer;">
+                                <input type="radio" name="cert-payment-method" value="online"
+                                       class="form-check-input me-2" checked>
+                                <span class="ms-10">Оплатить онлайн (банковской картой)</span>
+                            </label>
+                            {% endif %}
+                            <label class="d-flex align-items-center" style="cursor:pointer;">
+                                <input type="radio" name="cert-payment-method" value="cash"
+                                       class="form-check-input me-2"
+                                       {% if not settings.online_payment_enabled %}checked{% endif %}>
+                                <span class="ms-10">Наличными или картой при посещении</span>
+                            </label>
+                        </div>
+
                         <div id="cm-alert"></div>
 
                         <button type="submit" id="cm-submit" class="btn-black t-btn" style="width: 100%; margin-top: 10px;">
@@ -323,6 +340,9 @@
             return;
         }
 
+        var pmEl = document.querySelector('input[name="cert-payment-method"]:checked');
+        var paymentMethod = pmEl ? pmEl.value : 'cash';
+
         var payload = {
             certificate_type: certType,
             nominal: certNominal,
@@ -332,7 +352,8 @@
             buyer_email: document.getElementById('cm-buyer-email').value.trim(),
             recipient_name: document.getElementById('cm-recipient-name').value.trim(),
             recipient_phone: document.getElementById('cm-recipient-phone').value.trim(),
-            message: document.getElementById('cm-message').value.trim()
+            message: document.getElementById('cm-message').value.trim(),
+            payment_method: paymentMethod
         };
 
         try {
@@ -343,6 +364,10 @@
             });
             var d = await r.json();
             if (d.success) {
+                if (d.payment_url) {
+                    window.location.href = d.payment_url;
+                    return;
+                }
                 document.getElementById('cert-step-1').style.display = 'none';
                 document.getElementById('cert-step-2').style.display = 'block';
                 if (d.order_number) {

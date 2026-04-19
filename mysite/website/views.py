@@ -1279,6 +1279,10 @@ def api_bundle_request(request):
         logger.info("api_bundle_request: idempotent hit %s", idem_key[-16:])
         return JsonResponse(cached_response)
 
+    payment_method = data.get("payment_method", "cash")
+    if payment_method not in ("online", "cash"):
+        payment_method = "cash"
+
     bundle = None
     if bundle_id:
         try:
@@ -1287,7 +1291,41 @@ def api_bundle_request(request):
         except Bundle.DoesNotExist:
             pass
 
-    req = BundleRequest.objects.create(
+    # --- Онлайн-оплата: создаём Order + YooKassa payment ---
+    if payment_method == "online":
+        site = SiteSettings.objects.first()
+        if not site or not site.online_payment_enabled:
+            return JsonResponse({"success": False, "error": "online_payment_disabled"}, status=400)
+        if not bundle:
+            return JsonResponse({"success": False, "error": "bundle_id required for online payment"}, status=400)
+
+        from payments.exceptions import PaymentError
+        from payments.services import PaymentService
+        order = Order.objects.create(
+            order_type="bundle",
+            bundle=bundle,
+            payment_method="online",
+            payment_status="pending",
+            client_name=name,
+            client_phone=phone,
+            client_email=email,
+            total_amount=bundle.total_price(),
+            comment=comment,
+        )
+        try:
+            payment_url = PaymentService().create_for_order(order)
+        except PaymentError as exc:
+            logger.error("api_bundle_request: PaymentService failed: %s", exc)
+            return JsonResponse({"success": False, "error": "payment_create_failed"}, status=502)
+        return JsonResponse({
+            "success": True,
+            "order_number": order.number,
+            "payment_method": "online",
+            "payment_url": payment_url,
+        })
+
+    # --- Офлайн: обычная заявка BundleRequest ---
+    BundleRequest.objects.create(
         bundle=bundle,
         bundle_name=bundle_name,
         client_name=name,
@@ -1480,6 +1518,7 @@ def certificates(request):
     )
     return render(request, "website/certificates.html", {
         "popular_services": popular_services,
+        "settings": _settings(),
     })
 
 
@@ -1573,9 +1612,21 @@ def api_certificate_request(request):
                 status=400,
             )
 
+    payment_method = data.get("payment_method", "cash")
+    if payment_method not in ("online", "cash"):
+        payment_method = "cash"
+
+    # --- Онлайн-оплата: проверка feature flag ---
+    site = SiteSettings.objects.first()
+    if payment_method == "online":
+        if not site or not site.online_payment_enabled:
+            return JsonResponse({"success": False, "error": "online_payment_disabled"}, status=400)
+
     # --- Создание Order ---
     order = Order.objects.create(
         order_type="certificate",
+        payment_method=payment_method,
+        payment_status="pending" if payment_method == "online" else "not_required",
         client_name=buyer_name,
         client_phone=buyer_phone,
         client_email=buyer_email,
@@ -1601,8 +1652,24 @@ def api_certificate_request(request):
         valid_until=today + timedelta(days=180),
     )
 
-    # --- Уведомления администраторам ---
-    from website.notifications import send_notification_telegram, send_notification_email
+    # --- Онлайн: создать платёж YooKassa, вернуть payment_url ---
+    if payment_method == "online":
+        from payments.exceptions import PaymentError
+        from payments.services import PaymentService
+        try:
+            payment_url = PaymentService().create_for_order(order)
+        except PaymentError as exc:
+            logger.error("api_certificate_request: PaymentService failed: %s", exc)
+            return JsonResponse({"success": False, "error": "payment_create_failed"}, status=502)
+        return JsonResponse({
+            "success": True,
+            "order_number": order.number,
+            "payment_method": "online",
+            "payment_url": payment_url,
+        })
+
+    # --- Офлайн: уведомления администраторам ---
+    from website.notifications import send_notification_email, send_notification_telegram
 
     value_str = (
         f"{nominal:,.0f} ₽".replace(",", " ")
@@ -1636,7 +1703,7 @@ def api_certificate_request(request):
 
     return JsonResponse({
         "success": True,
-        "message": "\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430! \u041c\u0435\u043d\u0435\u0434\u0436\u0435\u0440 \u0441\u0432\u044f\u0436\u0435\u0442\u0441\u044f \u0441 \u0432\u0430\u043c\u0438 \u0434\u043b\u044f \u043e\u043f\u043b\u0430\u0442\u044b.",
+        "message": "Заявка принята! Менеджер свяжется с вами для оплаты.",
         "order_number": order.number,
     })
 

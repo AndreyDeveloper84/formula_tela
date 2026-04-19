@@ -164,3 +164,135 @@ def test_order_bundle_fk_links_to_bundle():
     )
     assert order.bundle_id == b.pk
     assert b.orders.count() == 1
+
+
+# ── Онлайн-оплата комплексов ─────────────────────────────────────────────────
+
+
+import json
+from unittest.mock import MagicMock
+
+
+@pytest.mark.django_db
+class TestBundleOnlinePayment:
+    url = "/api/bundle/request/"
+
+    @pytest.fixture
+    def bundle(self, db):
+        return Bundle.objects.create(
+            name="Антицеллюлитный комплекс",
+            fixed_price=Decimal("9000"),
+            is_active=True,
+        )
+
+    @pytest.fixture
+    def online_enabled(self, db):
+        from model_bakery import baker
+        from services_app.models import SiteSettings
+        SiteSettings.objects.all().delete()
+        return baker.make(SiteSettings, online_payment_enabled=True)
+
+    @pytest.fixture
+    def mock_payment_service(self, monkeypatch):
+        svc = MagicMock()
+        svc.create_for_order.return_value = "https://yookassa.test/confirm/bundle1"
+        monkeypatch.setattr("payments.services.PaymentService", MagicMock(return_value=svc))
+        return svc
+
+    def _payload(self, bundle_id, **kwargs):
+        base = {
+            "name": "Клиент",
+            "phone": "+79990001122",
+            "bundle_id": bundle_id,
+            "payment_method": "online",
+        }
+        base.update(kwargs)
+        return base
+
+    def test_online_returns_payment_url(self, client, bundle, online_enabled, mock_payment_service):
+        resp = client.post(
+            self.url, json.dumps(self._payload(bundle.id)),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["payment_method"] == "online"
+        assert data["payment_url"] == "https://yookassa.test/confirm/bundle1"
+        assert "order_number" in data
+
+    def test_online_creates_order_with_bundle(self, client, bundle, online_enabled, mock_payment_service):
+        resp = client.post(
+            self.url, json.dumps(self._payload(bundle.id)),
+            content_type="application/json",
+        )
+        from services_app.models import Order
+        order = Order.objects.get(number=resp.json()["order_number"])
+        assert order.order_type == "bundle"
+        assert order.bundle_id == bundle.pk
+        assert order.payment_method == "online"
+        assert order.payment_status == "pending"
+
+    def test_online_disabled_returns_error(self, client, bundle, db):
+        from model_bakery import baker
+        from services_app.models import SiteSettings
+        SiteSettings.objects.all().delete()
+        baker.make(SiteSettings, online_payment_enabled=False)
+        resp = client.post(
+            self.url, json.dumps(self._payload(bundle.id)),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"] == "online_payment_disabled"
+
+    def test_online_without_bundle_id_returns_error(self, client, online_enabled, mock_payment_service):
+        payload = {"name": "Клиент", "phone": "+79990001122", "payment_method": "online"}
+        resp = client.post(self.url, json.dumps(payload), content_type="application/json")
+        assert resp.status_code == 400
+
+    def test_cash_flow_creates_bundle_request(self, client, bundle, db):
+        from unittest.mock import MagicMock, patch
+        payload = {
+            "name": "Клиент",
+            "phone": "+79990001122",
+            "bundle_id": bundle.id,
+            "payment_method": "cash",
+        }
+        with patch("website.notifications.http_requests.post", MagicMock()):
+            resp = client.post(self.url, json.dumps(payload), content_type="application/json")
+        assert resp.status_code == 200
+        from services_app.models import BundleRequest
+        assert BundleRequest.objects.filter(bundle=bundle).exists()
+
+
+@pytest.mark.django_db
+class TestFulfillPaidBundle:
+    @pytest.fixture
+    def bundle_order(self, db):
+        bundle = Bundle.objects.create(name="Спа-комплекс", fixed_price=Decimal("5000"))
+        from services_app.models import Order
+        return Order.objects.create(
+            order_type="bundle",
+            bundle=bundle,
+            payment_method="online",
+            payment_status="succeeded",
+            status="pending",
+            client_name="Клиент",
+            client_phone="+79990001122",
+            total_amount=Decimal("5000"),
+        )
+
+    def test_sends_telegram(self, bundle_order, monkeypatch):
+        mock_tg = MagicMock()
+        monkeypatch.setattr("payments.tasks.send_notification_telegram", mock_tg)
+        from payments.tasks import fulfill_paid_bundle
+        fulfill_paid_bundle(bundle_order.pk)
+        assert mock_tg.called
+        assert "Комплекс оплачен" in mock_tg.call_args[0][0]
+
+    def test_skips_nonexistent_order(self, db, monkeypatch):
+        mock_tg = MagicMock()
+        monkeypatch.setattr("payments.tasks.send_notification_telegram", mock_tg)
+        from payments.tasks import fulfill_paid_bundle
+        fulfill_paid_bundle(99999)
+        mock_tg.assert_not_called()
