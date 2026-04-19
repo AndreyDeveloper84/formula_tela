@@ -37,7 +37,7 @@ class ServiceSitemap(Sitemap):
     changefreq = "weekly"
 
     def items(self):
-        return Service.objects.filter(is_active=True, slug__isnull=False).exclude(slug="").order_by("slug")
+        return Service.objects.active().with_slug().order_by("slug")
 
     def location(self, obj):
         return reverse("website:service_detail_by_slug", kwargs={"slug": obj.slug})
@@ -51,7 +51,7 @@ class BundleSitemap(Sitemap):
     changefreq = "monthly"
 
     def items(self):
-        return Bundle.objects.filter(is_active=True, slug__isnull=False).exclude(slug="").order_by("slug")
+        return Bundle.objects.active().with_slug().order_by("slug")
 
     def location(self, obj):
         return reverse("website:bundle_detail_by_slug", kwargs={"slug": obj.slug})
@@ -65,10 +65,7 @@ class MasterSitemap(Sitemap):
     changefreq = "monthly"
 
     def items(self):
-        return (Master.objects
-                .filter(is_active=True, slug__isnull=False)
-                .exclude(slug="")
-                .order_by("slug"))
+        return Master.objects.active().with_slug().order_by("slug")
 
     def location(self, obj):
         return reverse("website:master_detail_by_slug", kwargs={"slug": obj.slug})
@@ -102,8 +99,8 @@ class LandingPageSitemap(Sitemap):
 
     def items(self):
         return (
-            LandingPage.objects
-            .filter(status=LandingPage.STATUS_PUBLISHED, published_at__isnull=False)
+            LandingPage.objects.published()
+            .filter(published_at__isnull=False)
             .order_by("slug")
         )
 
