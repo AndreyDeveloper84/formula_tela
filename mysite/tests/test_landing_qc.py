@@ -16,7 +16,7 @@ from agents.agents.qc_checks import (
     UniqueSlugCheck,
 )
 from agents.agents.seo_landing_qc import SEOLandingQCAgent
-from agents.models import AgentTask, LandingPage
+from agents.models import AgentTask, LandingPage, SeoTask
 
 
 def _make_landing(**kwargs):
@@ -167,15 +167,25 @@ def test_content_duplicate_fails_on_copy():
 # ── SEOLandingQCAgent (integration) ────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_qc_agent_publishes_passing_landing():
+def test_qc_agent_marks_passing_landing_as_review_not_publish(mock_telegram):
+    """CLAUDE.md запрещает автопубликацию: QC-passed → review + SeoTask, НЕ published."""
     lp = _make_landing(slug="good-landing", status=LandingPage.STATUS_DRAFT)
     task = AgentTask.objects.create(agent_type=AgentTask.LANDING_QC)
     agent = SEOLandingQCAgent()
     agent.run(task)
 
     lp.refresh_from_db()
-    assert lp.status == LandingPage.STATUS_PUBLISHED
-    assert lp.published_at is not None
+    assert lp.status == LandingPage.STATUS_REVIEW
+    assert lp.published_at is None  # публикация только вручную
+
+    # SeoTask создаётся как «готов к публикации» для модерации человеком
+    ready_task = SeoTask.objects.get(
+        task_type=SeoTask.TYPE_CREATE_LANDING,
+        target_url="/good-landing/",
+    )
+    assert ready_task.priority == SeoTask.PRIORITY_HIGH
+    assert "Готов к публикации" in ready_task.title
+    assert f"/admin/agents/landingpage/{lp.pk}/change/" in ready_task.description
 
 
 @pytest.mark.django_db
@@ -188,8 +198,53 @@ def test_qc_agent_rejects_failing_landing(mock_telegram):
     agent.run(task)
 
     lp.refresh_from_db()
-    assert lp.status == "review"
+    assert lp.status == LandingPage.STATUS_REVIEW
     assert lp.published_at is None
+
+    fix_task = SeoTask.objects.get(
+        task_type=SeoTask.TYPE_FIX_TECHNICAL,
+        target_url="/new/",
+    )
+    assert fix_task.priority == SeoTask.PRIORITY_HIGH
+    assert "QC failed" in fix_task.title
+
+    task.refresh_from_db()
+    assert task.status == AgentTask.DONE
+
+
+@pytest.mark.django_db
+def test_qc_agent_does_not_duplicate_open_task_when_multiple_exist(mock_telegram):
+    """filter().first() паттерн: повторный запуск при 2+ открытых задачах не падает."""
+    _make_landing(slug="existing", h1="Дубль", status=LandingPage.STATUS_PUBLISHED)
+    lp = _make_landing(slug="dup", h1="Дубль", status=LandingPage.STATUS_DRAFT)
+
+    # Симулируем ситуацию: в БД уже есть 2 открытые задачи для того же URL
+    # (get_or_create упал бы с MultipleObjectsReturned, filter().first() — нет)
+    SeoTask.objects.create(
+        task_type=SeoTask.TYPE_FIX_TECHNICAL,
+        target_url="/dup/",
+        title="QC failed: /dup/ (старая)",
+        priority=SeoTask.PRIORITY_HIGH,
+        status=SeoTask.STATUS_OPEN,
+    )
+    SeoTask.objects.create(
+        task_type=SeoTask.TYPE_FIX_TECHNICAL,
+        target_url="/dup/",
+        title="QC failed: /dup/ (ещё одна)",
+        priority=SeoTask.PRIORITY_HIGH,
+        status=SeoTask.STATUS_IN_PROGRESS,
+    )
+
+    task = AgentTask.objects.create(agent_type=AgentTask.LANDING_QC)
+    agent = SEOLandingQCAgent()
+    agent.run(task)  # не должно бросить MultipleObjectsReturned
+
+    task.refresh_from_db()
+    assert task.status == AgentTask.DONE
+    # Новых задач не создалось — переиспользовали существующую
+    assert SeoTask.objects.filter(
+        task_type=SeoTask.TYPE_FIX_TECHNICAL, target_url="/dup/",
+    ).count() == 2
 
 
 @pytest.mark.django_db

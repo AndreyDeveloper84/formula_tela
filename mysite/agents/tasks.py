@@ -712,8 +712,9 @@ def collect_retention_metrics(self):
 def run_landing_qc(self):
     """QC-проверка draft/review LandingPage: уникальность H1/slug, блоки, ссылки, дубли.
 
-    Прошедшие все critical checks → status=published, published_at=now().
-    Не прошедшие → status=review, SeoTask создаётся, Telegram-алерт.
+    Прошедшие все critical checks → status=review + SeoTask(TYPE_CREATE_LANDING, HIGH)
+    «готов к публикации». Человек публикует вручную через admin (правило CLAUDE.md).
+    Не прошедшие → status=review + SeoTask(TYPE_FIX_TECHNICAL, HIGH), Telegram-алерт.
 
     Расписание: ежедневно 06:00 UTC (09:00 MSK) — перед run_daily_agents.
     """

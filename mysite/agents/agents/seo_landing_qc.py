@@ -1,10 +1,12 @@
 """SEOLandingQCAgent — проверка качества LandingPage перед публикацией.
 
 Паттерн Pipeline: последовательно запускает QC-проверки (Strategy classes
-из qc_checks.py), собирает результаты, решает publish/reject.
+из qc_checks.py), собирает результаты, решает ready-to-publish / reject.
 
-Лендинги, прошедшие все critical checks → status=published, published_at=now().
-Не прошедшие → status=review, SeoTask создаётся, Telegram-алерт.
+Правило CLAUDE.md: агенты НИКОГДА не публикуют контент автоматически.
+Прошедшие QC → status=review + SeoTask(TYPE_CREATE_LANDING, HIGH) «готов к публикации»,
+человек публикует вручную через admin.
+Не прошедшие → status=review + SeoTask(TYPE_FIX_TECHNICAL, HIGH), Telegram-алерт.
 """
 import logging
 from dataclasses import asdict
@@ -52,6 +54,25 @@ class SEOLandingQCAgent:
         """Запустить все checks для одного лендинга."""
         return [check.run(landing) for check in self.checks]
 
+    @staticmethod
+    def _ensure_task(task_type: str, target_url: str, title: str, description: str) -> SeoTask:
+        # filter().first() вместо get_or_create(status__in=...) — последний падает
+        # с MultipleObjectsReturned если в БД уже 2+ открытые задачи с тем же URL.
+        existing = SeoTask.objects.filter(
+            task_type=task_type,
+            target_url=target_url,
+            status__in=[SeoTask.STATUS_OPEN, SeoTask.STATUS_IN_PROGRESS],
+        ).first()
+        if existing:
+            return existing
+        return SeoTask.objects.create(
+            task_type=task_type,
+            target_url=target_url,
+            title=title,
+            description=description,
+            priority=SeoTask.PRIORITY_HIGH,
+        )
+
     def is_publishable(self, results: list) -> bool:
         """True если все critical checks прошли."""
         return not any(
@@ -78,7 +99,7 @@ class SEOLandingQCAgent:
                 task.save(update_fields=["status", "finished_at"])
                 return
 
-            published_count = 0
+            ready_count = 0
             review_count = 0
             report_items = []
 
@@ -89,33 +110,40 @@ class SEOLandingQCAgent:
                 passed_checks = [r for r in results if r.passed]
 
                 if publishable:
-                    landing.status = LandingPage.STATUS_PUBLISHED
-                    landing.published_at = timezone.now()
-                    landing.save(update_fields=["status", "published_at"])
-                    published_count += 1
+                    if landing.status != LandingPage.STATUS_REVIEW:
+                        landing.status = LandingPage.STATUS_REVIEW
+                        landing.save(update_fields=["status"])
+                    ready_count += 1
+
+                    self._ensure_task(
+                        task_type=SeoTask.TYPE_CREATE_LANDING,
+                        target_url=f"/{landing.slug}/",
+                        title=f"Готов к публикации: /{landing.slug}/",
+                        description=(
+                            f"QC пройден ({len(passed_checks)}/{len(results)} проверок). "
+                            f"Страница: /admin/agents/landingpage/{landing.pk}/change/\n"
+                            "Проверьте контент вручную и нажмите «Опубликовать»."
+                        ),
+                    )
+
                     logger.info(
-                        "SEOLandingQCAgent: /%s/ → published (%d/%d checks ok)",
+                        "SEOLandingQCAgent: /%s/ → review ready-to-publish (%d/%d checks ok)",
                         landing.slug, len(passed_checks), len(results),
                     )
                 else:
-                    if landing.status != "review":
-                        landing.status = "review"
+                    if landing.status != LandingPage.STATUS_REVIEW:
+                        landing.status = LandingPage.STATUS_REVIEW
                         landing.save(update_fields=["status"])
                     review_count += 1
 
-                    # Создаём SeoTask для ручного исправления
-                    SeoTask.objects.get_or_create(
+                    self._ensure_task(
                         task_type=SeoTask.TYPE_FIX_TECHNICAL,
                         target_url=f"/{landing.slug}/",
-                        status__in=[SeoTask.STATUS_OPEN, SeoTask.STATUS_IN_PROGRESS],
-                        defaults={
-                            "title": f"QC failed: /{landing.slug}/",
-                            "description": "\n".join(
-                                f"- [{r.severity}] {r.check_name}: {r.message}"
-                                for r in failed_checks
-                            ),
-                            "priority": SeoTask.PRIORITY_HIGH,
-                        },
+                        title=f"QC failed: /{landing.slug}/",
+                        description="\n".join(
+                            f"- [{r.severity}] {r.check_name}: {r.message}"
+                            for r in failed_checks
+                        ),
                     )
 
                     logger.warning(
@@ -134,7 +162,7 @@ class SEOLandingQCAgent:
             # AgentReport
             summary = (
                 f"QC проверено: {len(landings)} лендингов. "
-                f"Опубликовано: {published_count}. На доработку: {review_count}."
+                f"Готовы к публикации: {ready_count}. На доработку: {review_count}."
             )
             recommendations = []
             for item in report_items:
@@ -154,8 +182,10 @@ class SEOLandingQCAgent:
 
             # Telegram
             tg_lines = [f"🔍 SEO QC: {len(landings)} лендингов проверено\n"]
-            if published_count:
-                tg_lines.append(f"✅ Опубликовано: {published_count}")
+            if ready_count:
+                tg_lines.append(
+                    f"✅ Готовы к публикации: {ready_count} (требуется ручная модерация в admin)"
+                )
             if review_count:
                 tg_lines.append(f"⚠️ На доработку: {review_count}")
                 for item in report_items:
