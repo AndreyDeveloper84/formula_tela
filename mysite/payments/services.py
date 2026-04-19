@@ -58,7 +58,7 @@ class PaymentService:
 
     def _build_description(self, order: Order) -> str:
         if order.order_type == "certificate":
-            cert = order.giftcertificate_set.first()
+            cert = order.certificates.first()
             if cert and cert.certificate_type == "nominal":
                 return f"Подарочный сертификат на {cert.nominal} ₽ ({order.number})"
             if cert and cert.service:
@@ -81,7 +81,7 @@ class PaymentService:
         vat_code = getattr(settings, "YOOKASSA_VAT_CODE", 1)
 
         if order.order_type == "certificate":
-            cert = order.giftcertificate_set.first()
+            cert = order.certificates.first()
             if cert and cert.certificate_type == "nominal":
                 item_desc = f"Подарочный сертификат на {cert.nominal} ₽"
             elif cert and cert.service:
