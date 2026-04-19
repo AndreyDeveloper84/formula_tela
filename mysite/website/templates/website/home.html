@@ -120,14 +120,14 @@
             <div class="row">
                 {% for cat in categories %}
                     <div class="col-xl-3 col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% elif forloop.counter == 3 %}0.8{% elif forloop.counter == 4 %}1{% elif forloop.counter == 5 %}1.2{% elif forloop.counter == 6 %}1.4{% elif forloop.counter == 7 %}1.6{% else %}1.8{% endif %}s">
-                        <a href="{% url 'website:services' %}#category-{{ cat.id }}" class="item">
+                        <a href="{% if cat.slug %}{% url 'website:category_services_by_slug' slug=cat.slug %}{% else %}{% url 'website:category_services' category_id=cat.id %}{% endif %}" class="item">
                             {% if cat.image %}
                                 <img src="{{ cat.image.url }}" class="responsive" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                             {% else %}
                                 <img src="{% static 'images/cat1.jpg' %}" class="responsive" alt="{{ cat.name }}" title="{{ cat.name }}" loading="lazy">
                             {% endif %}
                         </a>
-                        <a class="d-flex justify-content-between" href="{% url 'website:services' %}#category-{{ cat.id }}">    
+                        <a class="d-flex justify-content-between" href="{% if cat.slug %}{% url 'website:category_services_by_slug' slug=cat.slug %}{% else %}{% url 'website:category_services' category_id=cat.id %}{% endif %}">
                             <b>{{ cat.name }}</b>
                             <span>{{ cat.services.count }} {{ cat.services.count|pluralize_ru:"услуга,услуги,услуг" }}</span>
                         </a>	
@@ -213,7 +213,7 @@
                 {% for ctx in popular_bundles %}
                     {% with b=ctx.bundle %}
                     <div class="col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% else %}0.8{% endif %}s">
-                        <a href="{% url 'website:bundles' %}#bundle-{{ b.id }}" class="item">
+                        <a href="{% if b.slug %}{% url 'website:bundle_detail_by_slug' slug=b.slug %}{% else %}{% url 'website:bundle_detail' bundle_id=b.id %}{% endif %}" class="item">
                             {% if b.image %}
                                 <img src="{{ b.image.url }}" class="responsive mn7" alt="{{ b.name }}" title="{{ b.name }}" loading="lazy">
                             {% else %}
@@ -227,7 +227,7 @@
                                 <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
                             {% endif %}
                         </a>
-                        <a class="d-flex justify-content-between mb-40" href="{% url 'website:bundles' %}#bundle-{{ b.id }}">
+                        <a class="d-flex justify-content-between mb-40" href="{% if b.slug %}{% url 'website:bundle_detail_by_slug' slug=b.slug %}{% else %}{% url 'website:bundle_detail' bundle_id=b.id %}{% endif %}">
                             <b>{{ b.name }}</b>
                             <span class="op50">{{ ctx.min_duration }} мин — {{ ctx.price|floatformat:0 }} ₽</span>
                         </a>
