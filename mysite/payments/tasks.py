@@ -164,10 +164,6 @@ def fulfill_paid_bundle(self, order_id: int):
         logger.error("fulfill_paid_bundle: order id=%s not found", order_id)
         return
 
-    if order.status == "paid":
-        logger.info("fulfill_paid_bundle: order=%s already paid, skip", order.number)
-        return
-
     bundle = order.bundle
     send_notification_telegram(
         f"📦 Комплекс оплачен: {bundle.name if bundle else '—'}\n"

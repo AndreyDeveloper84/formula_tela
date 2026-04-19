@@ -1279,6 +1279,10 @@ def api_bundle_request(request):
         logger.info("api_bundle_request: idempotent hit %s", idem_key[-16:])
         return JsonResponse(cached_response)
 
+    payment_method = data.get("payment_method", "cash")
+    if payment_method not in ("online", "cash"):
+        payment_method = "cash"
+
     bundle = None
     if bundle_id:
         try:
@@ -1287,7 +1291,41 @@ def api_bundle_request(request):
         except Bundle.DoesNotExist:
             pass
 
-    req = BundleRequest.objects.create(
+    # --- Онлайн-оплата: создаём Order + YooKassa payment ---
+    if payment_method == "online":
+        site = SiteSettings.objects.first()
+        if not site or not site.online_payment_enabled:
+            return JsonResponse({"success": False, "error": "online_payment_disabled"}, status=400)
+        if not bundle:
+            return JsonResponse({"success": False, "error": "bundle_id required for online payment"}, status=400)
+
+        from payments.exceptions import PaymentError
+        from payments.services import PaymentService
+        order = Order.objects.create(
+            order_type="bundle",
+            bundle=bundle,
+            payment_method="online",
+            payment_status="pending",
+            client_name=name,
+            client_phone=phone,
+            client_email=email,
+            total_amount=bundle.total_price(),
+            comment=comment,
+        )
+        try:
+            payment_url = PaymentService().create_for_order(order)
+        except PaymentError as exc:
+            logger.error("api_bundle_request: PaymentService failed: %s", exc)
+            return JsonResponse({"success": False, "error": "payment_create_failed"}, status=502)
+        return JsonResponse({
+            "success": True,
+            "order_number": order.number,
+            "payment_method": "online",
+            "payment_url": payment_url,
+        })
+
+    # --- Офлайн: обычная заявка BundleRequest ---
+    BundleRequest.objects.create(
         bundle=bundle,
         bundle_name=bundle_name,
         client_name=name,
