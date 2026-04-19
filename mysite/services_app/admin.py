@@ -695,72 +695,39 @@ class GiftCertificateAdmin(admin.ModelAdmin):
     @admin.action(description="Отметить как вручённые и отправить в Telegram")
     def mark_as_delivered(self, request, queryset):
         from django.utils import timezone
-        import requests as http_requests
-        from django.conf import settings as django_settings
-        import logging
+        from agents.telegram import send_telegram
 
         now = timezone.now()
-        certs = list(queryset.filter(status="paid"))
+        certs = list(queryset.filter(status="paid").select_related("order", "bundle"))
         if not certs:
             self.message_user(request, "Нет оплаченных сертификатов для вручения")
             return
 
         queryset.filter(status="paid").update(status="delivered", delivered_at=now)
 
-        tg_token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
-        tg_chat = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
         sent = 0
-
         for cert in certs:
-            if not (tg_token and tg_chat):
-                break
-            try:
-                value_str = (
-                    f"{cert.nominal:,.0f} \u20bd"
-                    if cert.certificate_type == "nominal"
-                    else str(cert.service or "\u2014")
-                )
-                caption = (
-                    f"\U0001f381 \u041f\u043e\u0434\u0430\u0440\u043e\u0447\u043d\u044b\u0439 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043a\u0430\u0442\n\n"
-                    f"\U0001f4b3 \u041a\u043e\u0434: <b>{cert.code}</b>\n"
-                    f"\U0001f4b0 {value_str}\n"
-                    f"\U0001f464 \u041f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u044c: {cert.buyer_name}\n"
-                )
-                if cert.recipient_name:
-                    caption += f"\U0001f380 \u041f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044c: {cert.recipient_name}\n"
-                if cert.message:
-                    caption += f"\U0001f4ac {cert.message}\n"
-                caption += (
-                    f"\n\u2705 \u0414\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442 \u0434\u043e: {cert.valid_until:%d.%m.%Y}"
-                )
+            if cert.certificate_type == "nominal":
+                value_str = f"{cert.nominal:,.0f} ₽"
+            elif cert.certificate_type == "bundle" and cert.bundle:
+                value_str = cert.bundle.name
+            else:
+                value_str = str(cert.service or "—")
 
-                if cert.image:
-                    with cert.image.open("rb") as img:
-                        http_requests.post(
-                            f"https://api.telegram.org/bot{tg_token}/sendPhoto",
-                            data={
-                                "chat_id": tg_chat,
-                                "caption": caption,
-                                "parse_mode": "HTML",
-                            },
-                            files={"photo": (cert.image.name, img, "image/jpeg")},
-                            timeout=10,
-                        )
-                else:
-                    http_requests.post(
-                        f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                        json={
-                            "chat_id": tg_chat,
-                            "text": caption,
-                            "parse_mode": "HTML",
-                        },
-                        timeout=5,
-                    )
+            text = (
+                f"🎁 Сертификат вручён\n\n"
+                f"💳 Код: <b>{cert.code}</b>\n"
+                f"💰 {value_str}\n"
+                f"👤 Покупатель: {cert.buyer_name}\n"
+            )
+            if cert.recipient_name:
+                text += f"🎀 Получатель: {cert.recipient_name}\n"
+            if cert.message:
+                text += f"💬 {cert.message}\n"
+            text += f"\n✅ Действителен до: {cert.valid_until:%d.%m.%Y}"
+
+            if send_telegram(text):
                 sent += 1
-            except Exception as e:
-                logging.getLogger(__name__).warning(
-                    f"Telegram send failed for {cert.code}: {e}"
-                )
 
         msg = f"Вручено сертификатов: {len(certs)}"
         if sent:
