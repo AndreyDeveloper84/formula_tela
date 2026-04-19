@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 @shared_task(name="agents.tasks.run_daily_agents", bind=True, max_retries=2)
 def run_daily_agents(self):
     """
-    Запускается Celery Beat ежедневно в 9:00.
+    Запускается Celery Beat ежедневно в 12:00 по Москве.
     Supervisor решает запуск analytics/offers.
     AnalyticsBudgetAgent запускается всегда (воронка + Метрика + Директ).
     После завершения — обновляет DailyMetric с timing данными.
@@ -59,7 +59,7 @@ def run_daily_agents(self):
 @shared_task(name="agents.tasks.run_weekly_agents", bind=True, max_retries=2)
 def run_weekly_agents(self):
     """
-    Запускается Celery Beat каждый понедельник в 08:00.
+    Запускается Celery Beat каждый понедельник в 11:00 по Москве.
     Порядок: OfferPackages → SMM → SEO → Supervisor.weekly_run (синтез бэклога).
     """
     logger.info("run_weekly_agents: старт")
