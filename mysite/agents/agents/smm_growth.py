@@ -61,18 +61,18 @@ class SMMGrowthAgent:
 
         # --- Популярные услуги ---
         popular = list(
-            Service.objects.filter(is_active=True, is_popular=True)
+            Service.objects.active().popular()
             .values("name", "price_from", "emoji", "short_description")[:5]
         )
         if not popular:
             popular = list(
-                Service.objects.filter(is_active=True)
+                Service.objects.active()
                 .values("name", "price_from", "emoji", "short_description")[:5]
             )
 
         # --- Последние отзывы ---
         reviews = []
-        for r in Review.objects.filter(is_active=True).order_by("-date")[:5]:
+        for r in Review.objects.active().order_by("-date")[:5]:
             reviews.append({
                 "author": r.author_name,
                 "text": r.text[:150],
@@ -81,7 +81,7 @@ class SMMGrowthAgent:
 
         # --- Активные акции ---
         promos = []
-        for p in Promotion.objects.filter(is_active=True).order_by("order")[:5]:
+        for p in Promotion.objects.active().order_by("order")[:5]:
             promos.append({"title": p.title, "discount": p.discount_percent})
 
         return {

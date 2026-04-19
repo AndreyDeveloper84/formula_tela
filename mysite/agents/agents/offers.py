@@ -74,9 +74,7 @@ class OfferAgent:
             by_service[req] = by_service.get(req, 0) + 1
 
         # Все активные услуги без заявок получают count=0
-        all_services = list(Service.objects.filter(is_active=True).values_list(
-            "name", flat=True
-        ))
+        all_services = list(Service.objects.active().values_list("name", flat=True))
         for svc in all_services:
             if svc and svc not in by_service:
                 by_service[svc] = 0
@@ -85,14 +83,14 @@ class OfferAgent:
 
         # Активные акции
         active_promotions = []
-        for p in Promotion.objects.filter(is_active=True).order_by("-starts_at")[:5]:
+        for p in Promotion.objects.active().order_by("-starts_at")[:5]:
             active_promotions.append({
                 "title": p.title,
                 "discount": p.discount_percent,
                 "ends_at": str(p.ends_at) if p.ends_at else "бессрочно",
             })
 
-        active_masters = Master.objects.filter(is_active=True).count()
+        active_masters = Master.objects.active().count()
 
         # Тренды рынка из TrendScoutAgent (если есть)
         from agents.models import TrendSnapshot

@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 REQUIRED_BLOCKS = {"faq", "price_table", "checklist", "cta"}
 
 # Порог WoW-просадки кликов для алерта
-CLICK_DROP_THRESHOLD = -0.20
+# WoW-просадки кликов определяются в analyze_rank_changes (tasks.py)
+# — дедупликация и SeoTask escalation живут там.
 
 
 def _get_week_start(d: date) -> date:
@@ -70,16 +71,17 @@ class SEOLandingAgent:
         {
             "pages_map": {"/uslugi/slug/": {clicks, impressions, ctr, avg_position}},
             "top_queries": [{query, clicks, impressions, ctr, avg_position}],
-            "drops": [{url, clicks_now, clicks_prev, pct_drop}],
         }
+        WoW-просадки кликов определяются в analyze_rank_changes (tasks.py)
+        — дедупликация и SeoTask escalation живут там.
         Если Вебмастер недоступен — возвращает пустой dict (graceful degradation).
         """
-        result = {"pages_map": {}, "top_queries": [], "drops": []}
+        result = {"pages_map": {}, "top_queries": []}
         try:
             wm = YandexWebmasterClient.from_settings()
             date_from = week_start.isoformat()
             date_to = (week_start + timedelta(days=6)).isoformat()
-            prev_week_start = week_start - timedelta(days=7)
+            # prev_week_start removed: WoW-drops handled by analyze_rank_changes
 
             # --- Страницы ---
             pages_wm = wm.get_top_pages(date_from, date_to)
@@ -100,25 +102,6 @@ class SEOLandingAgent:
                         "source": "webmaster",
                     },
                 )
-
-            # --- WoW-сравнение ---
-            prev_snapshots = {
-                s.page_url: s
-                for s in SeoRankSnapshot.objects.filter(
-                    week_start=prev_week_start, query=""
-                )
-            }
-            for p in pages_wm:
-                prev = prev_snapshots.get(p["url"])
-                if prev and prev.clicks > 0:
-                    pct = (p["clicks"] - prev.clicks) / prev.clicks
-                    if pct <= CLICK_DROP_THRESHOLD:
-                        result["drops"].append({
-                            "url": p["url"],
-                            "clicks_now": p["clicks"],
-                            "clicks_prev": prev.clicks,
-                            "pct_drop": round(pct * 100, 1),
-                        })
 
             # --- Топ запросов ---
             queries_wm = wm.get_top_queries(date_from, date_to, limit=50)
@@ -142,8 +125,8 @@ class SEOLandingAgent:
                 )
 
             logger.info(
-                "SEOLandingAgent: Вебмастер — %d страниц, %d запросов, %d просадок",
-                len(pages_wm), len(queries_wm), len(result["drops"]),
+                "SEOLandingAgent: Вебмастер — %d страниц, %d запросов",
+                len(pages_wm), len(queries_wm),
             )
 
         except YandexWebmasterError as exc:
@@ -169,7 +152,7 @@ class SEOLandingAgent:
         pages_map = wm.get("pages_map", {})
 
         pages = []
-        for svc in Service.objects.filter(is_active=True).prefetch_related("blocks"):
+        for svc in Service.objects.active().prefetch_related("blocks"):
             blocks = list(svc.blocks.filter(is_active=True).values("block_type"))
             block_types_present = {b["block_type"] for b in blocks}
             missing = sorted(REQUIRED_BLOCKS - block_types_present)
@@ -225,7 +208,6 @@ class SEOLandingAgent:
             "pages": pages,
             "webmaster_available": bool(pages_map),
             "metrika_available": metrika_available,
-            "drops": wm.get("drops", []),
             "top_queries": wm.get("top_queries", [])[:10],
         }
 
@@ -314,7 +296,6 @@ class SEOLandingAgent:
                 "empty_pages": data["empty_pages"],
                 "webmaster_available": data["webmaster_available"],
                 "metrika_available": data.get("metrika_available", False),
-                "drops_count": len(data.get("drops", [])),
             }
             task.save(update_fields=["input_context"])
 
@@ -381,27 +362,9 @@ class SEOLandingAgent:
                 f"<b>Худшие страницы:</b>\n{worst_str}"
             )
 
-            # Отдельный алерт при WoW-просадках кликов
-            drops = data.get("drops", [])
-            if drops:
-                drops_str = "\n".join(
-                    f"• {d['url']} | {d['clicks_prev']} → {d['clicks_now']} кл. "
-                    f"({d['pct_drop']:+.0f}%)"
-                    for d in sorted(drops, key=lambda x: x["pct_drop"])[:5]
-                )
-                send_telegram(
-                    f"⚠️ <b>SEO: просадка кликов (WoW)</b>\n"
-                    f"Страниц с падением ≥20%: {len(drops)}\n\n"
-                    f"{drops_str}\n\n"
-                    f"<b>Что делать:</b>\n"
-                    f"1. Проверь изменения на странице за неделю\n"
-                    f"2. Обнови Title/Description под запросы\n"
-                    f"3. Проверь индексацию в Вебмастере"
-                )
-
             logger.info(
-                "SEOLandingAgent: завершён (task_id=%s, страниц=%d, просадок=%d)",
-                task.pk, len(pages_result), len(drops),
+                "SEOLandingAgent: завершён (task_id=%s, страниц=%d)",
+                task.pk, len(pages_result),
             )
 
         except Exception as exc:

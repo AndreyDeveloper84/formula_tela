@@ -42,13 +42,13 @@ class OfferPackagesAgent:
 
         # --- Активные услуги ---
         services = list(
-            Service.objects.filter(is_active=True)
+            Service.objects.active()
             .values("name", "price_from", "emoji", "short_description")[:30]
         )
 
         # --- Активные акции ---
         promos = []
-        for p in Promotion.objects.filter(is_active=True).order_by("order")[:10]:
+        for p in Promotion.objects.active().order_by("order")[:10]:
             promos.append({
                 "title": p.title,
                 "discount": p.discount_percent,
@@ -58,7 +58,7 @@ class OfferPackagesAgent:
 
         # --- Активные бандлы ---
         bundles = []
-        for b in Bundle.objects.filter(is_active=True)[:10]:
+        for b in Bundle.objects.active()[:10]:
             bundles.append({
                 "name": b.name,
                 "item_count": b.items.count(),

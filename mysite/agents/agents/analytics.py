@@ -154,7 +154,7 @@ class AnalyticsAgent:
             by_service[name] = by_service.get(name, 0) + 1
         top_services = sorted(by_service.items(), key=lambda x: -x[1])[:10]
 
-        active_masters = Master.objects.filter(is_active=True).count()
+        active_masters = Master.objects.active().count()
 
         data = {
             "period": f"{week_ago} — {today}",

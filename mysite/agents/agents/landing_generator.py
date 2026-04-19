@@ -79,10 +79,7 @@ class LandingPageGenerator:
             cluster.name, cluster.pk,
         )
 
-        existing = LandingPage.objects.filter(
-            cluster=cluster,
-            status=LandingPage.STATUS_DRAFT,
-        ).first()
+        existing = LandingPage.objects.by_cluster(cluster).draft().first()
         if existing:
             logger.info(
                 "generate_landing: черновик уже существует (id=%s), возвращаем его",
@@ -164,10 +161,7 @@ class LandingPageGenerator:
             cluster.name, cluster.pk, len(markdown_text),
         )
 
-        existing = LandingPage.objects.filter(
-            cluster=cluster,
-            status=LandingPage.STATUS_DRAFT,
-        ).first()
+        existing = LandingPage.objects.by_cluster(cluster).draft().first()
         if existing:
             logger.info(
                 "generate_from_markdown: черновик уже существует (id=%s)",
@@ -574,7 +568,7 @@ class LandingPageGenerator:
 
         slug = base
         attempt = 2
-        while LandingPage.objects.filter(slug=slug).exists():
+        while LandingPage.objects.by_slug(slug).exists():
             slug = f"{base}-v{attempt}"
             attempt += 1
             if attempt > 10:
