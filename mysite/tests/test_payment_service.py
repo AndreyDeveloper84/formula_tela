@@ -242,3 +242,30 @@ class TestPaymentServiceCreateForOrder:
         with pytest.raises(PaymentError):
             svc.create_for_order(service_order)
         fake_client.create_payment.assert_not_called()
+
+    def test_create_for_order_passes_receipt_to_client(self, fake_client, service_order):
+        svc = PaymentService(client=fake_client)
+        svc.create_for_order(service_order)
+        kwargs = fake_client.create_payment.call_args.kwargs
+        assert "receipt" in kwargs
+        assert "customer" in kwargs["receipt"]
+        assert "items" in kwargs["receipt"]
+
+    def test_receipt_contains_customer_phone(self, fake_client, service_order):
+        service_order.client_phone = "+79001112233"
+        service_order.save(update_fields=["client_phone"])
+        svc = PaymentService(client=fake_client)
+        receipt = svc._build_receipt(service_order)
+        assert receipt["customer"]["phone"] == "+79001112233"
+
+    def test_receipt_contains_customer_email_when_set(self, fake_client, service_order):
+        service_order.client_email = "test@example.com"
+        service_order.save(update_fields=["client_email"])
+        svc = PaymentService(client=fake_client)
+        receipt = svc._build_receipt(service_order)
+        assert receipt["customer"]["email"] == "test@example.com"
+
+    def test_receipt_item_uses_service_name(self, fake_client, service_order):
+        svc = PaymentService(client=fake_client)
+        receipt = svc._build_receipt(service_order)
+        assert service_order.service.name in receipt["items"][0]["description"]
