@@ -80,7 +80,7 @@ BUDGET_JSON = json.dumps({
 
 @pytest.mark.django_db
 @patch("agents.agents.offer_packages.send_telegram", return_value=True)
-@patch("agents.agents.offer_packages.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_offer_packages_agent_done(mock_openai_cls, mock_tg):
     mock_openai_cls.return_value = _make_openai_mock(OFFER_JSON)
     from agents.agents.offer_packages import OfferPackagesAgent
@@ -95,7 +95,7 @@ def test_offer_packages_agent_done(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.offer_packages.send_telegram", return_value=True)
-@patch("agents.agents.offer_packages.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_offer_packages_agent_with_booking_data(mock_openai_cls, mock_tg):
     """gather_data подбирает BookingRequest и Service."""
     baker.make("services_app.Service", is_active=True, name="LPG массаж")
@@ -110,7 +110,7 @@ def test_offer_packages_agent_with_booking_data(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.offer_packages.send_telegram", return_value=True)
-@patch("agents.agents.offer_packages.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_offer_packages_agent_error_saved(mock_openai_cls, mock_tg):
     """При ошибке OpenAI статус = ERROR."""
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("API down")
@@ -125,7 +125,7 @@ def test_offer_packages_agent_error_saved(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.seo_landing.send_telegram", return_value=True)
-@patch("agents.agents.seo_landing.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_seo_landing_agent_done(mock_openai_cls, mock_tg):
     mock_openai_cls.return_value = _make_openai_mock(SEO_JSON)
     baker.make("services_app.Service", is_active=True, slug="massazh", name="Массаж")
@@ -161,7 +161,7 @@ def test_seo_landing_gather_data_missing_blocks():
 
 @pytest.mark.django_db
 @patch("agents.agents.seo_landing.send_telegram", return_value=True)
-@patch("agents.agents.seo_landing.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_seo_landing_agent_error_saved(mock_openai_cls, mock_tg):
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("GPT error")
     from agents.agents.seo_landing import SEOLandingAgent
@@ -175,7 +175,7 @@ def test_seo_landing_agent_error_saved(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.smm_growth.send_telegram", return_value=True)
-@patch("agents.agents.smm_growth.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_smm_growth_saves_content_plan(mock_openai_cls, mock_tg):
     """SMMGrowthAgent создаёт 21 запись ContentPlan."""
     mock_openai_cls.return_value = _make_openai_mock(SMM_JSON)
@@ -189,7 +189,7 @@ def test_smm_growth_saves_content_plan(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.smm_growth.send_telegram", return_value=True)
-@patch("agents.agents.smm_growth.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_smm_growth_uses_offer_packages_report(mock_openai_cls, mock_tg):
     """gather_data подхватывает последний OfferPackages отчёт."""
     mock_openai_cls.return_value = _make_openai_mock(SMM_JSON)
@@ -206,7 +206,7 @@ def test_smm_growth_uses_offer_packages_report(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.smm_growth.send_telegram", return_value=True)
-@patch("agents.agents.smm_growth.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_smm_growth_invalid_platform_fallback(mock_openai_cls, mock_tg):
     """Некорректная платформа в ответе GPT → заменяется на 'telegram'."""
     posts_json = json.dumps({"posts": [
@@ -225,7 +225,7 @@ def test_smm_growth_invalid_platform_fallback(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.smm_growth.send_telegram", return_value=True)
-@patch("agents.agents.smm_growth.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_smm_growth_agent_error_saved(mock_openai_cls, mock_tg):
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("GPT fail")
     from agents.agents.smm_growth import SMMGrowthAgent
@@ -238,7 +238,7 @@ def test_smm_growth_agent_error_saved(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics_budget.send_telegram", return_value=True)
-@patch("agents.agents.analytics_budget.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_analytics_budget_agent_done(mock_openai_cls, mock_tg):
     """Агент завершается DONE, отчёт создаётся."""
     mock_openai_cls.return_value = _make_openai_mock(BUDGET_JSON)
@@ -253,7 +253,7 @@ def test_analytics_budget_agent_done(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics_budget.send_telegram", return_value=True)
-@patch("agents.agents.analytics_budget.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_analytics_budget_graceful_without_yandex(mock_openai_cls, mock_tg, settings):
     """Агент работает нормально, если Метрика/Директ/VK не настроены."""
     settings.YANDEX_METRIKA_TOKEN = ""
@@ -270,7 +270,7 @@ def test_analytics_budget_graceful_without_yandex(mock_openai_cls, mock_tg, sett
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics_budget.send_telegram", return_value=True)
-@patch("agents.agents.analytics_budget.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 @patch("agents.integrations.vk_ads.requests.request")
 def test_analytics_budget_vk_data_in_context(mock_vk_req, mock_openai_cls, mock_tg, settings):
     """VK-данные появляются в input_context с префиксом vk_."""
@@ -304,7 +304,7 @@ def test_analytics_budget_vk_data_in_context(mock_vk_req, mock_openai_cls, mock_
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics_budget.send_telegram", return_value=True)
-@patch("agents.agents.analytics_budget.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_analytics_budget_uses_booking_requests(mock_openai_cls, mock_tg):
     """gather_data правильно считает лиды из BookingRequest."""
     mock_openai_cls.return_value = _make_openai_mock(BUDGET_JSON)
@@ -319,7 +319,7 @@ def test_analytics_budget_uses_booking_requests(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics_budget.send_telegram", return_value=True)
-@patch("agents.agents.analytics_budget.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_analytics_budget_error_saved(mock_openai_cls, mock_tg):
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("err")
     from agents.agents.analytics_budget import AnalyticsBudgetAgent
@@ -332,7 +332,7 @@ def test_analytics_budget_error_saved(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.telegram.send_telegram", return_value=True)  # патчим источник (local import в weekly_run)
-@patch("agents.agents.supervisor.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_supervisor_weekly_run_sends_telegram(mock_openai_cls, mock_tg):
     """weekly_run отправляет бэклог в Telegram."""
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(
@@ -347,7 +347,7 @@ def test_supervisor_weekly_run_sends_telegram(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.telegram.send_telegram", return_value=True)
-@patch("agents.agents.supervisor.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_supervisor_weekly_run_collects_all_reports(mock_openai_cls, mock_tg):
     """weekly_run собирает отчёты от всех 6 типов агентов."""
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(
@@ -371,7 +371,7 @@ def test_supervisor_weekly_run_collects_all_reports(mock_openai_cls, mock_tg):
 
 @pytest.mark.django_db
 @patch("agents.telegram.send_telegram", return_value=True)
-@patch("agents.agents.supervisor.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_supervisor_weekly_run_handles_openai_error(mock_openai_cls, mock_tg):
     """Ошибка OpenAI в weekly_run не роняет процесс."""
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("GPT down")

@@ -102,7 +102,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_creates_draft(self, mock_openai_cls, mock_notify, cluster):
         """Создаётся LandingPage со status='draft'."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -117,7 +117,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_fields_from_gpt(self, mock_openai_cls, mock_notify, cluster):
         """Поля берутся из GPT-ответа."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -132,7 +132,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_slug_from_target_url(self, mock_openai_cls, mock_notify, cluster):
         """Slug берётся из cluster.target_url."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -143,7 +143,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_slug_collision_adds_v2(self, mock_openai_cls, mock_notify, cluster):
         """Если slug занят — добавляется суффикс -v2."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -155,7 +155,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_creates_seotask(self, mock_openai_cls, mock_notify, cluster):
         """Создаётся SeoTask с task_type=create_landing, priority=high."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -173,7 +173,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_calls_notify(self, mock_openai_cls, mock_notify, cluster):
         """notify_new_landing вызывается с созданным LandingPage."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -184,7 +184,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_returns_existing_draft(self, mock_openai_cls, mock_notify, cluster):
         """Если draft уже есть — GPT не вызывается."""
         existing = baker.make("agents.LandingPage", cluster=cluster, status="draft")
@@ -197,7 +197,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_notify_error_does_not_block(self, mock_openai_cls, mock_notify, cluster):
         """Ошибка Telegram не мешает сохранению."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -209,7 +209,7 @@ class TestGenerateLanding:
         assert LandingPage.objects.filter(pk=landing.pk).exists()
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_raises_on_invalid_json(self, mock_openai_cls, cluster):
         """Невалидный JSON -> LandingGeneratorError."""
         mock_openai_cls.return_value = _make_openai_mock("not json {{{")
@@ -218,7 +218,7 @@ class TestGenerateLanding:
             LandingPageGenerator().generate_landing(cluster)
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_raises_on_missing_fields(self, mock_openai_cls, cluster):
         """JSON без обязательных полей -> LandingGeneratorError."""
         mock_openai_cls.return_value = _make_openai_mock(
@@ -229,7 +229,7 @@ class TestGenerateLanding:
             LandingPageGenerator().generate_landing(cluster)
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_raises_on_gpt_api_error(self, mock_openai_cls, cluster):
         """Ошибка GPT API -> LandingGeneratorError."""
         mock_openai_cls.return_value.chat.completions.create.side_effect = (
@@ -241,7 +241,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_meta_title_truncated(self, mock_openai_cls, mock_notify, cluster):
         """meta_title обрезается до 70 символов."""
         resp = json.loads(VALID_GPT_RESPONSE)
@@ -254,7 +254,7 @@ class TestGenerateLanding:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_source_markdown_empty_string(self, mock_openai_cls, mock_notify, cluster):
         """generate_landing сохраняет source_markdown='' (не None)."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -270,7 +270,7 @@ class TestGenerateFromMarkdown:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_saves_source_markdown(self, mock_openai_cls, mock_notify, cluster):
         """LandingPage.source_markdown = переданный текст."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -282,7 +282,7 @@ class TestGenerateFromMarkdown:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_markdown_in_gpt_prompt(self, mock_openai_cls, mock_notify, cluster):
         """Текст маркдауна попадает в промпт GPT."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -299,7 +299,7 @@ class TestGenerateFromMarkdown:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_seotask_payload_source_markdown(
         self, mock_openai_cls, mock_notify, cluster
     ):
@@ -318,7 +318,7 @@ class TestGenerateFromMarkdown:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_returns_existing_draft(self, mock_openai_cls, mock_notify, cluster):
         """Если draft уже есть — GPT не вызывается."""
         existing = baker.make("agents.LandingPage", cluster=cluster, status="draft")
@@ -330,7 +330,7 @@ class TestGenerateFromMarkdown:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_calls_notify(self, mock_openai_cls, mock_notify, cluster):
         """notify_new_landing вызывается после создания."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -341,7 +341,7 @@ class TestGenerateFromMarkdown:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing")
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_notify_error_does_not_block(self, mock_openai_cls, mock_notify, cluster):
         """Ошибка Telegram не мешает сохранению."""
         mock_openai_cls.return_value = _make_openai_mock()
@@ -353,7 +353,7 @@ class TestGenerateFromMarkdown:
         assert LandingPage.objects.filter(pk=landing.pk).exists()
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_raises_on_invalid_json(self, mock_openai_cls, cluster):
         """Невалидный JSON -> LandingGeneratorError."""
         mock_openai_cls.return_value = _make_openai_mock("broken {{")
@@ -367,7 +367,7 @@ class TestGenerateFromMarkdown:
 class TestGetServicesContext:
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_includes_service_name_and_price(self, mock_openai_cls, cluster_with_category):
         """Услуга с ServiceOption -> имя и цена в контексте."""
         service = baker.make(
@@ -392,7 +392,7 @@ class TestGetServicesContext:
         assert "1500" in ctx
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_no_price_shows_placeholder(self, mock_openai_cls, cluster_with_category):
         """Нет цен -> НУЖНО УТОЧНИТЬ."""
         baker.make(
@@ -409,7 +409,7 @@ class TestGetServicesContext:
         assert "НУЖНО УТОЧНИТЬ" in ctx
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_no_category_no_slug_shows_placeholder(self, mock_openai_cls):
         """Кластер без категории и slug -> НУЖНО УТОЧНИТЬ."""
         cluster = baker.make(
@@ -425,7 +425,7 @@ class TestGetServicesContext:
         assert "НУЖНО УТОЧНИТЬ" in ctx
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_keywords_in_context(self, mock_openai_cls):
         """Ключевые слова попадают в контекст."""
         cluster = baker.make(
@@ -445,7 +445,7 @@ class TestGetServicesContext:
 
 class TestCheckMarkdownVsDb:
 
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_no_warnings_when_prices_match(self, mock_openai_cls):
         """Число из маркдауна есть в БД -> нет предупреждений."""
         gen = LandingPageGenerator()
@@ -454,7 +454,7 @@ class TestCheckMarkdownVsDb:
             "Варианты:\n  \u2013 60 мин: 1500 руб.",
         ) == []
 
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_warning_on_price_mismatch(self, mock_openai_cls):
         """Цена в маркдауне не совпадает с БД -> предупреждение."""
         gen = LandingPageGenerator()
@@ -465,7 +465,7 @@ class TestCheckMarkdownVsDb:
         assert len(warnings) == 1
         assert "2000" in warnings[0]
 
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_warning_when_db_has_no_prices(self, mock_openai_cls):
         """Числа в маркдауне, в БД — НУЖНО УТОЧНИТЬ -> предупреждение."""
         gen = LandingPageGenerator()
@@ -475,7 +475,7 @@ class TestCheckMarkdownVsDb:
         )
         assert len(warnings) == 1
 
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_no_warnings_without_numbers(self, mock_openai_cls):
         """Маркдаун без чисел -> нет предупреждений."""
         gen = LandingPageGenerator()
@@ -484,12 +484,12 @@ class TestCheckMarkdownVsDb:
             "Варианты:\n  \u2013 60 мин: 1500 руб.",
         ) == []
 
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_no_warnings_empty_inputs(self, mock_openai_cls):
         """Пустые входные данные -> нет предупреждений."""
         assert LandingPageGenerator()._check_markdown_vs_db("", "") == []
 
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_prompt_truncates_long_markdown(self, mock_openai_cls):
         """Маркдаун > 3000 символов обрезается в промпте."""
         cluster = MagicMock()
@@ -511,7 +511,7 @@ class TestCheckMarkdownVsDb:
 class TestMakeSlug:
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_slug_from_target_url(self, mock_openai_cls):
         cluster = baker.make(
             "agents.SeoKeywordCluster",
@@ -521,7 +521,7 @@ class TestMakeSlug:
         assert LandingPageGenerator()._make_slug(cluster) == "massazh-spiny"
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_collision_v2(self, mock_openai_cls):
         cluster = baker.make(
             "agents.SeoKeywordCluster",
@@ -532,7 +532,7 @@ class TestMakeSlug:
         assert LandingPageGenerator()._make_slug(cluster) == "test-slug-v2"
 
     @pytest.mark.django_db
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_collision_v3(self, mock_openai_cls):
         cluster = baker.make(
             "agents.SeoKeywordCluster",

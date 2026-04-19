@@ -5,11 +5,10 @@ Analytics Agent — собирает данные за неделю из YClient
 import datetime
 import logging
 
-from django.conf import settings
 from django.utils import timezone
 
-from agents.agents import get_openai_client
 from agents.agents._lifecycle import ensure_task_finalized
+from agents.agents._openai_cache import cached_chat_completion
 from agents.models import AgentReport, AgentTask, DailyMetric
 from agents.telegram import send_telegram
 
@@ -199,9 +198,7 @@ class AnalyticsAgent:
                                   for k, v in data.items() if k != "date"}
             task.save(update_fields=["input_context"])
 
-            client = get_openai_client()
-            response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+            text = cached_chat_completion(
                 messages=[
                     {
                         "role": "system",
@@ -214,7 +211,6 @@ class AnalyticsAgent:
                 ],
                 max_tokens=700,
             )
-            text = response.choices[0].message.content.strip()
             task.raw_response = text
 
             AgentReport.objects.create(

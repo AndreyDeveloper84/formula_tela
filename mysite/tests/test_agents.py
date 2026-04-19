@@ -45,7 +45,7 @@ def test_offer_gather_data_returns_structure():
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics.send_telegram", return_value=True)
-@patch("agents.agents.analytics.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_analytics_agent_run_done(mock_openai_cls, mock_tg):
     """Агент завершается со статусом DONE и создаёт AgentReport."""
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(
@@ -63,7 +63,7 @@ def test_analytics_agent_run_done(mock_openai_cls, mock_tg):
 
 
 @pytest.mark.django_db
-@patch("agents.agents.analytics.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_analytics_agent_run_error(mock_openai_cls):
     """Если OpenAI бросает исключение — статус ERROR, задача сохранена."""
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("quota exceeded")
@@ -83,7 +83,7 @@ def test_analytics_agent_run_error(mock_openai_cls):
 
 @pytest.mark.django_db
 @patch("agents.agents.offers.send_telegram", return_value=True)
-@patch("agents.agents.offers.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_offer_agent_run_done(mock_openai_cls, mock_tg):
     """OfferAgent завершается со статусом DONE и создаёт AgentReport."""
     import json
@@ -110,7 +110,7 @@ def test_offer_agent_run_done(mock_openai_cls, mock_tg):
 # ──────────────────────────────────────────────
 
 @pytest.mark.django_db
-@patch("agents.agents.supervisor.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_supervisor_decide_analytics(mock_openai_cls):
     """Supervisor возвращает ['analytics'] если GPT так решил."""
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(
@@ -124,7 +124,7 @@ def test_supervisor_decide_analytics(mock_openai_cls):
 
 
 @pytest.mark.django_db
-@patch("agents.agents.supervisor.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_supervisor_decide_both(mock_openai_cls):
     """Supervisor возвращает оба агента."""
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(
@@ -138,7 +138,7 @@ def test_supervisor_decide_both(mock_openai_cls):
 
 
 @pytest.mark.django_db
-@patch("agents.agents.supervisor.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_supervisor_fallback_on_error(mock_openai_cls):
     """При ошибке GPT Supervisor возвращает fallback=['analytics']."""
     mock_openai_cls.return_value.chat.completions.create.side_effect = RuntimeError("network error")
@@ -155,7 +155,7 @@ def test_supervisor_fallback_on_error(mock_openai_cls):
 
 @pytest.mark.django_db
 @patch("agents.agents.analytics.send_telegram", return_value=False)
-@patch("agents.agents.analytics.get_openai_client")
+@patch("agents.agents._openai_cache.get_openai_client")
 def test_daily_metric_created(mock_openai_cls, _mock_tg):
     """После запуска AnalyticsAgent создаётся запись DailyMetric."""
     mock_openai_cls.return_value.chat.completions.create.return_value = MagicMock(

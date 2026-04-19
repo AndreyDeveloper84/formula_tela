@@ -23,6 +23,15 @@ settings.CACHES = {
 settings.RATELIMIT_ENABLE = False
 
 
+@pytest.fixture(autouse=True)
+def _clear_openai_cache():
+    """Сбрасываем OpenAI prompt cache между тестами — иначе одинаковый prompt
+    в разных тестах вернёт cached value вместо мока."""
+    from django.core.cache import cache
+    cache.clear()
+    yield
+
+
 # ── Модельные фикстуры ───────────────────────────────────────────────────────
 
 @pytest.fixture

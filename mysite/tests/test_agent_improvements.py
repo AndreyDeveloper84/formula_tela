@@ -51,7 +51,7 @@ class TestOfferAgentPromotionDraft:
 
     @pytest.mark.django_db
     @patch("agents.agents.offers.send_telegram", return_value=True)
-    @patch("agents.agents.offers.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_creates_draft_promotions(self, mock_openai, mock_tg):
         mock_openai.return_value = _make_openai_mock(OFFER_JSON)
 
@@ -73,7 +73,7 @@ class TestOfferAgentPromotionDraft:
 
     @pytest.mark.django_db
     @patch("agents.agents.offers.send_telegram", return_value=True)
-    @patch("agents.agents.offers.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_structured_recommendations(self, mock_openai, mock_tg):
         mock_openai.return_value = _make_openai_mock(OFFER_JSON)
 
@@ -89,7 +89,7 @@ class TestOfferAgentPromotionDraft:
 
     @pytest.mark.django_db
     @patch("agents.agents.offers.send_telegram", return_value=True)
-    @patch("agents.agents.offers.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_discount_capped_at_30(self, mock_openai, mock_tg):
         """Скидка ограничена 30%."""
         high_discount = json.dumps({
@@ -112,7 +112,7 @@ class TestContentPlanDedupe:
 
     @pytest.mark.django_db
     @patch("agents.agents.smm_growth.send_telegram", return_value=True)
-    @patch("agents.agents.smm_growth.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_no_duplicates_on_rerun(self, mock_openai, mock_tg):
         smm_json = json.dumps({
             "posts": [
@@ -142,7 +142,7 @@ class TestGenerateMissingLandings:
 
     @pytest.mark.django_db
     @patch("agents.agents.landing_generator.notify_new_landing", return_value=True)
-    @patch("agents.agents.landing_generator.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_generates_for_cluster_without_landing(self, mock_openai, mock_notify):
         landing_json = json.dumps({
             "meta_title": "Массаж спины в Пензе",
@@ -206,7 +206,7 @@ class TestTelegramErrorAlerts:
 
     @pytest.mark.django_db
     @patch("agents.agents.offers.send_telegram", return_value=True)
-    @patch("agents.agents.offers.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_error_alert_sent_on_agent_failure(self, mock_openai, mock_tg):
         mock_openai.return_value.chat.completions.create.side_effect = Exception("API down")
 
@@ -311,7 +311,7 @@ class TestSEOBehavioralMetrics:
 
     @pytest.mark.django_db
     @patch("agents.agents.seo_landing.send_telegram", return_value=True)
-    @patch("agents.agents.seo_landing.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_seo_agent_includes_metrika_in_context(self, mock_openai, mock_tg):
         """SEOLandingAgent добавляет metrika_available в input_context."""
         seo_json = json.dumps({
@@ -419,7 +419,7 @@ class TestOfferAgentCreatesOutcomes:
 
     @pytest.mark.django_db
     @patch("agents.agents.offers.send_telegram", return_value=True)
-    @patch("agents.agents.offers.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_outcomes_created_on_run(self, mock_openai, mock_tg):
         mock_openai.return_value = _make_openai_mock(OFFER_JSON)
 
@@ -509,7 +509,7 @@ class TestSEOGrowthAgent:
 
     @pytest.mark.django_db
     @patch("agents.agents.seo_growth.send_telegram", return_value=True)
-    @patch("agents.agents.seo_growth.get_openai_client")
+    @patch("agents.agents._openai_cache.get_openai_client")
     def test_run_creates_hypotheses(self, mock_openai, mock_tg):
         growth_json = json.dumps({
             "analysis": {

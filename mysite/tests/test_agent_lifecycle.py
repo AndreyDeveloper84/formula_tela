@@ -88,7 +88,7 @@ def test_analytics_agent_success_ends_done():
         choices=[MagicMock(message=MagicMock(content="Анализ: всё ок."))]
     )
 
-    with patch("agents.agents.analytics.get_openai_client", return_value=fake_openai), \
+    with patch("agents.agents._openai_cache.get_openai_client", return_value=fake_openai), \
          patch("agents.agents.analytics.send_telegram"):
         task = AnalyticsAgent().run()
 
@@ -103,7 +103,7 @@ def test_analytics_agent_openai_exception_ends_error():
     from agents.agents.analytics import AnalyticsAgent
 
     with patch(
-        "agents.agents.analytics.get_openai_client",
+        "agents.agents._openai_cache.get_openai_client",
         side_effect=RuntimeError("openai down"),
     ), patch("agents.agents.analytics.send_telegram"):
         task = AnalyticsAgent().run()
@@ -162,7 +162,7 @@ def test_offer_agent_exception_ends_error():
     from agents.agents.offers import OfferAgent
 
     with patch(
-        "agents.agents.offers.get_openai_client",
+        "agents.agents._openai_cache.get_openai_client",
         side_effect=RuntimeError("api fail"),
     ), patch("agents.agents.offers.send_telegram"):
         task = OfferAgent().run()
@@ -186,7 +186,7 @@ def test_offer_agent_success_ends_done():
         choices=[MagicMock(message=MagicMock(content=offer_json))]
     )
 
-    with patch("agents.agents.offers.get_openai_client", return_value=fake_openai), \
+    with patch("agents.agents._openai_cache.get_openai_client", return_value=fake_openai), \
          patch("agents.agents.offers.send_telegram"):
         task = OfferAgent().run()
 

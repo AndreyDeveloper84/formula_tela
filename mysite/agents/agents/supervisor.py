@@ -6,9 +6,7 @@ import datetime
 import json
 import logging
 
-from django.conf import settings
-
-from agents.agents import get_openai_client
+from agents.agents._openai_cache import cached_chat_completion
 from agents.models import AgentTask
 
 logger = logging.getLogger(__name__)
@@ -41,7 +39,6 @@ class SupervisorAgent:
     def decide(self) -> list[str]:
         """Возвращает список агентов для запуска: ['analytics'], ['offers'] или ['analytics', 'offers']."""
         ctx = self._get_context()
-        client = get_openai_client()
 
         prompt = (
             f"Контекст салона красоты на {ctx['today']} ({ctx['weekday_ru']}):\n"
@@ -58,8 +55,7 @@ class SupervisorAgent:
         )
 
         try:
-            response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+            raw = cached_chat_completion(
                 messages=[
                     {
                         "role": "system",
@@ -70,7 +66,7 @@ class SupervisorAgent:
                 response_format={"type": "json_object"},
                 max_tokens=80,
             )
-            data = json.loads(response.choices[0].message.content)
+            data = json.loads(raw)
             agents = data.get("agents", [])
             # Валидация: только разрешённые значения
             valid = {AgentTask.ANALYTICS, AgentTask.OFFERS}
@@ -79,6 +75,11 @@ class SupervisorAgent:
             return result or [AgentTask.ANALYTICS]
         except Exception as exc:
             logger.warning("SupervisorAgent: ошибка при принятии решения (%s), fallback → analytics", exc)
+            from agents.telegram import send_telegram
+            send_telegram(
+                f"⚠️ SupervisorAgent: ошибка decide(), fallback → analytics\n"
+                f"Ошибка: {str(exc)[:200]}"
+            )
             return [AgentTask.ANALYTICS]
 
     def run(self):
@@ -177,10 +178,8 @@ class SupervisorAgent:
             "Отвечай по-русски, лаконично."
         )
 
-        client = get_openai_client()
         try:
-            response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+            text = cached_chat_completion(
                 messages=[
                     {
                         "role": "system",
@@ -196,7 +195,6 @@ class SupervisorAgent:
                 ],
                 max_tokens=1200,
             )
-            text = response.choices[0].message.content.strip()
 
             # Сохраняем бэклог в БД
             today = _dt.date.today()

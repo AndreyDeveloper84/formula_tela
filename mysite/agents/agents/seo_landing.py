@@ -11,11 +11,10 @@ import logging
 import time
 from datetime import date, timedelta
 
-from django.conf import settings
 from django.utils import timezone
 
-from agents.agents import get_openai_client
 from agents.agents._lifecycle import ensure_task_finalized
+from agents.agents._openai_cache import cached_chat_completion
 from agents.integrations.yandex_webmaster import YandexWebmasterClient, YandexWebmasterError
 from agents.models import AgentReport, AgentTask, SeoRankSnapshot
 from agents.telegram import send_telegram
@@ -299,9 +298,7 @@ class SEOLandingAgent:
             }
             task.save(update_fields=["input_context"])
 
-            client = get_openai_client()
-            response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+            raw = cached_chat_completion(
                 messages=[
                     {
                         "role": "system",
@@ -320,7 +317,6 @@ class SEOLandingAgent:
                 response_format={"type": "json_object"},
                 max_tokens=3000,
             )
-            raw = response.choices[0].message.content.strip()
             task.raw_response = raw
             parsed = json.loads(raw)
             pages_result = parsed.get("pages", [])
