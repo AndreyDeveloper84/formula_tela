@@ -478,6 +478,14 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 "используются в оферте и footer. Требуются для модерации YooKassa."
             ),
         }),
+        ("Онлайн-оплата (YooKassa)", {
+            "fields": ("online_payment_enabled",),
+            "description": (
+                "Включать только после прохождения модерации YooKassa "
+                "и настройки YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY в .env. "
+                "При включении клиент увидит кнопку «Оплатить онлайн» при записи на услугу."
+            ),
+        }),
     )
 
 
