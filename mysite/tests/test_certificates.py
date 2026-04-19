@@ -249,3 +249,215 @@ class TestCertificatesPage:
     def test_template(self, client):
         resp = client.get("/certificates/")
         assert "website/certificates.html" in [t.name for t in resp.templates]
+
+
+# ── Онлайн-оплата сертификатов ───────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestCertificateOnlinePayment:
+    url = "/api/certificates/request/"
+
+    @pytest.fixture
+    def online_enabled(self, db):
+        from model_bakery import baker
+        from services_app.models import SiteSettings
+        SiteSettings.objects.all().delete()
+        return baker.make(SiteSettings, online_payment_enabled=True)
+
+    @pytest.fixture
+    def mock_payment_service(self, monkeypatch):
+        from unittest.mock import MagicMock
+        svc = MagicMock()
+        svc.create_for_order.return_value = "https://yookassa.test/confirm/cert1"
+        monkeypatch.setattr("payments.services.PaymentService", MagicMock(return_value=svc))
+        return svc
+
+    def _payload(self, **kwargs):
+        base = {
+            "certificate_type": "nominal",
+            "nominal": 3000,
+            "buyer_name": "Андрей",
+            "buyer_phone": "+79990001122",
+            "payment_method": "online",
+        }
+        base.update(kwargs)
+        return base
+
+    def test_online_returns_payment_url(self, client, online_enabled, mock_payment_service):
+        resp = client.post(
+            self.url, json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["payment_method"] == "online"
+        assert data["payment_url"] == "https://yookassa.test/confirm/cert1"
+        assert "order_number" in data
+
+    def test_online_creates_order_with_pending_status(self, client, online_enabled, mock_payment_service):
+        resp = client.post(
+            self.url, json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        from services_app.models import Order
+        order = Order.objects.get(number=resp.json()["order_number"])
+        assert order.payment_method == "online"
+        assert order.payment_status == "pending"
+
+    def test_online_disabled_returns_error(self, client, db):
+        from model_bakery import baker
+        from services_app.models import SiteSettings
+        SiteSettings.objects.all().delete()
+        baker.make(SiteSettings, online_payment_enabled=False)
+        resp = client.post(
+            self.url, json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"] == "online_payment_disabled"
+
+    def test_cash_flow_unchanged(self, client, mock_telegram):
+        payload = {
+            "certificate_type": "nominal",
+            "nominal": 3000,
+            "buyer_name": "Андрей",
+            "buyer_phone": "+79990001122",
+            "payment_method": "cash",
+        }
+        resp = client.post(
+            self.url, json.dumps(payload),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "payment_url" not in data
+
+
+# ── fulfill_paid_certificate ─────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestFulfillPaidCertificate:
+    @pytest.fixture
+    def pending_cert_order(self, db, service):
+        from decimal import Decimal
+        from datetime import date, timedelta
+        from services_app.models import Order, GiftCertificate
+        order = Order.objects.create(
+            order_type="certificate",
+            payment_method="online",
+            payment_status="succeeded",
+            client_name="Андрей",
+            client_phone="+79990001122",
+            client_email="test@example.com",
+            total_amount=Decimal("3000"),
+        )
+        today = date.today()
+        GiftCertificate.objects.create(
+            order=order,
+            certificate_type="nominal",
+            nominal=Decimal("3000"),
+            buyer_name="Андрей",
+            buyer_phone="+79990001122",
+            buyer_email="test@example.com",
+            valid_from=today,
+            valid_until=today + timedelta(days=180),
+            status="pending",
+            is_active=False,
+        )
+        return order
+
+    def test_sets_cert_status_paid(self, pending_cert_order, mock_telegram):
+        from payments.tasks import fulfill_paid_certificate
+        from services_app.models import GiftCertificate
+        fulfill_paid_certificate(pending_cert_order.pk)
+        cert = GiftCertificate.objects.get(order=pending_cert_order)
+        assert cert.status == "paid"
+        assert cert.is_active is True
+        assert cert.paid_at is not None
+
+    def test_idempotent(self, pending_cert_order, mock_telegram):
+        from payments.tasks import fulfill_paid_certificate
+        from services_app.models import GiftCertificate
+        cert = GiftCertificate.objects.get(order=pending_cert_order)
+        cert.status = "paid"
+        cert.save(update_fields=["status"])
+        fulfill_paid_certificate(pending_cert_order.pk)
+        # Вызов второй раз — статус не сброшен
+        cert.refresh_from_db()
+        assert cert.status == "paid"
+
+    def test_sends_telegram(self, pending_cert_order, monkeypatch):
+        from unittest.mock import MagicMock
+        mock_tg = MagicMock()
+        monkeypatch.setattr("payments.tasks.send_notification_telegram", mock_tg)
+        from payments.tasks import fulfill_paid_certificate
+        fulfill_paid_certificate(pending_cert_order.pk)
+        assert mock_tg.called
+        call_text = mock_tg.call_args[0][0]
+        assert "Сертификат оплачен" in call_text
+
+    def test_sends_email_to_buyer(self, pending_cert_order, mock_telegram, monkeypatch):
+        from unittest.mock import MagicMock
+        mock_email = MagicMock(return_value=True)
+        monkeypatch.setattr("payments.tasks.send_certificate_email", mock_email)
+        from payments.tasks import fulfill_paid_certificate
+        fulfill_paid_certificate(pending_cert_order.pk)
+        mock_email.assert_called_once()
+
+
+# ── Webhook routing для сертификатов ────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestWebhookRoutesCertificate:
+    @pytest.fixture(autouse=True)
+    def disable_ip_check(self, settings):
+        settings.YOOKASSA_WEBHOOK_STRICT_IP = False
+
+    def test_routes_certificate_to_fulfill_paid_certificate(
+        self, client, monkeypatch, mock_telegram
+    ):
+        from decimal import Decimal
+        from datetime import date, timedelta
+        from unittest.mock import MagicMock
+        from services_app.models import Order, GiftCertificate
+
+        order = Order.objects.create(
+            order_type="certificate",
+            payment_method="online",
+            payment_status="pending",
+            payment_id="cert_pay_1",
+            client_name="A",
+            client_phone="+70001",
+            total_amount=Decimal("1000"),
+        )
+        today = date.today()
+        GiftCertificate.objects.create(
+            order=order, certificate_type="nominal", nominal=Decimal("1000"),
+            buyer_name="A", buyer_phone="+70001",
+            valid_from=today, valid_until=today + timedelta(days=180),
+            status="pending",
+        )
+
+        mock_verify = MagicMock(return_value={"status": "succeeded", "id": "cert_pay_1"})
+        monkeypatch.setattr("payments.views.get_yookassa_client",
+                            MagicMock(return_value=MagicMock(find_payment=mock_verify)))
+        mock_cert_task = MagicMock()
+        mock_bundle_task = MagicMock()
+        mock_order_task = MagicMock()
+        monkeypatch.setattr("payments.views.fulfill_paid_certificate", mock_cert_task)
+        monkeypatch.setattr("payments.views.fulfill_paid_bundle", mock_bundle_task)
+        monkeypatch.setattr("payments.views.fulfill_paid_order", mock_order_task)
+
+        payload = {"type": "notification", "event": "payment.succeeded",
+                   "object": {"id": "cert_pay_1", "status": "succeeded"}}
+        client.post("/api/payments/yookassa/webhook/",
+                    json.dumps(payload), content_type="application/json")
+
+        mock_cert_task.delay.assert_called_once_with(order.id)
+        mock_bundle_task.delay.assert_not_called()
+        mock_order_task.delay.assert_not_called()

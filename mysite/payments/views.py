@@ -15,7 +15,7 @@ from django_ratelimit.decorators import ratelimit
 
 from payments.exceptions import PaymentClientError, PaymentConfigError
 from payments.ip_whitelist import yookassa_ip_only
-from payments.tasks import fulfill_paid_order
+from payments.tasks import fulfill_paid_bundle, fulfill_paid_certificate, fulfill_paid_order
 from payments.yookassa_client import get_yookassa_client
 from services_app.models import Order
 from website.notifications import send_notification_telegram
@@ -82,7 +82,7 @@ def yookassa_webhook(request):
     if status == "succeeded":
         _handle_succeeded(order)
     elif status == "canceled":
-        _handle_canceled(order)
+        _handle_canceled(order, order_type=order.order_type)
     else:
         logger.info(
             "yookassa_webhook: order=%s status=%s — no-op",
@@ -100,18 +100,30 @@ def _handle_succeeded(order: Order) -> None:
     order.status = "paid"
     order.paid_at = timezone.now()
     order.save(update_fields=["payment_status", "status", "paid_at", "updated_at"])
-    fulfill_paid_order.delay(order.id)
-    logger.info("yookassa_webhook: order=%s → succeeded, fulfill scheduled", order.number)
+
+    if order.order_type == "certificate":
+        fulfill_paid_certificate.delay(order.id)
+    elif order.order_type == "bundle":
+        fulfill_paid_bundle.delay(order.id)
+    else:
+        fulfill_paid_order.delay(order.id)
+
+    logger.info(
+        "yookassa_webhook: order=%s (type=%s) → succeeded, fulfill scheduled",
+        order.number, order.order_type,
+    )
 
 
-def _handle_canceled(order: Order) -> None:
+def _handle_canceled(order: Order, order_type: str = "service") -> None:
     if order.payment_status == "canceled":
         return
     order.payment_status = "canceled"
     order.status = "cancelled"
     order.save(update_fields=["payment_status", "status", "updated_at"])
+    labels = {"certificate": "Сертификат", "bundle": "Комплекс"}
+    label = labels.get(order_type, "Заказ")
     send_notification_telegram(
-        f"⚠️ Платёж отменён: заказ {order.number} ({order.total_amount} ₽)"
+        f"⚠️ Платёж отменён: {label} {order.number} ({order.total_amount} ₽)"
     )
     logger.info("yookassa_webhook: order=%s → canceled", order.number)
 

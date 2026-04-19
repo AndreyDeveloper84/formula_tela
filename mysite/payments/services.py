@@ -57,6 +57,16 @@ class PaymentService:
         return result["confirmation_url"]
 
     def _build_description(self, order: Order) -> str:
+        if order.order_type == "certificate":
+            cert = order.giftcertificate_set.first()
+            if cert and cert.certificate_type == "nominal":
+                return f"Подарочный сертификат на {cert.nominal} ₽ ({order.number})"
+            if cert and cert.service:
+                return f"Подарочный сертификат: {cert.service.name} ({order.number})"
+            return f"Подарочный сертификат ({order.number})"
+        if order.order_type == "bundle":
+            bundle = order.bundle
+            return f"Комплекс: {bundle.name} ({order.number})" if bundle else f"Комплекс {order.number}"
         if order.service:
             return f"Оплата услуги: {order.service.name} ({order.number})"
         return f"Заказ {order.number}"
@@ -68,24 +78,38 @@ class PaymentService:
         if order.client_email:
             customer["email"] = order.client_email
 
-        if order.service:
-            item_desc = order.service.name
-            if order.service_option and order.service_option.name:
-                item_desc = f"{item_desc} — {order.service_option.name}"
-        else:
-            item_desc = f"Заказ {order.number}"
-        item_desc = item_desc[:128]
-
         vat_code = getattr(settings, "YOOKASSA_VAT_CODE", 1)
+
+        if order.order_type == "certificate":
+            cert = order.giftcertificate_set.first()
+            if cert and cert.certificate_type == "nominal":
+                item_desc = f"Подарочный сертификат на {cert.nominal} ₽"
+            elif cert and cert.service:
+                item_desc = f"Подарочный сертификат: {cert.service.name}"
+            else:
+                item_desc = "Подарочный сертификат"
+            payment_subject = "payment"
+        elif order.order_type == "bundle":
+            bundle = order.bundle
+            item_desc = f"Комплекс: {bundle.name}" if bundle else f"Комплекс {order.number}"
+            payment_subject = "service"
+        else:
+            if order.service:
+                item_desc = order.service.name
+                if order.service_option and order.service_option.name:
+                    item_desc = f"{item_desc} — {order.service_option.name}"
+            else:
+                item_desc = f"Заказ {order.number}"
+            payment_subject = "service"
 
         return {
             "customer": customer,
             "items": [{
-                "description": item_desc,
+                "description": item_desc[:128],
                 "quantity": "1.00",
                 "amount": {"value": f"{order.total_amount:.2f}", "currency": "RUB"},
                 "vat_code": vat_code,
                 "payment_mode": "full_payment",
-                "payment_subject": "service",
+                "payment_subject": payment_subject,
             }],
         }
