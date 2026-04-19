@@ -309,6 +309,78 @@ Telegram уведомление администратору
 
 ---
 
+## Платежи (YooKassa)
+
+Приложение `mysite/payments/` — онлайн-оплата услуг через YooKassa +
+синхронное создание записи в YClients для офлайн-способов.
+
+### Flow
+
+```
+POST /api/services/order/                  (website/views.py::api_service_order_create)
+   │ payload: service_option_id, staff_id, date/time, client_*, payment_method
+   │ DRF-валидация (website/serializers.py::ServiceOrderCreateSerializer)
+   │ idempotency через cache (60с)
+   ▼
+Order(type=service, pending)
+   │
+   ├── payment_method=online + SiteSettings.online_payment_enabled
+   │      PaymentService.create_for_order(order) → confirmation_url
+   │      Order.payment_url / payment_id / payment_status=pending
+   │      клиент → YooKassa checkout → 
+   │              ├── succeeded → POST webhook
+   │              │     /api/payments/yookassa/webhook/
+   │              │     verify через find_payment (double-check)
+   │              │     Order.payment_status=succeeded + paid_at=now
+   │              │     fulfill_paid_order.delay(order.id)
+   │              │     → YClientsBookingService.create_record (retry 5×)
+   │              │     → Telegram админу
+   │              └── canceled → Order.payment_status=canceled + Telegram
+   │
+   └── payment_method=cash/card_offline
+         YClientsBookingService.create_record(order) СРАЗУ
+         → yclients_record_id в ответе + Telegram
+```
+
+### Компоненты
+
+| Файл | Что |
+|---|---|
+| `payments/yookassa_client.py` | Тонкий wrapper над yookassa SDK, возвращает dict'ы (не SDK-типы) |
+| `payments/services.py::PaymentService` | `create_for_order(order)` → YooKassa payment, persists payment_id/url/status |
+| `payments/booking_service.py::YClientsBookingService` | Shared service: `create_record(order)` идемпотентный, пишет `yclients_record_id` |
+| `payments/tasks.py::fulfill_paid_order` | Celery task: `bind=True, max_retries=5, retry_backoff`, `ignore_result=True` |
+| `payments/views.py::yookassa_webhook` | POST webhook: IP-whitelist + verify + роутинг succeeded/canceled |
+| `payments/ip_whitelist.py` | 7 подсетей YooKassa, `@yookassa_ip_only` декоратор, `YOOKASSA_WEBHOOK_STRICT_IP` |
+| `payments/exceptions.py` | `PaymentError` / `PaymentConfigError` / `PaymentClientError` / `BookingError` / `BookingValidationError` / `BookingClientError` |
+
+### Feature flag
+
+`SiteSettings.online_payment_enabled = False` по умолчанию. Редактируется через
+Django Admin (`/admin/services_app/sitesettings/`). Когда `False`:
+- Radio «Оплатить онлайн» в модалке записи **скрыт** на фронте
+- Попытка `payment_method=online` в API → 400 `online_payment_disabled`
+- Офлайн-способы (cash/card_offline) работают всегда
+
+### Env
+
+```
+YOOKASSA_SHOP_ID=<из личного кабинета YooKassa>
+YOOKASSA_SECRET_KEY=<оттуда же>
+YOOKASSA_RETURN_URL=https://formulatela58.ru/payments/success/?order={order_number}
+YOOKASSA_WEBHOOK_STRICT_IP=1   # 0 чтобы выключить IP-проверку в dev/CI
+```
+
+### Правила — СТРОГО СОБЛЮДАТЬ
+- **Offline flow не создаёт платежи в YooKassa** — только Order + YClients-запись + Telegram
+- **`order.number` — idempotence_key** для YooKassa Payment.create (защита от дублей)
+- **Webhook всегда отвечает 200** (даже unknown order / already succeeded) — иначе YooKassa спамит retry
+- **Fulfillment идемпотентен через `yclients_record_id`** — повторная доставка webhook не создаст запись второй раз
+- **Чеки 54-ФЗ сейчас НЕ выдаются** — отдельная задача FT-13 (требует выбора ОФД)
+- **Рефанды — через личный кабинет YooKassa** (не через админку) — FT-14
+
+---
+
 ## Архитектурные решения и причины
 | Решение | Причина |
 |---|---|

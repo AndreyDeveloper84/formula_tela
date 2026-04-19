@@ -82,10 +82,21 @@ def agents_health(request):
     ).count()
     error_rate = round(recent_errors / recent_total, 2) if recent_total else 0.0
 
+    # Платежи (YooKassa)
+    payments_info = _payments_health(now, day_ago)
+
     # Overall status
-    if stuck_tasks > 0 or error_rate > 0.3:
+    if (
+        stuck_tasks > 0
+        or error_rate > 0.3
+        or payments_info["failed_fulfill_24h"] > 0
+    ):
         status = "unhealthy"
-    elif stale_count > 0 or error_rate > 0.1:
+    elif (
+        stale_count > 0
+        or error_rate > 0.1
+        or payments_info["pending_over_1h"] > 0
+    ):
         status = "degraded"
     else:
         status = "healthy"
@@ -95,7 +106,58 @@ def agents_health(request):
         "agents": agents_info,
         "stuck_tasks": stuck_tasks,
         "error_rate_24h": error_rate,
+        "payments": payments_info,
     })
+
+
+def _payments_health(now, day_ago) -> dict:
+    """Статистика оплат за последние 24 часа.
+
+    - pending_24h: online-заказы в статусе pending за 24ч (ожидают клиента)
+    - pending_over_1h: из них те, которые висят > 1 часа (клиент забросил?)
+    - succeeded_24h: успешно оплаченные
+    - failed_fulfill_24h: оплачено, но YClients-запись не создана >5 мин
+      (сигнал что Celery retry не справился)
+    - canceled_24h: платёж отменён
+    - online_payment_enabled: текущее состояние feature flag
+    """
+    from services_app.models import Order, SiteSettings
+
+    service_orders_24h = Order.objects.filter(
+        order_type="service", created_at__gte=day_ago,
+    )
+    pending_24h = service_orders_24h.filter(
+        payment_method="online", payment_status="pending",
+    ).count()
+    one_hour_ago = now - datetime.timedelta(hours=1)
+    pending_over_1h = Order.objects.filter(
+        order_type="service", payment_method="online",
+        payment_status="pending", created_at__lt=one_hour_ago,
+    ).count()
+    succeeded_24h = service_orders_24h.filter(payment_status="succeeded").count()
+    canceled_24h = service_orders_24h.filter(payment_status="canceled").count()
+    # paid но без record_id (fulfill сломан/не успел) — считаем от момента
+    # оплаты, учитываем grace-period 5 минут.
+    five_min_ago = now - datetime.timedelta(minutes=5)
+    failed_fulfill_24h = Order.objects.filter(
+        order_type="service",
+        payment_status="succeeded",
+        yclients_record_id="",
+        paid_at__lt=five_min_ago,
+        paid_at__gte=day_ago,
+    ).count()
+
+    settings_row = SiteSettings.objects.first()
+    flag_enabled = bool(settings_row and settings_row.online_payment_enabled)
+
+    return {
+        "pending_24h": pending_24h,
+        "pending_over_1h": pending_over_1h,
+        "succeeded_24h": succeeded_24h,
+        "canceled_24h": canceled_24h,
+        "failed_fulfill_24h": failed_fulfill_24h,
+        "online_payment_enabled": flag_enabled,
+    }
 
 
 def landing_page_view(request, slug: str):
