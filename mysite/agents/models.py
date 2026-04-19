@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+from agents.managers import LandingPageQuerySet
+
 
 class AgentTask(models.Model):
     ANALYTICS        = "analytics"
@@ -351,6 +353,8 @@ class LandingPage(models.Model):
     )
     created_at        = models.DateTimeField("Создано", auto_now_add=True)
     published_at      = models.DateTimeField("Опубликовано", null=True, blank=True)
+
+    objects = LandingPageQuerySet.as_manager()
 
     class Meta:
         verbose_name = "Посадочная страница"
