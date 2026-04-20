@@ -173,6 +173,30 @@ def test_wizard_booking_triggers_notification(client, service, mock_telegram):
     assert BookingRequest.objects.filter(service_name=service.name).exists()
 
 
+@pytest.mark.django_db
+def test_wizard_booking_saves_master_name(client, service, mock_telegram):
+    """Покупатель нажал «Записаться» в карточке мастера → master_name
+    доходит до BookingRequest и упоминается в уведомлениях."""
+    baker.make(SiteSettings, notification_emails="manager@example.com")
+    with patch("website.notifications.send_mail") as mock_mail:
+        resp = client.post(
+            "/api/wizard/booking/",
+            data=json.dumps({
+                "client_name": "Андрей",
+                "client_phone": "+79990001122",
+                "service_id": service.id,
+                "master_name": "Елена Миронова",
+            }),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    booking = BookingRequest.objects.get(service_name=service.name)
+    assert booking.master_name == "Елена Миронова"
+    # Master name is in the email body
+    body = mock_mail.call_args.kwargs["message"]
+    assert "Елена Миронова" in body
+
+
 # ── api_bundle_request — интеграция ─────────────────────────────────────────
 
 @pytest.mark.django_db

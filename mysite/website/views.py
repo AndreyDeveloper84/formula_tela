@@ -121,7 +121,14 @@ def promotions(request):
 
 
 def masters(request):
-    items = Master.objects.active().with_services_and_options()
+    from django.db.models import Count, Q, Prefetch
+    active_services = Service.objects.active().order_by("order", "name")
+    items = (
+        Master.objects.active()
+        .prefetch_related(Prefetch("services", queryset=active_services))
+        .annotate(svc_count=Count("services", filter=Q(services__is_active=True), distinct=True))
+        .order_by("order", "name")
+    )
     return render(request, "website/masters.html", {
         "settings": _settings(),
         "masters": items,
@@ -1424,6 +1431,7 @@ def api_wizard_booking(request):
     raw_phone = data.get("client_phone", "").strip()
     comment = data.get("comment", "").strip()
     service_id = data.get("service_id")
+    master_name = (data.get("master_name") or "").strip()[:150]
 
     if not client_name or not raw_phone:
         return JsonResponse({"success": False, "error": "Укажите имя и телефон"}, status=400)
@@ -1458,6 +1466,7 @@ def api_wizard_booking(request):
     booking = BookingRequest.objects.create(
         category_name=category_name,
         service_name=service_name,
+        master_name=master_name,
         client_name=client_name,
         client_phone=client_phone,
         comment=comment,
@@ -1481,6 +1490,8 @@ def _notify_booking_request(booking):
         f"📞 {booking.client_phone}\n"
         f"💆 {booking.service_name}\n"
     )
+    if booking.master_name:
+        tg_text += f"🧑‍⚕️ Мастер: {booking.master_name}\n"
     if booking.category_name:
         tg_text += f"📂 {booking.category_name}\n"
     if booking.comment:
@@ -1490,6 +1501,10 @@ def _notify_booking_request(booking):
     email_lines = [
         f"Категория: {booking.category_name or '—'}",
         f"Услуга:    {booking.service_name}",
+    ]
+    if booking.master_name:
+        email_lines.append(f"Мастер:    {booking.master_name}")
+    email_lines += [
         f"Клиент:    {booking.client_name}",
         f"Телефон:   {booking.client_phone}",
     ]
