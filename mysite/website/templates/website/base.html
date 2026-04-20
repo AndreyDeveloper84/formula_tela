@@ -42,6 +42,12 @@
 <!-- /Yandex.Metrika counter -->
 </head>
 <body class="{% block body_class %}page{% endblock %}">
+<style>
+    /* Защита от горизонтального overflow — любой элемент с избыточной шириной
+       (длинный текст, иностранное изображение, flex-лента) не должен увести
+       body за пределы viewport на мобильных. */
+    html, body { overflow-x: hidden; max-width: 100%; }
+</style>
     <!--[if lte IE 9]>
         <p class="browserupgrade">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience and security.</p>
     <![endif]-->
