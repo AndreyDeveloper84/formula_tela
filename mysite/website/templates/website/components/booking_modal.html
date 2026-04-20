@@ -27,6 +27,11 @@ JS-логика — components/booking_modal_master_js.html.
     #bookingModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
     #bookingModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
     #bookingModal .modal-content { max-width: 500px; width: calc(100% - 30px); pointer-events: auto; max-height: 90vh; overflow-y: auto; }
+    /* В модалке 500px тесно для 3-колоночного .in-form — даём 2 колонки на десктопе.
+       Мобайл (<=768px) уже переведён глобальным media в 1 колонку. */
+    @media (min-width: 769px) {
+        #bookingModal .in-form { grid-template-columns: repeat(2, 1fr) !important; }
+    }
     #bookingModal #m-contact-form .form-group { margin-bottom: 15px; }
     #bookingModal #m-contact-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
     #bookingModal #m-contact-form .form-group input,
