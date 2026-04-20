@@ -66,6 +66,37 @@ def test_home_no_promo_no_booking_modal(client):
     assert 'id="bookingModal"' not in html
 
 
+@pytest.mark.django_db
+def test_home_promo_price_uses_discount_percent(client, service):
+    """Цена на кнопке промо = option.price × (100 - discount%). PDF показывает
+    пользователю реальную скидочную цену, а не полную."""
+    from datetime import date, timedelta
+    from decimal import Decimal
+    opt = baker.make(
+        "services_app.ServiceOption",
+        service=service, price=Decimal("2500"), is_active=True,
+        yclients_service_id="22610238",
+    )
+    promo = baker.make(
+        "services_app.Promotion",
+        title="Знакомство",
+        is_active=True,
+        discount_percent=40,
+        starts_at=date.today() - timedelta(days=1),
+        ends_at=date.today() + timedelta(days=30),
+    )
+    promo.options.add(opt)
+
+    resp = client.get("/")
+    assert resp.context["promo_booking_price"] == 1500  # 2500 × 0.60
+    assert resp.context["promo_booking_option_id"] == opt.id
+    html = resp.content.decode("utf-8")
+    # promoOpts в onclick
+    assert f"pinnedOptionId: {opt.id}" in html
+    assert "price: 1500" in html
+    assert "autoPickDate: false" in html
+
+
 # ─── services ────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db

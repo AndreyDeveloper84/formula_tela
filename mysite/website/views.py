@@ -71,15 +71,28 @@ def home(request):
         .prefetch_related("options__service")[:3]
     )
 
-    # Для кнопки «Записаться» на промо-баннере: берём первую услугу
-    # первого активного промо (если есть привязанная option).
+    # Для кнопки «Записаться» на промо-баннере: pinned-option + fixed цена
+    # со скидкой (YClients API требует yclients_service_id, поэтому
+    # фильтруем options по его наличию).
     promo_booking_svc_id = None
     promo_booking_svc_name = ""
+    promo_booking_option_id = None
+    promo_booking_price = None
     if promos:
-        first_opt = promos[0].options.first()
+        first_promo = promos[0]
+        first_opt = (
+            first_promo.options.filter(yclients_service_id__isnull=False).first()
+            or first_promo.options.first()
+        )
         if first_opt and first_opt.service_id:
             promo_booking_svc_id = first_opt.service_id
-            promo_booking_svc_name = promos[0].title or first_opt.service.name
+            promo_booking_svc_name = first_promo.title or first_opt.service.name
+            promo_booking_option_id = first_opt.id
+            pct = int(first_promo.discount_percent or 0)
+            price = first_opt.price or 0
+            if pct > 0:
+                price = price * (100 - pct) / 100
+            promo_booking_price = int(price)
 
     reviews = Review.objects.active()[:3]
 
@@ -92,6 +105,8 @@ def home(request):
         "promotions": promos,
         "promo_booking_svc_id": promo_booking_svc_id,
         "promo_booking_svc_name": promo_booking_svc_name,
+        "promo_booking_option_id": promo_booking_option_id,
+        "promo_booking_price": promo_booking_price,
         "reviews": reviews,
     }
     return render(request, "website/home.html", ctx)
