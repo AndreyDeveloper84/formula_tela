@@ -14,6 +14,7 @@ import json
 import logging
 from datetime import date
 
+from django.conf import settings
 from django.utils import timezone
 
 from agents.agents._lifecycle import ensure_task_finalized
