@@ -178,6 +178,103 @@
     .cert-service-card:hover, .cert-service-card.active { border-color: #000; }
     .cert-service-card .svc-name { font-weight: 600; font-size: 15px; }
     .cert-service-card .svc-price { opacity: 0.6; font-size: 14px; margin-top: 4px; }
+
+    /* ══════════ Catalog: search + categories + service grid ══════════ */
+    .svc-search-wrap { margin-bottom: 18px; }
+    #svc-search {
+        width: 100%;
+        max-width: 480px;
+        padding: 12px 16px;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        font-size: 15px;
+    }
+    #svc-search:focus { outline: none; border-color: #000; }
+
+    .svc-cat-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    .svc-cat-tab {
+        border: 1.5px solid #ddd;
+        background: #fff;
+        color: #333;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all .2s;
+    }
+    .svc-cat-tab:hover { border-color: #000; }
+    .svc-cat-tab.active { background: #000; color: #fff; border-color: #000; }
+    .svc-cat-count {
+        display: inline-block;
+        margin-left: 4px;
+        opacity: 0.55;
+        font-size: 11px;
+    }
+    .svc-cat-tab.active .svc-cat-count { opacity: 0.8; }
+
+    .svc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+    }
+    .svc-card {
+        border: 1px solid #eee;
+        border-radius: 12px;
+        overflow: hidden;
+        cursor: pointer;
+        transition: transform .15s, box-shadow .15s;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+    }
+    .svc-card:hover { transform: translateY(-3px); box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    .svc-card-img {
+        aspect-ratio: 4/3;
+        overflow: hidden;
+        background: #f8f8f8;
+    }
+    .svc-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .svc-card-img-empty {
+        display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #f8f8f8 0%, #eee 100%);
+        font-size: 40px;
+    }
+    .svc-card-body { padding: 12px 14px 14px; }
+    .svc-card-name {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.25;
+        margin-bottom: 4px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .svc-card-price { opacity: 0.65; font-size: 13px; }
+    .svc-card.hidden { display: none; }
+
+    /* ══════════ Варианты услуги в модалке ══════════ */
+    #svc-options-group { margin-bottom: 18px; }
+    .svc-opt-item {
+        display: block;
+        padding: 10px 14px;
+        border: 1.5px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: border-color .15s, background .15s;
+    }
+    .svc-opt-item:hover { border-color: #888; }
+    .svc-opt-item.active { border-color: #000; background: #f7f7f7; }
+    .svc-opt-item input[type=radio] { margin-right: 8px; accent-color: #000; }
+    .svc-opt-label { font-weight: 600; font-size: 14px; }
+    .svc-opt-price { float: right; font-weight: 700; font-size: 14px; }
     .cert-check-section { background: #f8f9fa; border-radius: 12px; padding: 30px; }
     .cert-check-wrap { display: flex; gap: 12px; max-width: 450px; }
     .cert-check-wrap input { flex: 1; padding: 12px 15px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; text-transform: uppercase; }
@@ -320,16 +417,45 @@
 
         <!-- Услуги -->
         <div id="cert-tab-service" style="display: none;" class="wow fadeInUp" data-wow-delay=".4s">
-            {% for svc in popular_services %}
-            <div class="cert-service-card" onclick="selectService(this, {{ svc.id }}, '{{ svc.name|escapejs }}', '{{ svc.price_from|default:0 }}')">
-                <div class="svc-name">{{ svc.name }}</div>
-                {% if svc.price_from %}
-                <div class="svc-price">от {{ svc.price_from|floatformat:0 }} &#8381;</div>
-                {% endif %}
+            <!-- Поиск -->
+            <div class="svc-search-wrap">
+                <input type="text" id="svc-search" placeholder="Поиск по услугам…">
             </div>
-            {% empty %}
-            <p style="opacity: 0.5;">Услуги пока не добавлены</p>
-            {% endfor %}
+
+            <!-- Категории -->
+            <div class="svc-cat-tabs">
+                <button type="button" class="svc-cat-tab active" data-cat="all">Все</button>
+                {% for cat in service_categories %}
+                <button type="button" class="svc-cat-tab" data-cat="{{ cat.id }}">{{ cat.name }} <span class="svc-cat-count">{{ cat.svc_count }}</span></button>
+                {% endfor %}
+            </div>
+
+            <!-- Grid карточек -->
+            <div class="svc-grid">
+                {% for svc in all_services %}
+                <div class="svc-card"
+                    data-svc-id="{{ svc.id }}"
+                    data-svc-cat="{{ svc.category_id|default:'' }}"
+                    data-svc-name="{{ svc.name|lower }}"
+                    data-svc-label="{{ svc.name|escapejs }}"
+                    data-svc-options="{% for opt in svc.options.all %}{{ opt.id }}::{{ opt.price|floatformat:0 }}::{% if opt.units and opt.units > 1 %}Курс {{ opt.units }}{% if opt.duration_min %} × {{ opt.duration_min }} мин{% endif %}{% else %}{% if opt.duration_min %}{{ opt.duration_min }} мин{% else %}1 процедура{% endif %}{% endif %}{% if not forloop.last %}||{% endif %}{% endfor %}">
+                    {% if svc.image %}
+                    <div class="svc-card-img"><img src="{{ svc.image.url }}" alt="{{ svc.name }}" loading="lazy"></div>
+                    {% else %}
+                    <div class="svc-card-img svc-card-img-empty"><span>{{ svc.emoji|default:"💆" }}</span></div>
+                    {% endif %}
+                    <div class="svc-card-body">
+                        <div class="svc-card-name">{{ svc.name }}</div>
+                        {% if svc.price_from %}
+                        <div class="svc-card-price">от {{ svc.price_from|floatformat:0 }} ₽</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <p style="opacity: 0.5;">Услуги пока не добавлены</p>
+                {% endfor %}
+            </div>
+            <p id="svc-empty-msg" style="display:none; opacity:0.6; text-align:center; padding:30px 0;">Ничего не найдено</p>
         </div>
     </div>
 </section>
@@ -412,6 +538,12 @@
                         {% for key, label in themes %}
                         <button type="button" class="ts-swatch theme-{{ key }}{% if forloop.first %} active{% endif %}" data-theme="{{ key }}" title="{{ label }}"></button>
                         {% endfor %}
+                    </div>
+
+                    <!-- Варианты услуги (для type=service с >1 option) -->
+                    <div id="svc-options-group" style="display:none;">
+                        <div class="semi mb-10">Выберите вариант:</div>
+                        <div id="svc-options-list"></div>
                     </div>
 
                     <div class="cert-info">
@@ -508,6 +640,7 @@
     let certType = 'nominal';
     let certNominal = 0;
     let certServiceId = null;
+    let certServiceOptionId = null;
     let certServiceName = '';
     let curBundleId = null;
     let currentTheme = VALID_THEMES[0] || 'pink';
@@ -599,6 +732,24 @@
             });
         });
 
+        /* Service catalog: card click */
+        document.querySelectorAll('.svc-card').forEach(function(card) {
+            card.addEventListener('click', function() { selectServiceCard(this); });
+        });
+
+        /* Category filter */
+        document.querySelectorAll('.svc-cat-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.svc-cat-tab').forEach(function(t) { t.classList.remove('active'); });
+                this.classList.add('active');
+                filterServiceCards();
+            });
+        });
+
+        /* Service search */
+        const searchEl = document.getElementById('svc-search');
+        if (searchEl) searchEl.addEventListener('input', filterServiceCards);
+
         /* Initial state: set initial theme (pink) */
         setCurrentTheme(currentTheme);
     });
@@ -639,25 +790,95 @@
         openCertModal('nominal', null, '', val, []);
     };
 
-    /* ---- Service selection ---- */
-    window.selectService = function(card, serviceId, name, price) {
+    /* ---- Service selection (from catalog card) ---- */
+    function selectServiceCard(card) {
+        const svcId = parseInt(card.dataset.svcId);
+        const svcName = card.dataset.svcLabel;
+        const rawOpts = card.dataset.svcOptions || '';
+
+        /* Parse options: "id::price::label||id::price::label" */
+        const options = rawOpts ? rawOpts.split('||').map(function(s) {
+            const parts = s.split('::');
+            return { id: parseInt(parts[0]), price: parseInt(parts[1]) || 0, label: parts[2] || '' };
+        }).filter(function(o) { return o.id; }) : [];
+
         certType = 'service';
-        certServiceId = serviceId;
-        certServiceName = name;
-        certNominal = parseInt(price) || 0;
+        certServiceId = svcId;
+        certServiceName = svcName;
         curBundleId = null;
-        document.querySelectorAll('.cert-service-card').forEach(function(c) { c.classList.remove('active'); });
-        card.classList.add('active');
-        openCertModal('service', null, name, certNominal, []);
-    };
+
+        /* Выбираем дефолтную опцию (первую — самую дешёвую) */
+        if (options.length) {
+            certServiceOptionId = options[0].id;
+            certNominal = options[0].price;
+        } else {
+            certServiceOptionId = null;
+            certNominal = 0;
+        }
+
+        openCertModal('service', null, svcName, certNominal, [], options);
+    }
+
+    /* Options radio rendering inside modal */
+    function renderOptionsPicker(options) {
+        const group = document.getElementById('svc-options-group');
+        const list = document.getElementById('svc-options-list');
+        if (!options || options.length <= 1) {
+            group.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+        group.style.display = 'block';
+        list.innerHTML = '';
+        options.forEach(function(opt, i) {
+            const wrapper = document.createElement('label');
+            wrapper.className = 'svc-opt-item' + (i === 0 ? ' active' : '');
+            wrapper.innerHTML =
+                '<input type="radio" name="svc-option" value="' + opt.id + '" data-price="' + opt.price + '"' +
+                (i === 0 ? ' checked' : '') + '>' +
+                '<span class="svc-opt-label">' + opt.label + '</span>' +
+                '<span class="svc-opt-price">' + opt.price.toLocaleString('ru-RU') + ' \u20bd</span>';
+            wrapper.querySelector('input').addEventListener('change', function() {
+                if (!this.checked) return;
+                certServiceOptionId = parseInt(this.value);
+                certNominal = parseInt(this.dataset.price) || 0;
+                document.querySelectorAll('.svc-opt-item').forEach(function(w) { w.classList.remove('active'); });
+                wrapper.classList.add('active');
+                document.getElementById('cm-value-display').textContent =
+                    certServiceName + ' — ' + certNominal.toLocaleString('ru-RU') + ' \u20bd';
+            });
+            list.appendChild(wrapper);
+        });
+    }
+
+    /* Поиск по услугам */
+    function filterServiceCards() {
+        const q = (document.getElementById('svc-search').value || '').trim().toLowerCase();
+        const catBtn = document.querySelector('.svc-cat-tab.active');
+        const cat = catBtn ? catBtn.dataset.cat : 'all';
+        let visible = 0;
+        document.querySelectorAll('.svc-card').forEach(function(card) {
+            const matchName = !q || (card.dataset.svcName || '').includes(q);
+            const matchCat = cat === 'all' || card.dataset.svcCat === cat;
+            const show = matchName && matchCat;
+            card.classList.toggle('hidden', !show);
+            if (show) visible++;
+        });
+        const empty = document.getElementById('svc-empty-msg');
+        if (empty) empty.style.display = visible === 0 ? 'block' : 'none';
+    }
 
     /* ---- Open modal ---- */
-    function openCertModal(type, bundleId, name, price, items) {
+    function openCertModal(type, bundleId, name, price, items, svcOptions) {
         certType = type;
         curBundleId = bundleId;
         certNominal = price;
         certServiceId = type === 'service' ? certServiceId : null;
         certServiceName = type === 'service' ? name : '';
+        if (type !== 'service') certServiceOptionId = null;
+
+        /* Опции услуги */
+        renderOptionsPicker(type === 'service' ? svcOptions : null);
 
         /* type/value info */
         const typeText = type === 'bundle' ? 'Комплекс' : type === 'nominal' ? 'На сумму' : 'На услугу';
@@ -665,7 +886,7 @@
             ? name + ' — ' + price.toLocaleString('ru-RU') + ' \u20bd'
             : type === 'nominal'
             ? price.toLocaleString('ru-RU') + ' \u20bd'
-            : name + (price ? ' (от ' + price.toLocaleString('ru-RU') + ' \u20bd)' : '');
+            : name + (price ? ' — ' + price.toLocaleString('ru-RU') + ' \u20bd' : '');
         document.getElementById('cm-type-display').textContent = typeText;
         document.getElementById('cm-value-display').textContent = valueText;
 
@@ -717,6 +938,7 @@
             certificate_type: certType,
             nominal: certNominal,
             service_id: certServiceId,
+            service_option_id: certServiceOptionId,
             bundle_id: curBundleId,
             theme: currentTheme,
             buyer_name: buyerName,

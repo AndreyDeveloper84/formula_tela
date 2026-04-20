@@ -384,6 +384,25 @@ class TestCertificateThemes:
         cert = GiftCertificate.objects.get(order=order)
         assert cert.theme == "winter"
 
+    def test_request_saves_service_option(self, client, service, service_option, mock_telegram):
+        """Покупатель выбрал конкретный ServiceOption → он сохраняется,
+        номинал = price опции, а не service.price_from."""
+        payload = {
+            "certificate_type": "service",
+            "service_id": service.id,
+            "service_option_id": service_option.id,
+            "buyer_name": "Андрей",
+            "buyer_phone": "+79990001122",
+        }
+        resp = client.post(self.url, json.dumps(payload), content_type="application/json")
+        assert resp.status_code == 200
+
+        from services_app.models import GiftCertificate, Order
+        order = Order.objects.get(number=resp.json()["order_number"])
+        cert = GiftCertificate.objects.get(order=order)
+        assert cert.service_option_id == service_option.id
+        assert int(cert.nominal) == int(service_option.price)
+
     def test_pdf_uses_cert_theme(self, monkeypatch):
         import sys
         fake_wp = MagicMock()
