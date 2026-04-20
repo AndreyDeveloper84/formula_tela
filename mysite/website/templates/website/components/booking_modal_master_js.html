@@ -59,7 +59,11 @@ promoOpts (опционально) для промо-режима:
         if(curPromoOpts&&curPromoOpts.pinnedOptionId){
             const pinned=opts.find(o=>o.id===curPromoOpts.pinnedOptionId);
             if(pinned){
-                ds.style.display='none';qc.style.display='none';
+                // Скрытые select'ы с required блокируют HTML5-submit. Снимаем required.
+                ds.style.display='none';ds.removeAttribute('required');
+                qc.style.display='none';
+                const hiddenQty=qc.querySelector('#m-quantity-select');
+                if(hiddenQty)hiddenQty.removeAttribute('required');
                 const w=ds.parentElement,i=document.createElement('input');
                 i.type='text';i.className='text-def';i.value=pinned.duration+' минут';i.disabled=true;i.id='m-duration-display';
                 w.insertBefore(i,ds);
@@ -148,7 +152,7 @@ promoOpts (опционально) для промо-режима:
         document.getElementById('booking-step-1').style.display='block';document.getElementById('booking-step-2').style.display='none';document.getElementById('booking-step-3').style.display='none';
         document.getElementById('modal-booking-form').style.display='none';document.getElementById('modal-loading').style.display='none';
         document.getElementById('modal-loading').innerHTML='<div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p>';
-        const ds=document.getElementById('m-duration-select');ds.style.display='';ds.innerHTML='<option value="">Выберите длительность</option>';const dd=document.getElementById('m-duration-display');if(dd)dd.remove();
+        const ds=document.getElementById('m-duration-select');ds.style.display='';ds.setAttribute('required','');ds.innerHTML='<option value="">Выберите длительность</option>';const dd=document.getElementById('m-duration-display');if(dd)dd.remove();
         const qc=document.getElementById('m-quantity-container');qc.style.display='';qc.innerHTML='<select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select>';
         document.getElementById('m-option-select').value='';document.getElementById('m-master-select').innerHTML='<option value="">Сначала выберите вариант услуги</option>';
         document.getElementById('m-date-disabled').style.display='block';document.getElementById('m-date-disabled').value='Сначала выберите мастера';
