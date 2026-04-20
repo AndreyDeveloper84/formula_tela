@@ -1,0 +1,13 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g fill="currentColor" opacity="0.22">
+    <path d="M255,20 C253,14 248,12 245,18 C242,12 237,14 235,20 C234,25 240,32 245,35 C250,32 256,25 255,20 Z"/>
+    <path d="M245,35 L245,55" stroke="currentColor" stroke-width="1"/>
+    <path d="M245,45 L240,48 M245,48 L250,51" stroke="currentColor" stroke-width="0.8" fill="none"/>
+    <path d="M285,50 C283,45 278,43 275,48 C272,43 267,45 265,50 C264,54 270,60 275,62 C280,60 286,54 285,50 Z"/>
+    <path d="M275,62 L275,80" stroke="currentColor" stroke-width="0.9"/>
+    <path d="M30,160 C28,155 23,153 20,158 C17,153 12,155 10,160 C9,164 15,170 20,172 C25,170 31,164 30,160 Z"/>
+    <path d="M20,172 L20,190" stroke="currentColor" stroke-width="0.9"/>
+    <path d="M55,175 C53,170 48,168 45,173 C42,168 37,170 35,175 C34,179 41,184 45,186 C49,184 56,179 55,175 Z"/>
+    <path d="M45,186 L45,198" stroke="currentColor" stroke-width="0.9"/>
+  </g>
+</svg>

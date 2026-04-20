@@ -1,0 +1,15 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.35">
+    <path d="M-20,40 Q40,20 100,40 T220,40 T340,40"/>
+    <path d="M-20,70 Q40,50 100,70 T220,70 T340,70"/>
+    <path d="M-20,160 Q40,140 100,160 T220,160 T340,160"/>
+    <path d="M-20,190 Q40,170 100,190 T220,190 T340,190"/>
+  </g>
+  <g fill="currentColor" opacity="0.18">
+    <circle cx="260" cy="30" r="3"/>
+    <circle cx="280" cy="50" r="2"/>
+    <circle cx="250" cy="55" r="1.5"/>
+    <circle cx="30" cy="170" r="2"/>
+    <circle cx="50" cy="180" r="1.5"/>
+  </g>
+</svg>

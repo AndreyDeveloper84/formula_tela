@@ -60,7 +60,7 @@ class TestGenerateCertificatePdf:
             name="SPA Комплекс",
             is_active=True,
             is_certificate=True,
-            certificate_theme="dark",
+            certificate_theme="graphite",
         )
         cert, order = self._make_cert("bundle", bundle=bundle)
 
@@ -319,3 +319,92 @@ class TestCertificateRequestBundleType:
             self.url, json.dumps(payload), content_type="application/json"
         )
         assert resp.status_code == 400
+
+
+# ── Темы оформления ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestCertificateThemes:
+    url = "/api/certificates/request/"
+
+    def test_request_saves_theme(self, client, mock_telegram):
+        payload = {
+            "certificate_type": "nominal",
+            "nominal": 3000,
+            "theme": "spring",
+            "buyer_name": "Андрей",
+            "buyer_phone": "+79990001122",
+        }
+        resp = client.post(self.url, json.dumps(payload), content_type="application/json")
+        assert resp.status_code == 200
+
+        from services_app.models import GiftCertificate, Order
+        order = Order.objects.get(number=resp.json()["order_number"])
+        cert = GiftCertificate.objects.get(order=order)
+        assert cert.theme == "spring"
+
+    def test_invalid_theme_falls_back_to_pink(self, client, mock_telegram):
+        payload = {
+            "certificate_type": "nominal",
+            "nominal": 3000,
+            "theme": "hacker-neon",
+            "buyer_name": "Андрей",
+            "buyer_phone": "+79990001122",
+        }
+        resp = client.post(self.url, json.dumps(payload), content_type="application/json")
+        assert resp.status_code == 200
+
+        from services_app.models import GiftCertificate, Order
+        order = Order.objects.get(number=resp.json()["order_number"])
+        cert = GiftCertificate.objects.get(order=order)
+        assert cert.theme == "pink"
+
+    def test_bundle_theme_defaults_from_bundle(self, client, mock_telegram):
+        bundle = baker.make(
+            "services_app.Bundle",
+            name="Winter SPA",
+            is_active=True,
+            is_certificate=True,
+            certificate_theme="winter",
+            fixed_price=Decimal("5000"),
+        )
+        # theme НЕ передан в payload
+        payload = {
+            "certificate_type": "bundle",
+            "bundle_id": bundle.id,
+            "buyer_name": "Андрей",
+            "buyer_phone": "+79990001122",
+        }
+        resp = client.post(self.url, json.dumps(payload), content_type="application/json")
+        assert resp.status_code == 200
+
+        from services_app.models import GiftCertificate, Order
+        order = Order.objects.get(number=resp.json()["order_number"])
+        cert = GiftCertificate.objects.get(order=order)
+        assert cert.theme == "winter"
+
+    def test_pdf_uses_cert_theme(self, monkeypatch):
+        import sys
+        fake_wp = MagicMock()
+        fake_wp.HTML.return_value.write_pdf.return_value = b"%PDF"
+        sys.modules["weasyprint"] = fake_wp
+
+        from datetime import date, timedelta
+        order = baker.make("services_app.Order", order_type="certificate",
+                           client_name="A", client_phone="+7", total_amount=Decimal("1000"))
+        today = date.today()
+        cert = baker.make(
+            "services_app.GiftCertificate",
+            order=order, certificate_type="nominal", nominal=Decimal("1000"),
+            theme="valentine",
+            buyer_name="A", buyer_phone="+7",
+            valid_from=today, valid_until=today + timedelta(days=180),
+        )
+
+        from payments.certificate_pdf import generate_certificate_pdf
+        generate_certificate_pdf(cert, order)
+
+        # HTML передан в weasyprint.HTML — проверим что в строке есть класс темы
+        html_arg = fake_wp.HTML.call_args.kwargs.get("string", "") or fake_wp.HTML.call_args.args[0]
+        assert 'class="page-front valentine"' in html_arg

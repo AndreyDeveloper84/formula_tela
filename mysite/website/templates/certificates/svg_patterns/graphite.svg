@@ -1,0 +1,14 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g stroke="currentColor" stroke-width="0.6" fill="none" opacity="0.25">
+    <path d="M240,10 L280,50 L260,90"/>
+    <path d="M260,10 L300,50 L280,90"/>
+    <path d="M280,10 L320,50 L300,90"/>
+    <path d="M20,150 L-20,190 L20,230"/>
+    <path d="M40,150 L0,190 L40,230"/>
+  </g>
+  <g fill="currentColor" opacity="0.12">
+    <polygon points="260,30 266,33 266,40 260,43 254,40 254,33"/>
+    <polygon points="40,120 46,123 46,130 40,133 34,130 34,123"/>
+    <polygon points="280,70 286,73 286,80 280,83 274,80 274,73"/>
+  </g>
+</svg>

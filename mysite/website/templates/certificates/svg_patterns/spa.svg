@@ -1,0 +1,15 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g fill="currentColor" opacity="0.22">
+    <path d="M260,20 C270,20 278,28 278,38 C278,48 270,56 260,56 C260,46 260,30 260,20 Z"/>
+    <path d="M260,20 C250,20 242,28 242,38 C242,48 250,56 260,56 C260,46 260,30 260,20 Z" opacity="0.5"/>
+    <path d="M25,160 C35,160 43,168 43,178 C43,188 35,196 25,196 C25,186 25,170 25,160 Z"/>
+    <path d="M25,160 C15,160 7,168 7,178 C7,188 15,196 25,196 C25,186 25,170 25,160 Z" opacity="0.5"/>
+  </g>
+  <g stroke="currentColor" fill="none" opacity="0.18">
+    <circle cx="280" cy="130" r="18" stroke-width="0.6"/>
+    <circle cx="280" cy="130" r="12" stroke-width="0.5"/>
+    <circle cx="280" cy="130" r="6" stroke-width="0.5"/>
+    <circle cx="20" cy="60" r="16" stroke-width="0.6"/>
+    <circle cx="20" cy="60" r="10" stroke-width="0.5"/>
+  </g>
+</svg>

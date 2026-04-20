@@ -1,0 +1,13 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g fill="currentColor" opacity="0.25">
+    <polygon points="260,25 264,37 276,37 266,44 270,56 260,49 250,56 254,44 244,37 256,37"/>
+    <polygon points="280,70 282,76 288,76 283,80 285,86 280,82 275,86 277,80 272,76 278,76"/>
+    <polygon points="35,155 39,167 51,167 41,174 45,186 35,179 25,186 29,174 19,167 31,167"/>
+  </g>
+  <g stroke="currentColor" stroke-width="1" fill="none" opacity="0.18">
+    <path d="M-10,30 L20,50 L-10,70"/>
+    <path d="M-10,50 L20,70 L-10,90"/>
+    <path d="M290,120 L260,140 L290,160"/>
+    <path d="M290,140 L260,160 L290,180"/>
+  </g>
+</svg>

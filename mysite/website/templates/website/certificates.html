@@ -3,11 +3,79 @@
 
 {% block title %}Подарочные сертификаты — {{ settings.salon_name|default:"Студия эстетики Формула Тела" }}{% endblock %}
 
-{% block description %}Подарочные сертификаты на массаж и косметологические услуги в {{ settings.salon_name|default:"Формула Тела" }}. Комплексы, номиналы и отдельные услуги.{% endblock %}
+{% block description %}Подарочные сертификаты на массаж и косметологические услуги в {{ settings.salon_name|default:"Формула Тела" }}. 8 оформлений — для неё, для него, на праздники.{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* ── Modal ── */
+    /* ══════════ Тема (фон + акценты) — применяется к .cert-preview, .bcc-preview, .tc-preview ══════════ */
+    .theme-pink      { background: linear-gradient(135deg, #fce8e8 0%, #f0d0d0 100%); color: #3a1a1a; }
+    .theme-graphite  { background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%); color: #fff; }
+    .theme-spring    { background: linear-gradient(135deg, #fff0f5 0%, #f8d7e2 100%); color: #3a1a28; }
+    .theme-military  { background: linear-gradient(135deg, #2a3d2f 0%, #1c2921 100%); color: #fff; }
+    .theme-birthday  { background: linear-gradient(135deg, #fff4e6 0%, #ffd9a8 100%); color: #3a2a1a; }
+    .theme-winter    { background: linear-gradient(135deg, #e8f0f5 0%, #c8dde8 100%); color: #1a2a3a; }
+    .theme-valentine { background: linear-gradient(135deg, #ffe8ec 0%, #ffc9d1 100%); color: #3a1a2a; }
+    .theme-spa       { background: linear-gradient(135deg, #e8ede3 0%, #d4ddd0 100%); color: #2a3a2a; }
+
+    /* Accent (title/name color) через CSS-variable для унификации */
+    .theme-pink      { --theme-accent: #b05060; }
+    .theme-graphite  { --theme-accent: #c9a84c; }
+    .theme-spring    { --theme-accent: #c64875; }
+    .theme-military  { --theme-accent: #c9a84c; }
+    .theme-birthday  { --theme-accent: #e07c3e; }
+    .theme-winter    { --theme-accent: #1e5a8a; }
+    .theme-valentine { --theme-accent: #c41e3a; }
+    .theme-spa       { --theme-accent: #5a6b4a; }
+
+    /* SVG-паттерн — фоновый слой */
+    .theme-bg {
+        position: absolute; inset: 0; pointer-events: none; z-index: 0;
+        color: var(--theme-accent);
+    }
+    .theme-bg svg { width: 100%; height: 100%; }
+
+    /* ══════════ Галерея тем ══════════ */
+    .theme-gallery {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 18px;
+        margin-top: 24px;
+    }
+    .theme-card {
+        cursor: pointer;
+        border-radius: 14px;
+        transition: transform .2s, box-shadow .2s;
+        border: 3px solid transparent;
+        background: #fff;
+    }
+    .theme-card:hover { transform: translateY(-4px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+    .theme-card.active { border-color: #000; }
+    .tc-preview {
+        aspect-ratio: 3/2;
+        border-radius: 11px;
+        position: relative;
+        overflow: hidden;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .tc-title {
+        font-size: 14pt;
+        font-weight: 900;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--theme-accent);
+        position: relative; z-index: 1;
+    }
+    .tc-label {
+        padding: 10px 12px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    /* ══════════ Modal ══════════ */
     #certModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
     #certModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
     #certModal .modal-content { max-width: 560px; width: calc(100% - 30px); pointer-events: auto; max-height: 92vh; overflow-y: auto; border: none; border-radius: 12px; }
@@ -18,68 +86,81 @@
     #cert-form .form-group input:focus,
     #cert-form .form-group textarea:focus { outline: none; border-color: #000; }
 
-    /* ── Live preview ── */
+    /* ══════════ Live preview в модалке ══════════ */
     .cert-preview {
         border-radius: 12px;
         padding: 20px 22px 16px;
         position: relative;
         overflow: hidden;
-        margin-bottom: 20px;
-        min-height: 140px;
+        margin-bottom: 16px;
+        min-height: 150px;
         transition: all .3s;
     }
-    .cert-preview[data-theme="dark"] {
-        background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%);
-        color: #fff;
-    }
-    .cert-preview[data-theme="pink"] {
-        background: linear-gradient(135deg, #fce8e8 0%, #f0d0d0 100%);
-        color: #3a1a1a;
-    }
-    .cp-logo { font-size: 9pt; font-weight: 700; opacity: 0.6; margin-bottom: 8px; }
+    .cp-logo { font-size: 9pt; font-weight: 700; opacity: 0.6; margin-bottom: 8px; position:relative; z-index:1; }
     .cp-title {
         font-size: 22pt;
         font-weight: 900;
         letter-spacing: 3px;
         text-transform: uppercase;
         line-height: 1;
+        color: var(--theme-accent);
+        position: relative; z-index: 1;
     }
-    .cert-preview[data-theme="dark"] .cp-title { color: #c9a84c; }
-    .cert-preview[data-theme="pink"] .cp-title { color: #b05060; }
     .cp-name {
         font-size: 11pt;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 1px;
         opacity: 0.8;
+        color: var(--theme-accent);
         margin-top: 2px;
         margin-bottom: 10px;
+        position: relative; z-index: 1;
     }
-    .cert-preview[data-theme="dark"] .cp-name { color: #9aadcc; }
-    .cert-preview[data-theme="pink"] .cp-name { color: #b05060; }
-    .cp-items { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .cp-items { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; position:relative; z-index:1; }
     .cp-item {
         font-size: 7pt;
         font-weight: 600;
         border-radius: 6px;
         padding: 4px 8px;
+        background: rgba(255,255,255,0.55);
     }
-    .cert-preview[data-theme="dark"] .cp-item { background: rgba(255,255,255,0.12); }
-    .cert-preview[data-theme="pink"] .cp-item { background: rgba(255,255,255,0.6); border: 1px solid rgba(176,80,96,0.3); }
+    .cert-preview.theme-graphite .cp-item,
+    .cert-preview.theme-military .cp-item { background: rgba(255,255,255,0.12); }
     .cp-recipient-row {
         display: flex;
         gap: 20px;
-        border-top: 1px solid;
+        border-top: 1px solid rgba(0,0,0,0.15);
         padding-top: 8px;
         margin-top: 6px;
+        position: relative; z-index: 1;
     }
-    .cert-preview[data-theme="dark"] .cp-recipient-row { border-color: rgba(255,255,255,0.2); }
-    .cert-preview[data-theme="pink"] .cp-recipient-row { border-color: rgba(176,80,96,0.3); }
+    .cert-preview.theme-graphite .cp-recipient-row,
+    .cert-preview.theme-military .cp-recipient-row { border-top-color: rgba(255,255,255,0.2); }
     .cp-field { flex: 1; }
     .cp-label { font-size: 6.5pt; opacity: 0.5; margin-bottom: 1px; }
     .cp-value { font-size: 9pt; font-weight: 600; min-height: 14px; }
 
-    /* ── Existing styles ── */
+    /* ══════════ Theme switcher в модалке ══════════ */
+    .theme-switcher {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 18px;
+    }
+    .ts-swatch {
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 0;
+        position: relative;
+        overflow: hidden;
+    }
+    .ts-swatch.active { border-color: #000; transform: scale(1.1); }
+    .ts-swatch:hover:not(.active) { border-color: #999; }
+
+    /* ══════════ Номинал / Услуга (existing) ══════════ */
     .cert-info { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
     .cert-info-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
     .cert-info-item span { opacity: 0.6; }
@@ -105,7 +186,7 @@
     .cert-check-result.valid { background: #d4edda; }
     .cert-check-result.invalid { background: #f8d7da; }
 
-    /* ── Bundle showcase ── */
+    /* ══════════ Bundle showcase ══════════ */
     .bundle-cert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; margin-top: 20px; }
     .bundle-cert-card { border-radius: 12px; overflow: hidden; border: 1px solid #eee; transition: box-shadow .2s; }
     .bundle-cert-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.10); }
@@ -113,25 +194,27 @@
         padding: 18px 20px 14px;
         min-height: 120px;
         position: relative;
+        transition: all .3s;
     }
-    .bcc-preview.dark { background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%); color: #fff; }
-    .bcc-preview.pink { background: linear-gradient(135deg, #fce8e8 0%, #f0d0d0 100%); color: #3a1a1a; }
-    .bcc-logo { font-size: 7.5pt; font-weight: 700; opacity: 0.5; margin-bottom: 6px; }
-    .bcc-cert-word { font-size: 18pt; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; line-height: 1; }
-    .bcc-preview.dark .bcc-cert-word { color: #c9a84c; }
-    .bcc-preview.pink .bcc-cert-word { color: #b05060; }
-    .bcc-name { font-size: 9pt; font-weight: 700; text-transform: uppercase; opacity: 0.75; margin-top: 2px; }
-    .bcc-items { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-    .bcc-item { font-size: 6.5pt; font-weight: 600; border-radius: 5px; padding: 3px 7px; }
-    .bcc-preview.dark .bcc-item { background: rgba(255,255,255,0.12); }
-    .bcc-preview.pink .bcc-item { background: rgba(255,255,255,0.55); border: 1px solid rgba(176,80,96,0.25); }
+    .bcc-logo { font-size: 7.5pt; font-weight: 700; opacity: 0.5; margin-bottom: 6px; position:relative; z-index:1; }
+    .bcc-cert-word { font-size: 18pt; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; line-height: 1; color: var(--theme-accent); position:relative; z-index:1; }
+    .bcc-name { font-size: 9pt; font-weight: 700; text-transform: uppercase; opacity: 0.75; margin-top: 2px; color: var(--theme-accent); position:relative; z-index:1; }
+    .bcc-items { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; position:relative; z-index:1; }
+    .bcc-item { font-size: 6.5pt; font-weight: 600; border-radius: 5px; padding: 3px 7px; background: rgba(255,255,255,0.55); }
+    .bcc-preview.theme-graphite .bcc-item,
+    .bcc-preview.theme-military .bcc-item { background: rgba(255,255,255,0.12); }
     .bcc-body { padding: 16px 20px; background: #fff; }
     .bcc-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
     .bcc-price { opacity: 0.65; font-size: 14px; margin-bottom: 14px; }
     .bcc-btn { display: block; width: 100%; text-align: center; padding: 10px; background: #000; color: #fff; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; border: none; transition: background .2s; }
     .bcc-btn:hover { background: #333; }
 
+    @media (max-width: 992px) {
+        .theme-gallery { grid-template-columns: repeat(2, 1fr); }
+    }
     @media (max-width: 576px) {
+        .theme-gallery { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .tc-title { font-size: 12pt; letter-spacing: 1px; }
         .cert-nominals { gap: 8px; }
         .cert-nom-btn { padding: 10px 16px; font-size: 14px; min-width: 80px; }
         #certModal .modal-body { padding: 20px !important; }
@@ -148,8 +231,27 @@
         <h1 class="wow fadeInUp" data-wow-delay=".2s">Подарочные сертификаты</h1>
         <p class="wow fadeInUp" data-wow-delay=".3s" style="max-width: 620px; opacity: 0.7;">
             Идеальный подарок для близких — сертификат на массаж и косметологические услуги.
-            После оплаты вы получите красивый PDF-сертификат на email.
+            Выберите оформление под случай — PDF прилетит на email после оплаты.
         </p>
+    </div>
+</section>
+
+<!-- ══ Галерея оформлений ══ -->
+<section class="mb-50">
+    <div class="container">
+        <h2 class="wow fadeInUp" data-wow-delay=".2s">Выберите оформление</h2>
+        <p class="wow fadeInUp" data-wow-delay=".3s" style="opacity: 0.6; margin-bottom: 0;">Тема подстраивает все превью на странице и сам PDF</p>
+        <div class="theme-gallery">
+            {% for key, label in themes %}
+            <div class="theme-card{% if forloop.first %} active{% endif %}" data-theme="{{ key }}">
+                <div class="tc-preview theme-{{ key }}">
+                    <div class="theme-bg">{% include "certificates/svg_patterns/"|add:key|add:".svg" %}</div>
+                    <div class="tc-title">Сертификат</div>
+                </div>
+                <div class="tc-label">{{ label }}</div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </section>
 
@@ -162,7 +264,8 @@
         <div class="bundle-cert-grid">
             {% for b in bundles %}
             <div class="bundle-cert-card wow fadeInUp" data-wow-delay=".{{ forloop.counter }}s">
-                <div class="bcc-preview {{ b.certificate_theme }}">
+                <div class="bcc-preview theme-{{ b.certificate_theme }}" data-default-theme="{{ b.certificate_theme }}">
+                    <div class="theme-bg">{% include "certificates/svg_patterns/"|add:b.certificate_theme|add:".svg" %}</div>
                     <div class="bcc-logo">Формула Тела</div>
                     <div class="bcc-cert-word">Сертификат</div>
                     <div class="bcc-name">{{ b.name }}</div>
@@ -179,7 +282,7 @@
                         data-bundle-id="{{ b.id }}"
                         data-bundle-name="{{ b.name|escapejs }}"
                         data-bundle-price="{{ b.total_price|floatformat:0 }}"
-                        data-bundle-theme="{{ b.certificate_theme }}"
+                        data-bundle-default-theme="{{ b.certificate_theme }}"
                         data-bundle-items="{% for item in b.items.all|slice:':3' %}{{ item.option.service.name|escapejs }}{% if not forloop.last %}|{% endif %}{% endfor %}">
                         Подарить
                     </button>
@@ -253,7 +356,7 @@
         <div class="accordion" id="certFAQ">
             <div class="accordion-item">
                 <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">Как купить сертификат?</button></h3>
-                <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#certFAQ"><div class="accordion-body">Выберите комплекс или номинал, заполните форму и оплатите онлайн. После оплаты вы получите красивый PDF-сертификат на email.</div></div>
+                <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#certFAQ"><div class="accordion-body">Выберите оформление, затем комплекс или номинал, заполните форму и оплатите онлайн. После оплаты вы получите PDF-сертификат на email.</div></div>
             </div>
             <div class="accordion-item">
                 <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">Какой срок действия сертификата?</button></h3>
@@ -286,7 +389,8 @@
                 <div class="modal-body" style="padding: 24px 30px;">
 
                     <!-- Live preview -->
-                    <div class="cert-preview" id="cert-preview" data-theme="pink">
+                    <div class="cert-preview theme-pink" id="cert-preview">
+                        <div class="theme-bg" id="cert-preview-bg"></div>
                         <div class="cp-logo">Формула Тела · Эстетика. Результат. Комфорт.</div>
                         <div class="cp-title">Сертификат</div>
                         <div class="cp-name" id="cp-name"></div>
@@ -301,6 +405,13 @@
                                 <div class="cp-value" id="cp-sender">___</div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Theme switcher -->
+                    <div class="theme-switcher">
+                        {% for key, label in themes %}
+                        <button type="button" class="ts-swatch theme-{{ key }}{% if forloop.first %} active{% endif %}" data-theme="{{ key }}" title="{{ label }}"></button>
+                        {% endfor %}
                     </div>
 
                     <div class="cert-info">
@@ -392,45 +503,104 @@
     'use strict';
     const API = '{{ request.scheme }}://{{ request.get_host }}';
     const CSRF = '{{ csrf_token }}';
+    const VALID_THEMES = {% if themes %}[{% for key, label in themes %}"{{ key }}"{% if not forloop.last %}, {% endif %}{% endfor %}]{% else %}["pink"]{% endif %};
 
     let certType = 'nominal';
     let certNominal = 0;
     let certServiceId = null;
     let certServiceName = '';
     let curBundleId = null;
+    let currentTheme = VALID_THEMES[0] || 'pink';
     let bsModal = null;
 
-    document.addEventListener('DOMContentLoaded', function() {
-        var el = document.getElementById('certModal');
+    /* Apply theme-XXX class to given element, removing other theme-* */
+    function applyTheme(el, theme) {
         if (!el) return;
-        bsModal = new bootstrap.Modal(el);
-        el.addEventListener('hidden.bs.modal', resetCertModal);
+        VALID_THEMES.forEach(function(t) { el.classList.remove('theme-' + t); });
+        el.classList.add('theme-' + theme);
+    }
 
-        document.getElementById('cert-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            submitCertificateRequest();
+    /* Copy SVG pattern from .tc-preview (gallery) into target .theme-bg */
+    function updateThemeBg(targetBg, theme) {
+        if (!targetBg) return;
+        const source = document.querySelector('.theme-card[data-theme="' + theme + '"] .theme-bg');
+        targetBg.innerHTML = source ? source.innerHTML : '';
+    }
+
+    /* Called when user picks a theme from gallery OR swatch */
+    function setCurrentTheme(theme) {
+        if (!VALID_THEMES.includes(theme)) return;
+        currentTheme = theme;
+
+        /* gallery cards */
+        document.querySelectorAll('.theme-card').forEach(function(c) {
+            c.classList.toggle('active', c.dataset.theme === theme);
         });
 
-        /* Live preview: update Кому/От кого on input */
-        document.getElementById('cm-recipient-name').addEventListener('input', function() {
-            document.getElementById('cp-recipient').textContent = this.value.trim() || '___';
-        });
-        document.getElementById('cm-buyer-name').addEventListener('input', function() {
-            document.getElementById('cp-sender').textContent = this.value.trim() || '___';
+        /* modal swatch */
+        document.querySelectorAll('.ts-swatch').forEach(function(s) {
+            s.classList.toggle('active', s.dataset.theme === theme);
         });
 
-        /* Bundle showcase buttons */
-        document.querySelectorAll('.bcc-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = parseInt(this.dataset.bundleId);
-                var name = this.dataset.bundleName;
-                var price = parseInt(this.dataset.bundlePrice) || 0;
-                var theme = this.dataset.bundleTheme || 'pink';
-                var itemsRaw = this.dataset.bundleItems || '';
-                var items = itemsRaw ? itemsRaw.split('|') : [];
-                openCertModal('bundle', id, name, price, theme, items);
+        /* modal preview */
+        const preview = document.getElementById('cert-preview');
+        applyTheme(preview, theme);
+        updateThemeBg(document.getElementById('cert-preview-bg'), theme);
+
+        /* bundle showcase cards — применяем текущую тему ко всем */
+        document.querySelectorAll('.bcc-preview').forEach(function(el) {
+            applyTheme(el, theme);
+            updateThemeBg(el.querySelector('.theme-bg'), theme);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const el = document.getElementById('certModal');
+        if (el) {
+            bsModal = new bootstrap.Modal(el);
+            el.addEventListener('hidden.bs.modal', resetCertModal);
+            document.getElementById('cert-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitCertificateRequest();
+            });
+
+            /* Live preview updates */
+            document.getElementById('cm-recipient-name').addEventListener('input', function() {
+                document.getElementById('cp-recipient').textContent = this.value.trim() || '___';
+            });
+            document.getElementById('cm-buyer-name').addEventListener('input', function() {
+                document.getElementById('cp-sender').textContent = this.value.trim() || '___';
+            });
+
+            /* Modal swatches */
+            document.querySelectorAll('.ts-swatch').forEach(function(sw) {
+                sw.addEventListener('click', function() {
+                    setCurrentTheme(this.dataset.theme);
+                });
+            });
+        }
+
+        /* Gallery: pick theme */
+        document.querySelectorAll('.theme-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                setCurrentTheme(this.dataset.theme);
             });
         });
+
+        /* Bundle showcase: open modal with bundle */
+        document.querySelectorAll('.bcc-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const id = parseInt(this.dataset.bundleId);
+                const name = this.dataset.bundleName;
+                const price = parseInt(this.dataset.bundlePrice) || 0;
+                const itemsRaw = this.dataset.bundleItems || '';
+                const items = itemsRaw ? itemsRaw.split('|') : [];
+                openCertModal('bundle', id, name, price, items);
+            });
+        });
+
+        /* Initial state: set initial theme (pink) */
+        setCurrentTheme(currentTheme);
     });
 
     /* ---- Tab switching ---- */
@@ -453,11 +623,11 @@
         document.querySelectorAll('.cert-nom-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
         document.getElementById('cert-custom-amount').value = '';
-        openCertModal('nominal', null, '', amount, 'pink', []);
+        openCertModal('nominal', null, '', amount, []);
     };
 
     window.selectCustomNominal = function() {
-        var val = parseInt(document.getElementById('cert-custom-amount').value);
+        const val = parseInt(document.getElementById('cert-custom-amount').value);
         if (!val || val < 500) {
             document.getElementById('cert-custom-amount').style.borderColor = 'red';
             return;
@@ -466,7 +636,7 @@
         certNominal = val;
         certServiceId = null; certServiceName = ''; curBundleId = null;
         document.querySelectorAll('.cert-nom-btn').forEach(function(b) { b.classList.remove('active'); });
-        openCertModal('nominal', null, '', val, 'pink', []);
+        openCertModal('nominal', null, '', val, []);
     };
 
     /* ---- Service selection ---- */
@@ -478,20 +648,20 @@
         curBundleId = null;
         document.querySelectorAll('.cert-service-card').forEach(function(c) { c.classList.remove('active'); });
         card.classList.add('active');
-        openCertModal('service', null, name, certNominal, 'pink', []);
+        openCertModal('service', null, name, certNominal, []);
     };
 
     /* ---- Open modal ---- */
-    function openCertModal(type, bundleId, name, price, theme, items) {
+    function openCertModal(type, bundleId, name, price, items) {
         certType = type;
         curBundleId = bundleId;
         certNominal = price;
         certServiceId = type === 'service' ? certServiceId : null;
         certServiceName = type === 'service' ? name : '';
 
-        /* update type/value info */
-        var typeText = type === 'bundle' ? 'Комплекс' : type === 'nominal' ? 'На сумму' : 'На услугу';
-        var valueText = type === 'bundle'
+        /* type/value info */
+        const typeText = type === 'bundle' ? 'Комплекс' : type === 'nominal' ? 'На сумму' : 'На услугу';
+        const valueText = type === 'bundle'
             ? name + ' — ' + price.toLocaleString('ru-RU') + ' \u20bd'
             : type === 'nominal'
             ? price.toLocaleString('ru-RU') + ' \u20bd'
@@ -499,27 +669,27 @@
         document.getElementById('cm-type-display').textContent = typeText;
         document.getElementById('cm-value-display').textContent = valueText;
 
-        /* update live preview */
-        var preview = document.getElementById('cert-preview');
-        preview.setAttribute('data-theme', theme);
-
-        var cpName = document.getElementById('cp-name');
+        /* preview data */
+        const cpName = document.getElementById('cp-name');
         cpName.textContent = type === 'bundle' ? name
             : type === 'nominal' ? price.toLocaleString('ru-RU') + ' \u20bd'
             : name;
 
-        var cpItems = document.getElementById('cp-items');
+        const cpItems = document.getElementById('cp-items');
         cpItems.innerHTML = '';
         items.forEach(function(item) {
-            var span = document.createElement('span');
+            const span = document.createElement('span');
             span.className = 'cp-item';
             span.textContent = item;
             cpItems.appendChild(span);
         });
 
-        /* reset recipient fields in preview */
+        /* recipient fields in preview */
         document.getElementById('cp-recipient').textContent = document.getElementById('cm-recipient-name').value.trim() || '___';
         document.getElementById('cp-sender').textContent = document.getElementById('cm-buyer-name').value.trim() || '___';
+
+        /* Ensure current theme is applied to modal preview (in case gallery was hidden) */
+        setCurrentTheme(currentTheme);
 
         document.getElementById('cert-step-1').style.display = 'block';
         document.getElementById('cert-step-2').style.display = 'none';
@@ -528,26 +698,27 @@
 
     /* ---- Submit ---- */
     async function submitCertificateRequest() {
-        var btn = document.getElementById('cm-submit');
-        var alertEl = document.getElementById('cm-alert');
+        const btn = document.getElementById('cm-submit');
+        const alertEl = document.getElementById('cm-alert');
         btn.disabled = true; btn.textContent = '\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430...'; alertEl.innerHTML = '';
 
-        var buyerName = document.getElementById('cm-buyer-name').value.trim();
-        var buyerPhone = document.getElementById('cm-buyer-phone').value.trim();
+        const buyerName = document.getElementById('cm-buyer-name').value.trim();
+        const buyerPhone = document.getElementById('cm-buyer-phone').value.trim();
         if (!buyerName || !buyerPhone) {
             alertEl.innerHTML = '<div class="alert alert-danger">\u0417\u0430\u043f\u043e\u043b\u043d\u0438\u0442\u0435 \u0438\u043c\u044f \u0438 \u0442\u0435\u043b\u0435\u0444\u043e\u043d</div>';
             btn.disabled = false; btn.textContent = '\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443';
             return;
         }
 
-        var pmEl = document.querySelector('input[name="cert-payment-method"]:checked');
-        var paymentMethod = pmEl ? pmEl.value : 'cash';
+        const pmEl = document.querySelector('input[name="cert-payment-method"]:checked');
+        const paymentMethod = pmEl ? pmEl.value : 'cash';
 
-        var payload = {
+        const payload = {
             certificate_type: certType,
             nominal: certNominal,
             service_id: certServiceId,
             bundle_id: curBundleId,
+            theme: currentTheme,
             buyer_name: buyerName,
             buyer_phone: buyerPhone,
             buyer_email: document.getElementById('cm-buyer-email').value.trim(),
@@ -558,12 +729,12 @@
         };
 
         try {
-            var r = await fetch(API + '/api/certificates/request/', {
+            const r = await fetch(API + '/api/certificates/request/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                 body: JSON.stringify(payload)
             });
-            var d = await r.json();
+            const d = await r.json();
             if (d.success) {
                 if (d.payment_url) {
                     window.location.href = d.payment_url;
@@ -601,10 +772,10 @@
 
     /* ---- Check certificate ---- */
     window.checkCertificate = function() {
-        var code = document.getElementById('cert-check-code').value.trim();
+        const code = document.getElementById('cert-check-code').value.trim();
         if (!code) return;
 
-        var resultEl = document.getElementById('cert-check-result');
+        const resultEl = document.getElementById('cert-check-result');
         resultEl.style.display = 'none';
 
         fetch(API + '/api/certificates/check/?code=' + encodeURIComponent(code))
@@ -612,8 +783,8 @@
             .then(function(d) {
                 resultEl.style.display = 'block';
                 if (d.success) {
-                    var c = d.certificate;
-                    var html = '<strong>' + c.code + '</strong><br>';
+                    const c = d.certificate;
+                    let html = '<strong>' + c.code + '</strong><br>';
                     html += '\u0422\u0438\u043f: ' + c.type_display + '<br>';
                     if (c.nominal) html += '\u041d\u043e\u043c\u0438\u043d\u0430\u043b: ' + parseInt(c.nominal).toLocaleString('ru-RU') + ' \u20bd<br>';
                     if (c.service_name) html += '\u0423\u0441\u043b\u0443\u0433\u0430: ' + c.service_name + '<br>';

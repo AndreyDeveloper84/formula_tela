@@ -43,6 +43,7 @@ from services_app.models import (
     BookingRequest,
     Order,
     GiftCertificate,
+    CERTIFICATE_THEME_CHOICES,
 )
 
 
@@ -1524,6 +1525,7 @@ def certificates(request):
     return render(request, "website/certificates.html", {
         "popular_services": popular_services,
         "bundles": bundles_as_certs,
+        "themes": CERTIFICATE_THEME_CHOICES,
         "settings": _settings(),
     })
 
@@ -1638,6 +1640,14 @@ def api_certificate_request(request):
     if payment_method not in ("online", "cash"):
         payment_method = "cash"
 
+    # --- Тема оформления ---
+    valid_themes = {key for key, _ in CERTIFICATE_THEME_CHOICES}
+    theme = (data.get("theme") or "").strip() or None
+    if theme not in valid_themes:
+        theme = None
+    if theme is None:
+        theme = bundle.certificate_theme if (cert_type == "bundle" and bundle) else "pink"
+
     # --- Онлайн-оплата: проверка feature flag ---
     site = SiteSettings.objects.first()
     if payment_method == "online":
@@ -1665,6 +1675,7 @@ def api_certificate_request(request):
         service=service,
         service_option=service_option,
         bundle=bundle,
+        theme=theme,
         buyer_name=buyer_name,
         buyer_phone=buyer_phone,
         buyer_email=buyer_email,

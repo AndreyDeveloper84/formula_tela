@@ -1,0 +1,40 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g stroke="currentColor" fill="none" stroke-linecap="round" opacity="0.3">
+    <g stroke-width="0.8" transform="translate(260,30)">
+      <line x1="0" y1="-8" x2="0" y2="8"/>
+      <line x1="-8" y1="0" x2="8" y2="0"/>
+      <line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/>
+      <line x1="-5.5" y1="5.5" x2="5.5" y2="-5.5"/>
+    </g>
+    <g stroke-width="0.6" transform="translate(280,60)">
+      <line x1="0" y1="-5" x2="0" y2="5"/>
+      <line x1="-5" y1="0" x2="5" y2="0"/>
+      <line x1="-3.5" y1="-3.5" x2="3.5" y2="3.5"/>
+      <line x1="-3.5" y1="3.5" x2="3.5" y2="-3.5"/>
+    </g>
+    <g stroke-width="0.7" transform="translate(40,170)">
+      <line x1="0" y1="-7" x2="0" y2="7"/>
+      <line x1="-7" y1="0" x2="7" y2="0"/>
+      <line x1="-5" y1="-5" x2="5" y2="5"/>
+      <line x1="-5" y1="5" x2="5" y2="-5"/>
+    </g>
+    <g stroke-width="0.5" transform="translate(15,140)">
+      <line x1="0" y1="-4" x2="0" y2="4"/>
+      <line x1="-4" y1="0" x2="4" y2="0"/>
+      <line x1="-3" y1="-3" x2="3" y2="3"/>
+      <line x1="-3" y1="3" x2="3" y2="-3"/>
+    </g>
+    <g stroke-width="0.6" transform="translate(70,145)">
+      <line x1="0" y1="-5" x2="0" y2="5"/>
+      <line x1="-5" y1="0" x2="5" y2="0"/>
+      <line x1="-3.5" y1="-3.5" x2="3.5" y2="3.5"/>
+      <line x1="-3.5" y1="3.5" x2="3.5" y2="-3.5"/>
+    </g>
+    <g stroke-width="0.5" transform="translate(235,65)">
+      <line x1="0" y1="-4" x2="0" y2="4"/>
+      <line x1="-4" y1="0" x2="4" y2="0"/>
+      <line x1="-3" y1="-3" x2="3" y2="3"/>
+      <line x1="-3" y1="3" x2="3" y2="-3"/>
+    </g>
+  </g>
+</svg>

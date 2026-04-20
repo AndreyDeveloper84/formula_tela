@@ -1,0 +1,24 @@
+<svg class="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" preserveAspectRatio="none">
+  <g fill="currentColor" opacity="0.28">
+    <ellipse cx="260" cy="35" rx="10" ry="13"/>
+    <path d="M260,48 L258,54 L262,54 Z"/>
+    <ellipse cx="40" cy="165" rx="9" ry="12"/>
+    <path d="M40,177 L38,183 L42,183 Z"/>
+  </g>
+  <g fill="currentColor" opacity="0.25">
+    <rect x="20" y="20" width="3" height="8" transform="rotate(20 21 24)"/>
+    <rect x="45" y="35" width="3" height="8" transform="rotate(-15 46 39)"/>
+    <rect x="80" y="25" width="3" height="8" transform="rotate(45 81 29)"/>
+    <rect x="130" y="15" width="3" height="8" transform="rotate(-30 131 19)"/>
+    <rect x="170" y="35" width="3" height="8" transform="rotate(10 171 39)"/>
+    <rect x="200" y="20" width="3" height="8" transform="rotate(60 201 24)"/>
+    <rect x="100" y="160" width="3" height="8" transform="rotate(-45 101 164)"/>
+    <rect x="150" y="180" width="3" height="8" transform="rotate(20 151 184)"/>
+    <rect x="200" y="170" width="3" height="8" transform="rotate(-15 201 174)"/>
+    <rect x="230" y="185" width="3" height="8" transform="rotate(50 231 189)"/>
+    <circle cx="60" cy="100" r="1.5"/>
+    <circle cx="230" cy="100" r="1.5"/>
+    <circle cx="110" cy="50" r="1.5"/>
+    <circle cx="180" cy="140" r="1.5"/>
+  </g>
+</svg>
