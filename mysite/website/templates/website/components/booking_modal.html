@@ -1,0 +1,86 @@
+{% comment %}
+HTML модалки записи через YClients (#bookingModal).
+Подключается на master_detail.html, home.html и везде где нужна запись
+с выбором мастера/даты/времени.
+JS-логика — components/booking_modal_master_js.html.
+{% endcomment %}
+<style>
+    /* Bootstrap по умолчанию серит readonly-инпут — а flatpickr всегда readonly.
+       Форсируем белый фон + pointer, чтобы пользователь видел что поле активное. */
+    #bookingModal .flatpickr-calendar { z-index: 10060 !important; }
+    #bookingModal .date-wrapper { position: relative; cursor: pointer; width: 100%; }
+    #bookingModal .date-wrapper #m-date-zapis,
+    #bookingModal .date-wrapper .flatpickr-input { width: 100% !important; cursor: pointer !important; }
+    #bookingModal .date-wrapper input[readonly],
+    #bookingModal .date-wrapper .flatpickr-wrapper input {
+        background-color: #fff !important; color: #000 !important;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 16px 12px;
+        padding-right: 2.25rem; appearance: none; width: 100% !important; box-sizing: border-box;
+        opacity: 1 !important;
+    }
+    #bookingModal #modal-booking-form input.flatpickr-input[readonly] {
+        background-color: #fff !important; color: #000 !important;
+        cursor: pointer !important; opacity: 1 !important;
+    }
+    @media (max-width: 576px) { #bookingModal .modal-body { padding: 20px !important; } }
+    #bookingModal.modal { padding-left: 0 !important; padding-right: 0 !important; }
+    #bookingModal .modal-dialog { display: flex !important; justify-content: center !important; min-height: 100vh; align-items: center; margin: 0 auto !important; max-width: 100% !important; width: 100% !important; pointer-events: none; }
+    #bookingModal .modal-content { max-width: 500px; width: calc(100% - 30px); pointer-events: auto; max-height: 90vh; overflow-y: auto; }
+    /* В модалке 500px тесно для 3-колоночного .in-form — даём 2 колонки на десктопе.
+       Мобайл (<=768px) уже переведён глобальным media в 1 колонку. */
+    @media (min-width: 769px) {
+        #bookingModal .in-form { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+    #bookingModal #m-contact-form .form-group { margin-bottom: 15px; }
+    #bookingModal #m-contact-form .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+    #bookingModal #m-contact-form .form-group input,
+    #bookingModal #m-contact-form .form-group textarea { width: 100%; box-sizing: border-box; padding: 10px 15px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px; font-family: inherit; }
+    #bookingModal #m-contact-form .form-group input:focus,
+    #bookingModal #m-contact-form .form-group textarea:focus { outline: none; border-color: #000; }
+    #bookingModal .booking-summary { background: #f8f9fa; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
+    #bookingModal .booking-summary-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; flex-wrap: wrap; gap: 4px; }
+    #bookingModal .booking-summary-item span { opacity: 0.6; flex-shrink: 0; }
+    #bookingModal .booking-summary-item strong { text-align: right; max-width: 60%; word-break: break-word; min-width: 0; }
+    #bookingModal .modal-content { overflow-x: hidden; }
+    #bookingModal .modal-dialog { padding: 10px !important; box-sizing: border-box; }
+</style>
+<div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
+    <div class="modal-dialog" id="bookingModalDialog"><div class="modal-content" style="border:none;border-radius:12px;">
+        <div id="booking-step-1">
+            <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi" id="bookingModalLabel">Записаться</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" style="padding:30px;">
+                <div class="mb-20" id="modal-service-title" style="font-size:18px;font-weight:600;"></div>
+                <div id="modal-loading" style="text-align:center;padding:40px;display:none;"><div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p></div>
+                <form id="modal-booking-form" style="display:none;"><div class="in-form">
+                    <select id="m-duration-select" class="form-select" required><option value="">Выберите длительность</option></select>
+                    <div id="m-quantity-container"><select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select></div>
+                    <input type="hidden" id="m-option-select" value="">
+                    <select id="m-master-select" class="form-select" required><option value="">Сначала выберите вариант услуги</option></select>
+                    <input type="text" id="m-date-disabled" class="text-def" value="Сначала выберите мастера" disabled style="display:block;">
+                    <div class="date-wrapper" id="m-date-wrapper" style="display:none;"><input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required></div>
+                    <select id="m-time-zapis" class="form-select" required disabled><option value="">Сначала выберите дату</option></select>
+                    <input type="text" id="m-price-display" class="text-def semi" value="Стоимость: — ₽" disabled>
+                </div><button type="submit" id="m-submit-booking" class="btn-black t-btn submit" style="width:100%;margin-top:15px;">Записаться онлайн</button></form>
+            </div>
+        </div>
+        <div id="booking-step-2" style="display:none;">
+            <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi">Подтверждение записи</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" style="padding:30px;">
+                <div class="booking-summary"><div class="booking-summary-item"><span>Услуга:</span><strong id="m-summary-service"></strong></div><div class="booking-summary-item"><span>Мастер:</span><strong id="m-summary-master"></strong></div><div class="booking-summary-item"><span>Дата и время:</span><strong id="m-summary-datetime"></strong></div><div class="booking-summary-item"><span>Стоимость:</span><strong id="m-summary-price"></strong></div></div>
+                <form id="m-contact-form">
+                    <div class="form-group"><label for="m-client-name">Ваше имя *</label><input type="text" id="m-client-name" placeholder="Иван Петров" required></div>
+                    <div class="form-group"><label for="m-client-phone">Телефон *</label><input type="tel" id="m-client-phone" placeholder="+7 (900) 123-45-67" required></div>
+                    <div class="form-group"><label for="m-client-email">Email</label><input type="email" id="m-client-email" placeholder="email@example.com"></div>
+                    <div class="form-group"><label for="m-client-comment">Комментарий</label><textarea id="m-client-comment" rows="3" placeholder="Дополнительные пожелания"></textarea></div>
+                    <div id="m-modal-alert"></div>
+                    <button type="submit" id="m-confirm-booking" class="btn-black t-btn" style="width:100%;margin-top:10px;">Подтвердить запись</button>
+                </form>
+            </div>
+        </div>
+        <div id="booking-step-3" style="display:none;"><div class="modal-body" style="padding:50px 30px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:15px;">✅</div><h4 class="semi" style="margin-bottom:10px;">Вы записаны!</h4>
+            <p id="m-success-message" style="opacity:0.7;"></p><button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top:20px;">Закрыть</button>
+        </div></div>
+    </div></div>
+</div>

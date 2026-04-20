@@ -1,6 +1,18 @@
 {% comment %}
 JS логика модалки записи к мастеру (#bookingModal).
-Используется на master_detail.html. Вызывается через window.openBookingModalWithMaster(serviceId, serviceName, masterName).
+Используется на master_detail.html, home.html и др.
+
+Публичные функции:
+  - openBookingModal(serviceId, serviceName, promoOpts?)
+  - openBookingModalWithMaster(serviceId, serviceName, masterName)
+
+promoOpts (опционально) для промо-режима:
+  {
+    pinnedOptionId: <ServiceOption.id>,  // зафиксировать конкретный вариант
+    price: <число>,                      // фиксированная цена (например, со скидкой)
+    autoPickDate: false                  // не подставлять первую доступную дату
+  }
+  Когда pinnedOptionId задан — селекты длительности/количества скрываются.
 
 Работает с API:
 - /api/booking/service_options/?service_id=X
@@ -14,7 +26,7 @@ JS логика модалки записи к мастеру (#bookingModal).
     'use strict';
     const API = '{{ request.scheme }}://{{ request.get_host }}';
     const CSRF = '{{ csrf_token }}';
-    let curId=null,curName='',preMaster=null,opts=[],oMap={},uDurs=[],bData={},aDates=[],fp=null,ldD=false,ldT=false,bsM=null;
+    let curId=null,curName='',preMaster=null,curPromoOpts=null,opts=[],oMap={},uDurs=[],bData={},aDates=[],fp=null,ldD=false,ldT=false,bsM=null;
     const mob=/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)||window.innerWidth<=768;
 
     document.addEventListener('DOMContentLoaded',function(){
@@ -29,8 +41,9 @@ JS логика модалки записи к мастеру (#bookingModal).
     });
 
     window.openBookingModalWithMaster=function(sId,sName,mName){preMaster=mName;window.openBookingModal(sId,sName);};
-    window.openBookingModal=function(sId,sName){
-        curId=sId;curName=sName;document.getElementById('modal-service-title').textContent=sName;
+    window.openBookingModal=function(sId,sName,promoOpts){
+        curId=sId;curName=sName;curPromoOpts=promoOpts||null;
+        document.getElementById('modal-service-title').textContent=sName;
         document.getElementById('bookingModalLabel').textContent='Записаться';
         document.getElementById('modal-loading').style.display='block';document.getElementById('modal-booking-form').style.display='none';
         document.getElementById('booking-step-1').style.display='block';document.getElementById('booking-step-2').style.display='none';document.getElementById('booking-step-3').style.display='none';
@@ -40,7 +53,30 @@ JS логика модалки записи к мастеру (#bookingModal).
     async function loadOpts(sId){try{const r=await fetch(`${API}/api/booking/service_options/?service_id=${sId}`),d=await r.json();if(d.success&&d.data){opts=d.data;oMap={};opts.forEach(o=>{if(!oMap[o.duration])oMap[o.duration]={};oMap[o.duration][o.quantity]=o;});uDurs=[...new Set(opts.map(o=>o.duration))].sort((a,b)=>a-b);initForm();}else{document.getElementById('modal-loading').innerHTML='<p style="color:red;">Ошибка загрузки</p>';}}catch(e){document.getElementById('modal-loading').innerHTML='<p style="color:red;">Ошибка подключения</p>';}}
 
     function initForm(){
-        const ds=document.getElementById('m-duration-select'),pi=document.getElementById('m-price-display'),oi=document.getElementById('m-option-select');
+        const ds=document.getElementById('m-duration-select'),pi=document.getElementById('m-price-display'),oi=document.getElementById('m-option-select'),qc=document.getElementById('m-quantity-container');
+
+        // Промо-режим: pinned option → скрываем duration/quantity UI, ставим fixed price
+        if(curPromoOpts&&curPromoOpts.pinnedOptionId){
+            const pinned=opts.find(o=>o.id===curPromoOpts.pinnedOptionId);
+            if(pinned){
+                // Скрытые select'ы с required блокируют HTML5-submit. Снимаем required.
+                ds.style.display='none';ds.removeAttribute('required');
+                qc.style.display='none';
+                const hiddenQty=qc.querySelector('#m-quantity-select');
+                if(hiddenQty)hiddenQty.removeAttribute('required');
+                const w=ds.parentElement,i=document.createElement('input');
+                i.type='text';i.className='text-def';i.value=pinned.duration+' минут';i.disabled=true;i.id='m-duration-display';
+                w.insertBefore(i,ds);
+                const displayPrice=(curPromoOpts.price!=null)?curPromoOpts.price:pinned.price;
+                oi.value=pinned.id;pi.value='Стоимость: '+fmt(displayPrice)+' ₽';
+                bData.price=displayPrice;bData.optionId=pinned.id;bData.yclientsId=pinned.yclients_id;
+                document.getElementById('modal-loading').style.display='none';
+                document.getElementById('modal-booking-form').style.display='block';
+                loadMas();
+                return;
+            }
+        }
+
         if(uDurs.length===1){const d=uDurs[0];ds.style.display='none';const w=ds.parentElement,i=document.createElement('input');i.type='text';i.className='text-def';i.value=d+' минут';i.disabled=true;i.id='m-duration-display';w.insertBefore(i,ds);ds.innerHTML=`<option value="${d}" selected>${d} минут</option>`;ds.value=d;onDur(d);}
         else{ds.style.display='';ds.innerHTML='<option value="">Выберите длительность</option>';uDurs.forEach(d=>{const o=document.createElement('option');o.value=d;o.textContent=d+' минут';ds.appendChild(o);});}
         document.getElementById('modal-loading').style.display='none';document.getElementById('modal-booking-form').style.display='block';
@@ -73,15 +109,25 @@ JS логика модалки записи к мастеру (#bookingModal).
 
     function initDP(sId){const di=document.getElementById('m-date-zapis'),dd=document.getElementById('m-date-disabled'),dw=document.getElementById('m-date-wrapper');if(fp&&typeof fp.destroy==='function'){try{fp.destroy();}catch(e){}fp=null;}dd.style.display='none';dw.style.display='block';const fd=aDates[0];if(mob)initMobDate(sId,fd);else initDeskDate(sId,fd);}
 
-    function initMobDate(sId,fd){const dw=document.getElementById('m-date-wrapper');let s=document.getElementById('m-date-select');if(!s){s=document.createElement('select');s.id='m-date-select';s.className='form-select';s.required=true;dw.innerHTML='';dw.appendChild(s);}
-        s.innerHTML='';aDates.forEach(ds=>{const o=document.createElement('option');o.value=ds;const d=new Date(ds+'T00:00:00');o.textContent=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',weekday:'short'});s.appendChild(o);});
-        s.value=fd;s.addEventListener('change',function(){const ds=this.value;if(!ds)return;bData.date=ds;const d=new Date(ds+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});document.getElementById('m-time-zapis').disabled=false;loadTimes(sId,ds);});
-        bData.date=fd;const d=new Date(fd+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});loadTimes(sId,fd);
+    function initMobDate(sId,fd){
+        const skipAuto=curPromoOpts&&curPromoOpts.autoPickDate===false;
+        const dw=document.getElementById('m-date-wrapper');
+        let s=document.getElementById('m-date-select');
+        if(!s){s=document.createElement('select');s.id='m-date-select';s.className='form-select';s.required=true;dw.innerHTML='';dw.appendChild(s);}
+        s.innerHTML='';
+        if(skipAuto){const ph=document.createElement('option');ph.value='';ph.textContent='Выберите дату';s.appendChild(ph);}
+        aDates.forEach(ds=>{const o=document.createElement('option');o.value=ds;const d=new Date(ds+'T00:00:00');o.textContent=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',weekday:'short'});s.appendChild(o);});
+        s.addEventListener('change',function(){const ds=this.value;if(!ds)return;bData.date=ds;const d=new Date(ds+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});document.getElementById('m-time-zapis').disabled=false;loadTimes(sId,ds);});
+        if(skipAuto){s.value='';document.getElementById('m-time-zapis').innerHTML='<option value="">Сначала выберите дату</option>';document.getElementById('m-time-zapis').disabled=true;}
+        else{s.value=fd;bData.date=fd;const d=new Date(fd+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});loadTimes(sId,fd);}
     }
 
-    function initDeskDate(sId,fd){fp=flatpickr(document.getElementById('m-date-zapis'),{locale:'ru',dateFormat:'Y-m-d',altInput:true,altFormat:'j F Y (D)',minDate:aDates[0],maxDate:aDates[aDates.length-1],enable:aDates,defaultDate:fd,disableMobile:true,allowInput:false,clickOpens:true,
-        onChange(sel,ds){if(!ds||!sId)return;bData.date=ds;bData.dateFormatted=sel[0].toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});document.getElementById('m-time-zapis').disabled=false;loadTimes(sId,ds);},
-        onReady(){bData.date=fd;const d=new Date(fd+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});loadTimes(sId,fd);}});}
+    function initDeskDate(sId,fd){
+        const skipAuto=curPromoOpts&&curPromoOpts.autoPickDate===false;
+        fp=flatpickr(document.getElementById('m-date-zapis'),{locale:'ru',dateFormat:'Y-m-d',altInput:true,altFormat:'j F Y (D)',minDate:aDates[0],maxDate:aDates[aDates.length-1],enable:aDates,defaultDate:skipAuto?null:fd,disableMobile:true,allowInput:false,clickOpens:true,
+            onChange(sel,ds){if(!ds||!sId)return;bData.date=ds;bData.dateFormatted=sel[0].toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});document.getElementById('m-time-zapis').disabled=false;loadTimes(sId,ds);},
+            onReady(){if(skipAuto){document.getElementById('m-time-zapis').innerHTML='<option value="">Сначала выберите дату</option>';document.getElementById('m-time-zapis').disabled=true;return;}bData.date=fd;const d=new Date(fd+'T00:00:00');bData.dateFormatted=d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});loadTimes(sId,fd);}});
+    }
 
     async function loadTimes(sId,date){if(ldT)return;ldT=true;const ts=document.getElementById('m-time-zapis');ts.disabled=true;ts.innerHTML='<option value="">Загрузка...</option>';
         try{const oi=document.getElementById('m-option-select').value;let u=`${API}/api/booking/available_times/?staff_id=${sId}&date=${date}`;if(oi)u+=`&service_option_id=${oi}`;
@@ -101,13 +147,13 @@ JS логика модалки записи к мастеру (#bookingModal).
             else{al.innerHTML=`<div class="alert alert-danger">${d.error||'Ошибка'}</div>`;}}catch(er){al.innerHTML='<div class="alert alert-danger">Ошибка подключения</div>';}
         finally{cb.disabled=false;cb.textContent='Подтвердить запись';}}
 
-    function reset(){curId=null;curName='';preMaster=null;opts=[];oMap={};uDurs=[];bData={};aDates=[];ldD=false;ldT=false;
+    function reset(){curId=null;curName='';preMaster=null;curPromoOpts=null;opts=[];oMap={};uDurs=[];bData={};aDates=[];ldD=false;ldT=false;
         if(fp&&typeof fp.destroy==='function'){try{fp.destroy();}catch(e){}fp=null;}
         document.getElementById('booking-step-1').style.display='block';document.getElementById('booking-step-2').style.display='none';document.getElementById('booking-step-3').style.display='none';
         document.getElementById('modal-booking-form').style.display='none';document.getElementById('modal-loading').style.display='none';
         document.getElementById('modal-loading').innerHTML='<div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p>';
-        const ds=document.getElementById('m-duration-select');ds.style.display='';ds.innerHTML='<option value="">Выберите длительность</option>';const dd=document.getElementById('m-duration-display');if(dd)dd.remove();
-        document.getElementById('m-quantity-container').innerHTML='<select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select>';
+        const ds=document.getElementById('m-duration-select');ds.style.display='';ds.setAttribute('required','');ds.innerHTML='<option value="">Выберите длительность</option>';const dd=document.getElementById('m-duration-display');if(dd)dd.remove();
+        const qc=document.getElementById('m-quantity-container');qc.style.display='';qc.innerHTML='<select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select>';
         document.getElementById('m-option-select').value='';document.getElementById('m-master-select').innerHTML='<option value="">Сначала выберите вариант услуги</option>';
         document.getElementById('m-date-disabled').style.display='block';document.getElementById('m-date-disabled').value='Сначала выберите мастера';
         const dw=document.getElementById('m-date-wrapper');dw.style.display='none';if(mob){dw.innerHTML='<input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required>';}
