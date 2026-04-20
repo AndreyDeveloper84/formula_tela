@@ -999,6 +999,7 @@ class BookingRequest(models.Model):
     """Заявка на запись через визард на сайте"""
     category_name = models.CharField("Категория", max_length=200, blank=True, default="")
     service_name = models.CharField("Услуга", max_length=200)
+    master_name = models.CharField("Предпочитаемый мастер", max_length=150, blank=True, default="")
     client_name = models.CharField("Имя клиента", max_length=100)
     client_phone = models.CharField("Телефон", max_length=30)
     comment = models.TextField("Комментарий", blank=True, default="")

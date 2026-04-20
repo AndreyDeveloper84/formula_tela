@@ -223,6 +223,9 @@
 
                 <!-- Step 1: Categories -->
                 <div class="wizard-step" id="wizStep1">
+                    <div id="wizMasterBanner" style="display:none;background:#f5f0e8;border-radius:8px;padding:10px 14px;margin-bottom:15px;font-size:14px;">
+                        🧑‍⚕️ Запись к мастеру: <strong id="wizMasterBannerName"></strong>
+                    </div>
                     <p class="semi mb-15">Выберите категорию:</p>
                     <div id="wizCategories" style="display:flex;flex-direction:column;gap:8px;">
                         <!-- filled by JS -->
@@ -279,7 +282,20 @@ let wizardData = {
     serviceId: null,
     serviceName: '',
     serviceDetails: '',
-    optionId: null
+    optionId: null,
+    masterName: ''
+};
+
+// Pending master (устанавливается openMasterBooking до 'show.bs.modal')
+let wizardPendingMaster = null;
+
+// Публичный API: открыть мастера-запись с предвыбранным мастером.
+// Вызывается со страницы мастеров / детальной страницы мастера.
+window.openMasterBooking = function(masterName) {
+    wizardPendingMaster = { name: masterName || '' };
+    const modalEl = document.getElementById('bookingWizard');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
 };
 
 // Show/hide steps
@@ -301,7 +317,20 @@ function wizardBack(step) {
 // Step 1: Load categories on modal open
 document.getElementById('bookingWizard').addEventListener('show.bs.modal', function() {
     wizardShowStep(1);
-    wizardData = {categoryId:null, categoryName:'', serviceId:null, serviceName:'', serviceDetails:'', optionId:null};
+    const masterName = wizardPendingMaster ? wizardPendingMaster.name : '';
+    wizardPendingMaster = null;
+    wizardData = {
+        categoryId:null, categoryName:'', serviceId:null, serviceName:'',
+        serviceDetails:'', optionId:null, masterName: masterName
+    };
+    const banner = document.getElementById('wizMasterBanner');
+    const bannerName = document.getElementById('wizMasterBannerName');
+    if (masterName) {
+        banner.style.display = 'block';
+        bannerName.textContent = masterName;
+    } else {
+        banner.style.display = 'none';
+    }
     loadCategories();
 });
 
@@ -403,6 +432,7 @@ function wizardSubmit() {
             category_id: wizardData.categoryId,
             service_id: wizardData.serviceId,
             option_id: wizardData.optionId,
+            master_name: wizardData.masterName || '',
             client_name: name,
             client_phone: phone,
             comment: comment

@@ -527,10 +527,10 @@ class ReviewAdmin(admin.ModelAdmin):
 
 @admin.register(BookingRequest)
 class BookingRequestAdmin(admin.ModelAdmin):
-    list_display = ("client_name", "client_phone", "service_name", "is_processed", "created_at")
+    list_display = ("client_name", "client_phone", "service_name", "master_name", "is_processed", "created_at")
     list_filter = ("is_processed", "created_at")
     list_editable = ("is_processed",)
-    search_fields = ("client_name", "client_phone", "service_name")
+    search_fields = ("client_name", "client_phone", "service_name", "master_name")
     readonly_fields = ("created_at",)
 
 
