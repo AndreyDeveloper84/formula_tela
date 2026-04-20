@@ -1,0 +1,45 @@
+{% comment %}
+HTML модалки записи через YClients (#bookingModal).
+Подключается на master_detail.html, home.html и везде где нужна запись
+с выбором мастера/даты/времени.
+JS-логика — components/booking_modal_master_js.html.
+{% endcomment %}
+<div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
+    <div class="modal-dialog" id="bookingModalDialog"><div class="modal-content" style="border:none;border-radius:12px;">
+        <div id="booking-step-1">
+            <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi" id="bookingModalLabel">Записаться</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" style="padding:30px;">
+                <div class="mb-20" id="modal-service-title" style="font-size:18px;font-weight:600;"></div>
+                <div id="modal-loading" style="text-align:center;padding:40px;display:none;"><div class="spinner-border" role="status" style="color:#000;"><span class="visually-hidden">Загрузка...</span></div><p style="margin-top:10px;opacity:0.5;">Загрузка вариантов...</p></div>
+                <form id="modal-booking-form" style="display:none;"><div class="in-form">
+                    <select id="m-duration-select" class="form-select" required><option value="">Выберите длительность</option></select>
+                    <div id="m-quantity-container"><select id="m-quantity-select" class="form-select" required><option value="">Сначала выберите длительность</option></select></div>
+                    <input type="hidden" id="m-option-select" value="">
+                    <select id="m-master-select" class="form-select" required><option value="">Сначала выберите вариант услуги</option></select>
+                    <input type="text" id="m-date-disabled" class="text-def" value="Сначала выберите мастера" disabled style="display:block;">
+                    <div class="date-wrapper" id="m-date-wrapper" style="display:none;"><input type="text" id="m-date-zapis" class="form-control" placeholder="Выберите дату" readonly required></div>
+                    <select id="m-time-zapis" class="form-select" required disabled><option value="">Сначала выберите дату</option></select>
+                    <input type="text" id="m-price-display" class="text-def semi" value="Стоимость: — ₽" disabled>
+                </div><button type="submit" id="m-submit-booking" class="btn-black t-btn submit" style="width:100%;margin-top:15px;">Записаться онлайн</button></form>
+            </div>
+        </div>
+        <div id="booking-step-2" style="display:none;">
+            <div class="modal-header" style="border-bottom:1px solid #eee;padding:20px 30px;"><h5 class="modal-title semi">Подтверждение записи</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" style="padding:30px;">
+                <div class="booking-summary"><div class="booking-summary-item"><span>Услуга:</span><strong id="m-summary-service"></strong></div><div class="booking-summary-item"><span>Мастер:</span><strong id="m-summary-master"></strong></div><div class="booking-summary-item"><span>Дата и время:</span><strong id="m-summary-datetime"></strong></div><div class="booking-summary-item"><span>Стоимость:</span><strong id="m-summary-price"></strong></div></div>
+                <form id="m-contact-form">
+                    <div class="form-group"><label for="m-client-name">Ваше имя *</label><input type="text" id="m-client-name" placeholder="Иван Петров" required></div>
+                    <div class="form-group"><label for="m-client-phone">Телефон *</label><input type="tel" id="m-client-phone" placeholder="+7 (900) 123-45-67" required></div>
+                    <div class="form-group"><label for="m-client-email">Email</label><input type="email" id="m-client-email" placeholder="email@example.com"></div>
+                    <div class="form-group"><label for="m-client-comment">Комментарий</label><textarea id="m-client-comment" rows="3" placeholder="Дополнительные пожелания"></textarea></div>
+                    <div id="m-modal-alert"></div>
+                    <button type="submit" id="m-confirm-booking" class="btn-black t-btn" style="width:100%;margin-top:10px;">Подтвердить запись</button>
+                </form>
+            </div>
+        </div>
+        <div id="booking-step-3" style="display:none;"><div class="modal-body" style="padding:50px 30px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:15px;">✅</div><h4 class="semi" style="margin-bottom:10px;">Вы записаны!</h4>
+            <p id="m-success-message" style="opacity:0.7;"></p><button type="button" class="btn-black t-btn" data-bs-dismiss="modal" style="margin-top:20px;">Закрыть</button>
+        </div></div>
+    </div></div>
+</div>

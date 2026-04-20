@@ -155,7 +155,17 @@
                         <span class="op80 f14 mb-30 mobb7">{{ promo.price_note }}</span>
                     {% endif %}
                     <div class="d-flex justify-content-between align-items-center">
-                        <a href="{% url 'website:promotions' %}" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s" data-bs-toggle="modal" data-bs-target="#exampleModal">Записаться</a>
+                        {% if promo_booking_svc_id %}
+                        <button type="button" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s"
+                                onclick="openBookingModal({{ promo_booking_svc_id }}, '{{ promo_booking_svc_name|escapejs }}')">
+                            Записаться
+                        </button>
+                        {% else %}
+                        <button type="button" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s"
+                                data-bs-toggle="modal" data-bs-target="#bookingWizard">
+                            Записаться
+                        </button>
+                        {% endif %}
                         {% if promo.price_note %}
                             <span class="op80 f20 mn7">{{ promo.price_note }}</span>
                         {% endif %}
@@ -201,44 +211,6 @@
     </section>
     {% endif %}
     
-    <!-- ========================= Популярные комплексы ========================= -->
-    {% if popular_bundles %}
-    <section class="service mb-72">
-        <div class="container">
-            <div class="d-flex justify-content-between align-items-center mb-30 wow fadeInUp" data-wow-delay=".2s">
-                <h2 class="m-0">Популярные комплексы</h2>
-                <a href="{% url 'website:bundles' %}" class="op50 mn7">Все комплексы →</a>
-            </div>
-            <div class="row">
-                {% for ctx in popular_bundles %}
-                    {% with b=ctx.bundle %}
-                    <div class="col-lg-4 col-md-6 wow fadeInUp" data-wow-delay="{% if forloop.counter == 1 %}0.4{% elif forloop.counter == 2 %}0.6{% else %}0.8{% endif %}s">
-                        <a href="{% if b.slug %}{% url 'website:bundle_detail_by_slug' slug=b.slug %}{% else %}{% url 'website:bundle_detail' bundle_id=b.id %}{% endif %}" class="item">
-                            {% if b.image %}
-                                <img src="{{ b.image.url }}" class="responsive mn7" alt="{{ b.name }}" title="{{ b.name }}" loading="lazy">
-                            {% else %}
-                                <img src="{% static 'images/us1.jpg' %}" class="responsive mn7" alt="{{ b.name }}" loading="lazy">
-                            {% endif %}
-                            {% if b.image_mobile %}
-                                <img src="{{ b.image_mobile.url }}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
-                            {% elif b.image %}
-                                <img src="{{ b.image.url }}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
-                            {% else %}
-                                <img src="{% static 'images/us1.jpg' %}" class="responsive mobb7" alt="{{ b.name }}" loading="lazy">
-                            {% endif %}
-                        </a>
-                        <a class="d-flex justify-content-between mb-40" href="{% if b.slug %}{% url 'website:bundle_detail_by_slug' slug=b.slug %}{% else %}{% url 'website:bundle_detail' bundle_id=b.id %}{% endif %}">
-                            <b>{{ b.name }}</b>
-                            <span class="op50">{{ ctx.min_duration }} мин — {{ ctx.price|floatformat:0 }} ₽</span>
-                        </a>
-                    </div>
-                    {% endwith %}
-                {% endfor %}
-            </div>
-        </div>
-    </section>
-    {% endif %}
-
     <!-- ========================= Отзывы (Desktop) ========================= -->
     <!-- ========================= Отзывы (Яндекс.Карты) ========================= -->
     <section class="reviews mb-72">
@@ -345,8 +317,21 @@
                         {% endfor %}
                     </div>
                 </div>
-            </div>			
+            </div>
         </div>
     </section>
     {% endif %}
+
+    {% if promo_booking_svc_id %}
+    {# Модалка бронирования через YClients (используется кнопкой «Записаться» на промо-баннере) #}
+    {% include "website/components/booking_modal.html" %}
+    {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if promo_booking_svc_id %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+{% include "website/components/booking_modal_master_js.html" %}
+{% endif %}
 {% endblock %}

@@ -66,20 +66,20 @@ def home(request):
     # Мастера для секции "Наши мастера"
     masters = Master.objects.active().with_services().order_by("name")[:4]
 
-    promos = Promotion.objects.active()[:3]
-
-    popular_bundles_qs = (
-        Bundle.objects.active().popular().with_items().order_by("order", "id")[:3]
+    promos = list(
+        Promotion.objects.active()
+        .prefetch_related("options__service")[:3]
     )
-    popular_bundles = []
-    for b in popular_bundles_qs:
-        min_price, min_duration = b.compute_min_totals()
-        popular_bundles.append({
-            "bundle":       b,
-            "min_price":    min_price,
-            "min_duration": min_duration,
-            "price":        b.fixed_price or min_price,
-        })
+
+    # Для кнопки «Записаться» на промо-баннере: берём первую услугу
+    # первого активного промо (если есть привязанная option).
+    promo_booking_svc_id = None
+    promo_booking_svc_name = ""
+    if promos:
+        first_opt = promos[0].options.first()
+        if first_opt and first_opt.service_id:
+            promo_booking_svc_id = first_opt.service_id
+            promo_booking_svc_name = promos[0].title or first_opt.service.name
 
     reviews = Review.objects.active()[:3]
 
@@ -90,7 +90,8 @@ def home(request):
         "masters": masters,
         "faq": FAQ.objects.filter(is_active=True).order_by("order", "id")[:6],
         "promotions": promos,
-        "popular_bundles": popular_bundles,
+        "promo_booking_svc_id": promo_booking_svc_id,
+        "promo_booking_svc_name": promo_booking_svc_name,
         "reviews": reviews,
     }
     return render(request, "website/home.html", ctx)

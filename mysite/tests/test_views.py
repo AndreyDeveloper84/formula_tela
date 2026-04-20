@@ -22,6 +22,50 @@ def test_home_popular_services_in_context(client):
     assert "top_items" in resp.context
 
 
+@pytest.mark.django_db
+def test_home_no_popular_bundles_section(client):
+    """Блок «Популярные комплексы» удалён со страницы — пользователь просил скрыть."""
+    baker.make("services_app.Bundle", is_active=True, is_popular=True, _quantity=3)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Популярные комплексы" not in resp.content.decode("utf-8")
+    assert "popular_bundles" not in resp.context
+
+
+@pytest.mark.django_db
+def test_home_promo_banner_wires_booking_modal(client, service, service_option):
+    """Промо с options → кнопка баннера вызывает openBookingModal(svc_id, ...),
+    модалка #bookingModal подключена на странице."""
+    from datetime import date, timedelta
+    promo = baker.make(
+        "services_app.Promotion",
+        title="Знакомство с мастером",
+        is_active=True,
+        starts_at=date.today() - timedelta(days=1),
+        ends_at=date.today() + timedelta(days=30),
+    )
+    promo.options.add(service_option)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert resp.context["promo_booking_svc_id"] == service.id
+    html = resp.content.decode("utf-8")
+    assert f"openBookingModal({service.id}," in html
+    assert 'id="bookingModal"' in html
+    # flatpickr тянется только если модалка нужна
+    assert "flatpickr" in html
+
+
+@pytest.mark.django_db
+def test_home_no_promo_no_booking_modal(client):
+    """Нет активных промо → модалка не подключается (экономия flatpickr)."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert resp.context["promo_booking_svc_id"] is None
+    html = resp.content.decode("utf-8")
+    assert 'id="bookingModal"' not in html
+
+
 # ─── services ────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
