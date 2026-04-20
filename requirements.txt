@@ -47,3 +47,4 @@ django-csp>=3.8,<5.0
 celery>=5.3
 django-ratelimit>=4.1
 yookassa>=3.3
+weasyprint>=62.0

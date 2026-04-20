@@ -777,6 +777,16 @@ class Bundle(models.Model):
 
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     is_popular = models.BooleanField(default=False, verbose_name="Популярный")
+    is_certificate = models.BooleanField(
+        default=False, verbose_name="Доступен как сертификат",
+        help_text="Показывать на странице /certificates/ как подарочный сертификат.",
+    )
+    certificate_theme = models.CharField(
+        max_length=10,
+        choices=[("dark", "Тёмная (синяя)"), ("pink", "Розовая")],
+        default="pink",
+        verbose_name="Тема сертификата",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создан")
     updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлён")
@@ -1140,6 +1150,7 @@ class Order(models.Model):
 CERT_TYPE_CHOICES = [
     ("nominal", "На сумму"),
     ("service", "На услугу"),
+    ("bundle", "Комплекс"),
 ]
 
 CERT_STATUS_CHOICES = [
@@ -1180,6 +1191,11 @@ class GiftCertificate(models.Model):
     service_option = models.ForeignKey(
         ServiceOption, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="gift_certificates", verbose_name="Вариант услуги",
+    )
+    # Комплекс (для типа bundle)
+    bundle = models.ForeignKey(
+        "Bundle", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="gift_certificates", verbose_name="Комплекс",
     )
 
     # Изображение сертификата

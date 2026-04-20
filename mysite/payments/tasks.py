@@ -19,6 +19,7 @@ from celery.exceptions import MaxRetriesExceededError
 from django.utils import timezone
 
 from payments.booking_service import YClientsBookingService
+from payments.certificate_pdf import generate_certificate_pdf
 from payments.exceptions import BookingClientError, BookingValidationError
 from services_app.models import GiftCertificate, Order
 from website.notifications import send_certificate_email, send_notification_telegram
@@ -129,11 +130,13 @@ def fulfill_paid_certificate(self, order_id: int):
     cert.is_active = True
     cert.save(update_fields=["status", "paid_at", "is_active", "updated_at"])
 
-    value_str = (
-        f"{cert.nominal:,.0f} ₽".replace(",", " ")
-        if cert.certificate_type == "nominal"
-        else str(cert.service)
-    )
+    if cert.certificate_type == "nominal":
+        value_str = f"{cert.nominal:,.0f} ₽".replace(",", " ")
+    elif cert.certificate_type == "bundle" and cert.bundle:
+        value_str = cert.bundle.name
+    else:
+        value_str = str(cert.service) if cert.service else "—"
+
     send_notification_telegram(
         f"🎁 Сертификат оплачен: {cert.code}\n"
         f"Тип: {cert.get_certificate_type_display()} — {value_str}\n"
@@ -143,8 +146,14 @@ def fulfill_paid_certificate(self, order_id: int):
         f"Заказ: {order.number}"
     )
 
+    pdf_bytes = None
+    try:
+        pdf_bytes = generate_certificate_pdf(cert, order)
+    except Exception as exc:
+        logger.error("PDF generation failed for cert=%s: %s", cert.code, exc)
+
     if order.client_email:
-        send_certificate_email(order, cert)
+        send_certificate_email(order, cert, pdf_bytes=pdf_bytes)
 
     logger.info("fulfill_paid_certificate: order=%s cert=%s activated", order.number, cert.code)
 
