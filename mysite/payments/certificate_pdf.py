@@ -22,12 +22,17 @@ def generate_certificate_pdf(cert, order) -> bytes:
 
     base_url = getattr(settings, "SITE_BASE_URL", "https://formulatela58.ru")
 
+    theme_key = cert.theme or (
+        cert.bundle.certificate_theme if cert.bundle else "pink"
+    )
+
     html_string = render_to_string(
         "certificates/certificate_pdf.html",
         {
             "cert": cert,
             "order": order,
             "bundle": cert.bundle,
+            "theme_key": theme_key,
         },
     )
     return weasyprint.HTML(string=html_string, base_url=base_url).write_pdf()

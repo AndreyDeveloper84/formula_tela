@@ -14,6 +14,18 @@ from .managers import (
 from .validators import validate_image_upload, validate_video_upload
 
 
+CERTIFICATE_THEME_CHOICES = [
+    ("pink", "Для неё"),
+    ("graphite", "Для него"),
+    ("spring", "8 марта"),
+    ("military", "23 февраля"),
+    ("birthday", "День рождения"),
+    ("winter", "Новый год"),
+    ("valentine", "14 февраля"),
+    ("spa", "SPA релакс"),
+]
+
+
 def generate_unique_slug(model_cls, name: str, *, pk=None, max_length: int = 200) -> str:
     """Генерирует уникальный slug для модели на основе name.
 
@@ -782,8 +794,8 @@ class Bundle(models.Model):
         help_text="Показывать на странице /certificates/ как подарочный сертификат.",
     )
     certificate_theme = models.CharField(
-        max_length=10,
-        choices=[("dark", "Тёмная (синяя)"), ("pink", "Розовая")],
+        max_length=16,
+        choices=CERTIFICATE_THEME_CHOICES,
         default="pink",
         verbose_name="Тема сертификата",
     )
@@ -1196,6 +1208,12 @@ class GiftCertificate(models.Model):
     bundle = models.ForeignKey(
         "Bundle", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="gift_certificates", verbose_name="Комплекс",
+    )
+
+    # Оформление (тема) сертификата
+    theme = models.CharField(
+        max_length=16, choices=CERTIFICATE_THEME_CHOICES,
+        default="pink", verbose_name="Оформление",
     )
 
     # Изображение сертификата

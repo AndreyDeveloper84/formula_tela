@@ -43,6 +43,7 @@ from services_app.models import (
     BookingRequest,
     Order,
     GiftCertificate,
+    CERTIFICATE_THEME_CHOICES,
 )
 
 
@@ -1511,10 +1512,20 @@ logger = logging.getLogger(__name__)
 
 def certificates(request):
     """Страница подарочных сертификатов"""
-    popular_services = (
-        Service.objects.active().popular()
-        .prefetch_related("options")
-        .order_by("order")[:8]
+    from django.db.models import Count, Q, Prefetch
+
+    active_options = ServiceOption.objects.filter(is_active=True).order_by("price")
+    all_services = (
+        Service.objects.active()
+        .select_related("category")
+        .prefetch_related(Prefetch("options", queryset=active_options))
+        .order_by("category__order", "order", "name")
+    )
+    service_categories = (
+        ServiceCategory.objects
+        .annotate(svc_count=Count("services", filter=Q(services__is_active=True)))
+        .filter(svc_count__gt=0)
+        .order_by("order", "name")
     )
     bundles_as_certs = (
         Bundle.objects.filter(is_active=True, is_certificate=True)
@@ -1522,8 +1533,10 @@ def certificates(request):
         .order_by("order")
     )
     return render(request, "website/certificates.html", {
-        "popular_services": popular_services,
+        "all_services": all_services,
+        "service_categories": service_categories,
         "bundles": bundles_as_certs,
+        "themes": CERTIFICATE_THEME_CHOICES,
         "settings": _settings(),
     })
 
@@ -1638,6 +1651,14 @@ def api_certificate_request(request):
     if payment_method not in ("online", "cash"):
         payment_method = "cash"
 
+    # --- Тема оформления ---
+    valid_themes = {key for key, _ in CERTIFICATE_THEME_CHOICES}
+    theme = (data.get("theme") or "").strip() or None
+    if theme not in valid_themes:
+        theme = None
+    if theme is None:
+        theme = bundle.certificate_theme if (cert_type == "bundle" and bundle) else "pink"
+
     # --- Онлайн-оплата: проверка feature flag ---
     site = SiteSettings.objects.first()
     if payment_method == "online":
@@ -1665,6 +1686,7 @@ def api_certificate_request(request):
         service=service,
         service_option=service_option,
         bundle=bundle,
+        theme=theme,
         buyer_name=buyer_name,
         buyer_phone=buyer_phone,
         buyer_email=buyer_email,

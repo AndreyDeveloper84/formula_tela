@@ -19,14 +19,43 @@
     position: relative;
     overflow: hidden;
   }
-  .page-front.dark {
-    background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%);
-    color: #fff;
+
+  /* Темы: background + text color */
+  .page-front.pink      { background: linear-gradient(135deg, #fce8e8 0%, #f0d0d0 100%); color: #3a1a1a; }
+  .page-front.graphite  { background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%); color: #fff; }
+  .page-front.spring    { background: linear-gradient(135deg, #fff0f5 0%, #f8d7e2 100%); color: #3a1a28; }
+  .page-front.military  { background: linear-gradient(135deg, #2a3d2f 0%, #1c2921 100%); color: #fff; }
+  .page-front.birthday  { background: linear-gradient(135deg, #fff4e6 0%, #ffd9a8 100%); color: #3a2a1a; }
+  .page-front.winter    { background: linear-gradient(135deg, #e8f0f5 0%, #c8dde8 100%); color: #1a2a3a; }
+  .page-front.valentine { background: linear-gradient(135deg, #ffe8ec 0%, #ffc9d1 100%); color: #3a1a2a; }
+  .page-front.spa       { background: linear-gradient(135deg, #e8ede3 0%, #d4ddd0 100%); color: #2a3a2a; }
+
+  /* Фоновый SVG-паттерн */
+  .bg-pattern {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
   }
-  .page-front.pink {
-    background: linear-gradient(135deg, #fce8e8 0%, #f0d0d0 100%);
-    color: #3a1a1a;
+  .bg-pattern .bg-svg {
+    width: 100%;
+    height: 100%;
   }
+  .page-front.pink      .bg-pattern { color: #b05060; }
+  .page-front.graphite  .bg-pattern { color: #c9a84c; }
+  .page-front.spring    .bg-pattern { color: #c64875; }
+  .page-front.military  .bg-pattern { color: #c9a84c; }
+  .page-front.birthday  .bg-pattern { color: #e07c3e; }
+  .page-front.winter    .bg-pattern { color: #1e5a8a; }
+  .page-front.valentine .bg-pattern { color: #c41e3a; }
+  .page-front.spa       .bg-pattern { color: #5a6b4a; }
+
+  /* весь контент — поверх паттерна */
+  .page-front > .header,
+  .page-front > .cert-title-row,
+  .page-front > .items-row,
+  .page-front > .recipient-row,
+  .page-front > .footer-row { position: relative; z-index: 1; }
 
   /* Шапка */
   .header { display: flex; align-items: center; margin-bottom: 8mm; }
@@ -42,8 +71,15 @@
     text-transform: uppercase;
     line-height: 1;
   }
-  .dark .cert-word { color: #c9a84c; }
-  .pink .cert-word { color: #b05060; }
+  .pink      .cert-word { color: #b05060; }
+  .graphite  .cert-word { color: #c9a84c; }
+  .spring    .cert-word { color: #c64875; }
+  .military  .cert-word { color: #c9a84c; }
+  .birthday  .cert-word { color: #e07c3e; }
+  .winter    .cert-word { color: #1e5a8a; }
+  .valentine .cert-word { color: #c41e3a; }
+  .spa       .cert-word { color: #5a6b4a; }
+
   .cert-name {
     font-size: 16pt;
     font-weight: 700;
@@ -52,8 +88,14 @@
     opacity: 0.85;
     line-height: 1.1;
   }
-  .dark .cert-name { color: #9aadcc; }
-  .pink .cert-name { color: #b05060; opacity: 0.7; }
+  .pink      .cert-name { color: #b05060; opacity: 0.7; }
+  .graphite  .cert-name { color: #9aadcc; }
+  .spring    .cert-name { color: #c64875; opacity: 0.7; }
+  .military  .cert-name { color: #9abea0; }
+  .birthday  .cert-name { color: #e07c3e; opacity: 0.75; }
+  .winter    .cert-name { color: #1e5a8a; opacity: 0.8; }
+  .valentine .cert-name { color: #c41e3a; opacity: 0.7; }
+  .spa       .cert-name { color: #5a6b4a; opacity: 0.8; }
 
   /* Если номинал */
   .cert-nominal {
@@ -62,8 +104,14 @@
     letter-spacing: 2px;
     opacity: 0.9;
   }
-  .dark .cert-nominal { color: #c9a84c; }
-  .pink .cert-nominal { color: #b05060; }
+  .pink      .cert-nominal { color: #b05060; }
+  .graphite  .cert-nominal { color: #c9a84c; }
+  .spring    .cert-nominal { color: #c64875; }
+  .military  .cert-nominal { color: #c9a84c; }
+  .birthday  .cert-nominal { color: #e07c3e; }
+  .winter    .cert-nominal { color: #1e5a8a; }
+  .valentine .cert-nominal { color: #c41e3a; }
+  .spa       .cert-nominal { color: #5a6b4a; }
 
   /* Карточки состава */
   .items-row {
@@ -79,14 +127,15 @@
     line-height: 1.3;
     font-weight: 600;
   }
-  .dark .item-card { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); }
-  .pink .item-card { background: rgba(255,255,255,0.6); border: 1px solid rgba(176,80,96,0.3); }
-  .item-card:last-child {
-    font-weight: 400;
-    font-size: 7pt;
+  .graphite .item-card, .military .item-card {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
   }
-  .dark .item-card:last-child { background: rgba(255,255,255,0.05); }
-  .pink .item-card:last-child { background: rgba(176,80,96,0.15); color: #8a3040; }
+  .pink .item-card, .spring .item-card, .birthday .item-card,
+  .winter .item-card, .valentine .item-card, .spa .item-card {
+    background: rgba(255,255,255,0.6);
+    border: 1px solid rgba(0,0,0,0.1);
+  }
 
   /* Поля Кому/От кого */
   .recipient-row {
@@ -96,8 +145,11 @@
     padding-top: 4mm;
     margin-top: auto;
   }
-  .dark .recipient-row { border-color: rgba(255,255,255,0.2); }
-  .pink .recipient-row { border-color: rgba(176,80,96,0.3); }
+  .graphite .recipient-row, .military .recipient-row { border-color: rgba(255,255,255,0.2); }
+  .pink .recipient-row, .spring .recipient-row, .birthday .recipient-row,
+  .winter .recipient-row, .valentine .recipient-row, .spa .recipient-row {
+    border-color: rgba(0,0,0,0.15);
+  }
   .recipient-field { flex: 1; }
   .recipient-label { font-size: 7pt; opacity: 0.5; margin-bottom: 2px; }
   .recipient-value { font-size: 10pt; font-weight: 600; }
@@ -155,7 +207,11 @@
 <body>
 
 <!-- ══ Лицевая сторона ══ -->
-<div class="page-front {% if cert.bundle %}{{ cert.bundle.certificate_theme }}{% else %}pink{% endif %}">
+<div class="page-front {{ theme_key|default:'pink' }}">
+
+  <div class="bg-pattern">
+    {% include "certificates/svg_patterns/"|add:theme_key|add:".svg" %}
+  </div>
 
   <div class="header">
     <span style="font-size:18pt;">⬡</span>

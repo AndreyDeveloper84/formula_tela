@@ -626,10 +626,10 @@ class CertificateRedemptionInline(admin.TabularInline):
 class GiftCertificateAdmin(admin.ModelAdmin):
     list_display = (
         "code", "certificate_type", "nominal_display",
-        "buyer_name", "recipient_name", "status",
+        "buyer_name", "recipient_name", "status", "theme",
         "valid_until", "created_at",
     )
-    list_filter = ("status", "certificate_type", "is_active", "created_at")
+    list_filter = ("status", "certificate_type", "theme", "is_active", "created_at")
     list_editable = ("status",)
     search_fields = (
         "code", "buyer_name", "buyer_phone",
@@ -645,7 +645,7 @@ class GiftCertificateAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Сертификат", {"fields": (
             "code", "certificate_type", "nominal",
-            "service", "service_option", "order", "image",
+            "service", "service_option", "bundle", "theme", "order", "image",
         )}),
         ("Покупатель", {"fields": (
             "buyer_name", "buyer_phone", "buyer_email",
