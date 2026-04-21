@@ -76,6 +76,21 @@
         display: block;
         margin: 0 auto;
     }
+
+    /* Hero-надпись «Центр эстетики / Тело. Здоровье. Результат».
+       position:absolute bottom:65px; на мобайле .heading удлиняется
+       и кнопки налезают. На <=576px переводим в static, убираем левую
+       часть (длинная «Центр эстетики…»), оставляем слоган справа. */
+    @media (max-width: 576px) {
+        .banner .upcs {
+            position: static !important;
+            justify-content: center !important;
+            margin-top: 24px;
+            padding: 0 16px 20px;
+            font-size: 14px;
+        }
+        .banner .upcs .mn { display: none; }
+    }
 </style>
 {% endblock %}
 {% block content %}
