@@ -842,7 +842,24 @@ background: url(../images/meet-mob.jpg) no-repeat 50% 50% / cover;}
 .t-btn i {display:none;}
 .t-btn::first-letter  {text-transform:uppercase;}
 .t-btn, .t-btn:hover {line-height:46px;width:100%;text-align:center;margin:6px 0;}
-.social a,.confid a,.zapis .t-btn {line-height:38px;width:auto;margin:3px 0;}
+.social a, .social a:hover, .social a:focus, .social a:active,
+.confid a, .zapis .t-btn {line-height:38px;width:auto;margin:3px 0;}
+
+/* Форс-визуализация кнопки закрытия модалки на мобильных: Bootstrap даёт
+   opacity:0.5 и size:auto, что делает close.png плохо видимым. */
+.modal-header {position:relative;padding-right:56px;}
+.modal-header .btn-close {
+    position:absolute;
+    top:20px;
+    right:16px;
+    width:32px;
+    height:32px;
+    padding:0;
+    margin:0;
+    background-size:16px 16px;
+    opacity:1;
+    z-index:10;
+}
 
 h1, h2, h3, h4, h5, h6 {margin-bottom:32px;}
 
