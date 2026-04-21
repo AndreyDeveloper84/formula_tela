@@ -76,58 +76,63 @@ class SEOLandingAgent:
         Если Вебмастер недоступен — возвращает пустой dict (graceful degradation).
         """
         result = {"pages_map": {}, "top_queries": []}
+
+        # 1. Читаем свежие daily-снимки из БД (пишет collect_rank_snapshots 07:00).
+        #    Окно: от начала недели до сегодня. Для одной и той же страницы/запроса
+        #    берём самый свежий snapshot.
+        from django.utils import timezone
+
+        today = timezone.now().date()
+        qs = SeoRankSnapshot.objects.filter(
+            week_start__gte=week_start, week_start__lte=today,
+            source="webmaster",
+        ).order_by("-week_start")
+
+        seen_pages, seen_queries = set(), set()
+        for snap in qs:
+            if snap.page_url and snap.page_url not in seen_pages:
+                result["pages_map"][snap.page_url] = {
+                    "url": snap.page_url,
+                    "clicks": snap.clicks, "impressions": snap.impressions,
+                    "ctr": snap.ctr, "avg_position": snap.avg_position,
+                }
+                seen_pages.add(snap.page_url)
+            elif snap.query and snap.query not in seen_queries:
+                result["top_queries"].append({
+                    "query": snap.query,
+                    "clicks": snap.clicks, "impressions": snap.impressions,
+                    "ctr": snap.ctr, "avg_position": snap.avg_position,
+                })
+                seen_queries.add(snap.query)
+
+        result["top_queries"].sort(key=lambda q: q["clicks"], reverse=True)
+        result["top_queries"] = result["top_queries"][:50]
+
+        if result["pages_map"] or result["top_queries"]:
+            logger.info(
+                "SEOLandingAgent: из SeoRankSnapshot — %d страниц, %d запросов",
+                len(result["pages_map"]), len(result["top_queries"]),
+            )
+            return result
+
+        # 2. Fallback на прямой вызов API — если daily-таск ещё не успел отработать
+        #    (свежий деплой, Webmaster был недоступен и т.д.).
+        logger.info("SEOLandingAgent: SeoRankSnapshot пуст, fallback на Webmaster API")
         try:
             wm = YandexWebmasterClient.from_settings()
             date_from = week_start.isoformat()
             date_to = (week_start + timedelta(days=6)).isoformat()
-            # prev_week_start removed: WoW-drops handled by analyze_rank_changes
 
-            # --- Страницы ---
             pages_wm = wm.get_top_pages(date_from, date_to)
             for p in pages_wm:
                 result["pages_map"][p["url"]] = p
 
-            # Сохраняем снимки страниц в БД
-            for p in pages_wm:
-                SeoRankSnapshot.objects.update_or_create(
-                    week_start=week_start,
-                    page_url=p["url"],
-                    query="",
-                    defaults={
-                        "clicks": p["clicks"],
-                        "impressions": p["impressions"],
-                        "ctr": p["ctr"],
-                        "avg_position": p["avg_position"],
-                        "source": "webmaster",
-                    },
-                )
-
-            # --- Топ запросов ---
-            queries_wm = wm.get_top_queries(date_from, date_to, limit=50)
-            result["top_queries"] = queries_wm
-
-            # Сохраняем снимки запросов в БД
-            for q in queries_wm:
-                if not q.get("query"):
-                    continue
-                SeoRankSnapshot.objects.update_or_create(
-                    week_start=week_start,
-                    page_url="",
-                    query=q["query"],
-                    defaults={
-                        "clicks": q["clicks"],
-                        "impressions": q["impressions"],
-                        "ctr": q["ctr"],
-                        "avg_position": q["avg_position"],
-                        "source": "webmaster",
-                    },
-                )
+            result["top_queries"] = wm.get_top_queries(date_from, date_to, limit=50)
 
             logger.info(
-                "SEOLandingAgent: Вебмастер — %d страниц, %d запросов",
-                len(pages_wm), len(queries_wm),
+                "SEOLandingAgent: Вебмастер API — %d страниц, %d запросов",
+                len(pages_wm), len(result["top_queries"]),
             )
-
         except YandexWebmasterError as exc:
             logger.warning("SEOLandingAgent: Вебмастер недоступен — %s", exc)
         except Exception as exc:
