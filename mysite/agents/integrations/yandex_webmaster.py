@@ -22,6 +22,16 @@ class YandexWebmasterError(Exception):
     pass
 
 
+def _extract_indicators(item: dict) -> dict:
+    """Yandex Webmaster отдаёт indicators как dict {"TOTAL_SHOWS": 3.0, ...}.
+    Исторически код ожидал list [{"query_indicator": "TOTAL_SHOWS", "value": 3.0}, ...] —
+    поддерживаем оба варианта для устойчивости к изменению формата API."""
+    raw = item.get("indicators") or {}
+    if isinstance(raw, list):
+        return {ind.get("query_indicator"): ind.get("value", 0) for ind in raw if isinstance(ind, dict)}
+    return raw
+
+
 class YandexWebmasterClient:
     BASE_URL = "https://api.webmaster.yandex.net/v4"
 
@@ -156,12 +166,9 @@ class YandexWebmasterClient:
 
         queries = []
         for item in data.get("queries", []):
-            indicators = {
-                ind["query_indicator"]: ind.get("value", 0)
-                for ind in item.get("indicators", [])
-            }
-            clicks = int(indicators.get("TOTAL_CLICKS", 0))
-            impressions = int(indicators.get("TOTAL_SHOWS", 0))
+            indicators = _extract_indicators(item)
+            clicks = int(indicators.get("TOTAL_CLICKS", 0) or 0)
+            impressions = int(indicators.get("TOTAL_SHOWS", 0) or 0)
             avg_pos = float(indicators.get("AVG_SHOW_POSITION", 0) or 0)
             ctr = round(clicks / impressions, 4) if impressions > 0 else 0.0
             queries.append({
@@ -215,12 +222,9 @@ class YandexWebmasterClient:
 
         pages = []
         for item in data.get("queries", []):
-            indicators = {
-                ind["query_indicator"]: ind.get("value", 0)
-                for ind in item.get("indicators", [])
-            }
-            clicks = int(indicators.get("TOTAL_CLICKS", 0))
-            impressions = int(indicators.get("TOTAL_SHOWS", 0))
+            indicators = _extract_indicators(item)
+            clicks = int(indicators.get("TOTAL_CLICKS", 0) or 0)
+            impressions = int(indicators.get("TOTAL_SHOWS", 0) or 0)
             avg_pos = float(indicators.get("AVG_SHOW_POSITION", 0) or 0)
             ctr = round(clicks / impressions, 4) if impressions > 0 else 0.0
 
