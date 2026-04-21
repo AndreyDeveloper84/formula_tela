@@ -1323,7 +1323,9 @@ class GiftCertificate(models.Model):
     @property
     def is_valid(self):
         from django.utils import timezone
-        today = timezone.now().date()
+        # localdate() уважает settings.TIME_ZONE (Europe/Moscow), а now().date()
+        # всегда возвращает UTC и ломает сравнение в 00:00–03:00 MSK.
+        today = timezone.localdate()
         return (
             self.status in ("paid", "delivered")
             and self.is_active

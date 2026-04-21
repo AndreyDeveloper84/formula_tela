@@ -105,7 +105,7 @@ else:
     }}
 
 LANGUAGE_CODE = os.getenv("DJANGO_LANGUAGE_CODE", "ru")
-TIME_ZONE     = os.getenv("DJANGO_TIME_ZONE", "UTC")
+TIME_ZONE     = os.getenv("DJANGO_TIME_ZONE", "Europe/Moscow")
 USE_I18N = True
 USE_TZ   = True
 
