@@ -64,6 +64,10 @@ CSP_SCRIPT_SRC  = ("'self'", "https://w951024.yclients.com")
 CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https:")
 CSP_IMG_SRC     = ("'self'", "data:", "https:")
 CSP_FONT_SRC    = ("'self'", "data:", "https:")
+# Django admin активно использует inline scripts (toggle sidebar, collapse
+# fieldsets, datepicker) — без них ломается мобильный layout и submit.
+# Исключаем /admin/ из CSP, оставляя защиту публичному сайту.
+CSP_EXCLUDE_URL_PREFIXES = ("/admin/",)
 
 ROOT_URLCONF = "mysite.urls"
 WSGI_APPLICATION = "mysite.wsgi.application"
