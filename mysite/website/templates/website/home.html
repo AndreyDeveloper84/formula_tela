@@ -76,6 +76,16 @@
         display: block;
         margin: 0 auto;
     }
+
+    /* Декоративная надпись «Центр эстетики / Тело. Здоровье. Результат»
+       позиционируется absolute bottom:65px; на мобильном .heading удлиняется
+       (h1 + описание + 2 кнопки) и кнопки начинают налезать на надпись.
+       На узком экране прячем — текст не влезает красиво и больше мешает. */
+    @media (max-width: 576px) {
+        .banner .upcs,
+        .banner > .container > .d-flex.upcs,
+        .banner .container > .d-flex { display: none !important; }
+    }
 </style>
 {% endblock %}
 {% block content %}
