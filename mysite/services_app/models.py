@@ -262,6 +262,10 @@ class ServiceCategory(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="Название категории")
     description = models.TextField(blank=True, verbose_name="Описание категории")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+    is_active = models.BooleanField(
+        default=True, verbose_name="Активна",
+        help_text="Снимите галочку, чтобы скрыть категорию со всех страниц сайта (главная, /services/, sitemap). Услуги внутри остаются активными, но не отображаются в каталоге.",
+    )
 
 
     image = models.ImageField(

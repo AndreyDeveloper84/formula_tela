@@ -113,8 +113,7 @@ def home(request):
 
 def services(request):
     categories = (
-        ServiceCategory.objects.prefetch_related("services")
-        .all()
+        ServiceCategory.objects.active().prefetch_related("services")
         .order_by("order", "name")
     )
     
@@ -821,13 +820,13 @@ def api_create_booking(request):
 
 def category_services_by_slug(request, slug):
     """ЧПУ-версия страницы категории: /kategorii/<slug>/."""
-    category = get_object_or_404(ServiceCategory, slug=slug)
+    category = get_object_or_404(ServiceCategory, slug=slug, is_active=True)
     return _render_category_services(request, category)
 
 
 def category_services(request, category_id):
     """Legacy-роут /services/<int:id>/. 301 на ЧПУ если есть slug."""
-    category = get_object_or_404(ServiceCategory, pk=category_id)
+    category = get_object_or_404(ServiceCategory, pk=category_id, is_active=True)
     if category.slug:
         from django.shortcuts import redirect
         return redirect("website:category_services_by_slug", slug=category.slug, permanent=True)
@@ -839,7 +838,7 @@ def _render_category_services(request, category):
     services_qs = category.services.active().prefetch_related("options")
 
     other_categories = (
-        ServiceCategory.objects
+        ServiceCategory.objects.active()
         .exclude(pk=category.pk)
         .prefetch_related("services")
         .order_by("order", "name")
@@ -910,7 +909,7 @@ def _render_service_detail(request, service):
         single_qty_value, single_qty_display = all_qty_pairs.pop()
     
     # 5. Другие категории
-    other_categories = ServiceCategory.objects.exclude(
+    other_categories = ServiceCategory.objects.active().exclude(
         pk=service.category_id
     ).exclude(
         image__isnull=True
@@ -1391,7 +1390,7 @@ def api_bundle_request(request):
 @require_GET
 def api_wizard_categories(request):
     """Список категорий с количеством активных услуг"""
-    categories = ServiceCategory.objects.prefetch_related("services").order_by("order", "name")
+    categories = ServiceCategory.objects.active().prefetch_related("services").order_by("order", "name")
     result = []
     for cat in categories:
         active_count = cat.services.active().count()
@@ -1553,7 +1552,7 @@ def certificates(request):
         .order_by("category__order", "order", "name")
     )
     service_categories = (
-        ServiceCategory.objects
+        ServiceCategory.objects.active()
         .annotate(svc_count=Count("services", filter=Q(services__is_active=True)))
         .filter(svc_count__gt=0)
         .order_by("order", "name")

@@ -67,6 +67,30 @@ def test_home_no_promo_no_booking_modal(client):
 
 
 @pytest.mark.django_db
+def test_hidden_category_not_listed_on_home_or_services(client):
+    """Категория с is_active=False не показывается на главной, в каталоге и sitemap."""
+    visible = baker.make("services_app.ServiceCategory", name="Видимая", is_active=True, slug="visible")
+    hidden = baker.make("services_app.ServiceCategory", name="Скрытая", is_active=False, slug="hidden")
+    baker.make("services_app.Service", category=visible, is_active=True)
+    baker.make("services_app.Service", category=hidden, is_active=True)
+
+    r = client.get("/")
+    assert r.status_code == 200
+    html = r.content.decode("utf-8")
+    assert "Видимая" in html
+    assert "Скрытая" not in html
+
+    r = client.get("/services/")
+    html = r.content.decode("utf-8")
+    assert "Видимая" in html
+    assert "Скрытая" not in html
+
+    # Прямой заход по slug скрытой категории → 404
+    r = client.get(f"/services/{hidden.id}/")
+    assert r.status_code == 404
+
+
+@pytest.mark.django_db
 def test_header_shows_phone_icon_if_contact_phone_set(client):
     """Если SiteSettings.contact_phone задан — в header появляется иконка-ссылка tel:"""
     from services_app.models import SiteSettings
