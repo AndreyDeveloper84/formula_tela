@@ -58,16 +58,20 @@ MIDDLEWARE = [
     "website.middleware.RatelimitMiddleware",
 ]
 
-# CSP — расширенный (безопасный) вариант
-CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC  = ("'self'", "https://w951024.yclients.com")
-CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https:")
-CSP_IMG_SRC     = ("'self'", "data:", "https:")
-CSP_FONT_SRC    = ("'self'", "data:", "https:")
-# Django admin активно использует inline scripts (toggle sidebar, collapse
-# fieldsets, datepicker) — без них ломается мобильный layout и submit.
-# Исключаем /admin/ из CSP, оставляя защиту публичному сайту.
-CSP_EXCLUDE_URL_PREFIXES = ("/admin/",)
+# CSP — django-csp v4 dict-based API.
+# EXCLUDE_URL_PREFIXES: CSP не применяется к этим префиксам. Django admin
+# активно использует inline scripts (sidebar toggle, collapse, datepicker) —
+# под жёстким CSP они ломаются. Публичный сайт остаётся под защитой.
+CONTENT_SECURITY_POLICY = {
+    "EXCLUDE_URL_PREFIXES": ["/admin/"],
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "https://w951024.yclients.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "https:"],
+        "img-src": ["'self'", "data:", "https:"],
+        "font-src": ["'self'", "data:", "https:"],
+    },
+}
 
 ROOT_URLCONF = "mysite.urls"
 WSGI_APPLICATION = "mysite.wsgi.application"
