@@ -615,6 +615,29 @@ class SiteSettings(models.Model):
         ),
     )
 
+    # ── Мессенджеры для быстрых контактов в header ──
+    # Каждое поле blank=True — иконка показывается в header только если URL задан.
+    contact_whatsapp = models.URLField(
+        "WhatsApp", blank=True, default="",
+        help_text="Например: https://wa.me/78412393433",
+    )
+    contact_telegram = models.URLField(
+        "Telegram", blank=True, default="",
+        help_text="Например: https://t.me/formulatela58",
+    )
+    contact_vk = models.URLField(
+        "VK-сообщения", blank=True, default="",
+        help_text="Например: https://vk.me/formulatela",
+    )
+    contact_max = models.URLField(
+        "MAX", blank=True, default="",
+        help_text="Например: https://max.ru/formulatela",
+    )
+    contact_manager_url = models.URLField(
+        "Личный контакт менеджера", blank=True, default="",
+        help_text="Ссылка на прямой чат с менеджером, например https://t.me/manager_username",
+    )
+
     # ── Реквизиты организации (для YooKassa, оферты, footer) ──
     legal_name = models.CharField(
         "Полное юр. наименование", max_length=200, blank=True, default="",

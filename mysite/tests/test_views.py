@@ -67,6 +67,44 @@ def test_home_no_promo_no_booking_modal(client):
 
 
 @pytest.mark.django_db
+def test_header_shows_phone_icon_if_contact_phone_set(client):
+    """Если SiteSettings.contact_phone задан — в header появляется иконка-ссылка tel:"""
+    from services_app.models import SiteSettings
+    SiteSettings.objects.all().delete()
+    baker.make(SiteSettings, contact_phone="8 (8412) 39-34-33")
+    resp = client.get("/")
+    html = resp.content.decode("utf-8")
+    assert "qc-phone" in html
+    assert 'href="tel:+78412393433"' in html or 'href="tel:88412393433"' in html
+
+
+@pytest.mark.django_db
+def test_header_shows_msg_popover_if_any_channel_set(client):
+    """Если задан хотя бы один мессенджер — появляется иконка «написать» с dropdown."""
+    from services_app.models import SiteSettings
+    SiteSettings.objects.all().delete()
+    baker.make(SiteSettings, contact_telegram="https://t.me/test")
+    resp = client.get("/")
+    html = resp.content.decode("utf-8")
+    assert "qc-msg" in html
+    assert "qc-dropdown" in html
+    assert "https://t.me/test" in html
+    assert "Telegram</a>" in html
+
+
+@pytest.mark.django_db
+def test_header_no_msg_icon_without_channels(client):
+    """Если ни одного мессенджера не задано — dropdown не рендерится."""
+    from services_app.models import SiteSettings
+    SiteSettings.objects.all().delete()
+    baker.make(SiteSettings, contact_phone="", contact_whatsapp="", contact_telegram="",
+               contact_vk="", contact_max="", contact_manager_url="")
+    resp = client.get("/")
+    html = resp.content.decode("utf-8")
+    assert "qc-msg" not in html
+
+
+@pytest.mark.django_db
 def test_home_promo_price_uses_discount_percent(client, service):
     """Цена на кнопке промо = option.price × (100 - discount%). PDF показывает
     пользователю реальную скидочную цену, а не полную."""

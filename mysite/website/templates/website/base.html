@@ -47,6 +47,26 @@
        (длинный текст, иностранное изображение, flex-лента) не должен увести
        body за пределы viewport на мобильных. */
     html, body { overflow-x: hidden; max-width: 100%; }
+
+    /* ── Быстрые контакты в header (иконки «позвонить» + «написать») ── */
+    .quick-contacts { gap: 8px; margin: 0 10px; }
+    .qc-icon {
+        width: 38px; height: 38px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: #f0f0f0; color: #000; text-decoration: none;
+        border: none; padding: 0; cursor: pointer;
+        transition: background .2s, color .2s;
+    }
+    .qc-icon:hover, .qc-icon:focus { background: #000; color: #fff; }
+    .qc-icon svg { width: 18px; height: 18px; }
+    .qc-dropdown.dropdown-menu { min-width: 180px; padding: 6px 0; border-radius: 10px; border: 1px solid #eee; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    .qc-dropdown .dropdown-item { padding: 8px 16px; font-size: 14px; }
+    .qc-dropdown .dropdown-item:hover { background: #f5f5f5; }
+    @media (max-width: 576px) {
+        .quick-contacts { gap: 6px; margin: 0 6px; }
+        .qc-icon { width: 34px; height: 34px; }
+        .qc-icon svg { width: 16px; height: 16px; }
+    }
 </style>
     <!--[if lte IE 9]>
         <p class="browserupgrade">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience and security.</p>
@@ -95,6 +115,29 @@
                             {{ settings.contact_phone|default:'8 (8412) 39-34-33' }}
                         </a>
                     </span>
+                    <div class="quick-contacts d-flex align-items-center">
+                        {% if settings.contact_phone %}
+                        <a href="tel:{{ settings.contact_phone|cut:' '|cut:'('|cut:')'|cut:'-' }}"
+                           class="qc-icon qc-phone d-xl-none" aria-label="Позвонить" title="Позвонить">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        </a>
+                        {% endif %}
+                        {% if settings.contact_whatsapp or settings.contact_telegram or settings.contact_vk or settings.contact_max or settings.contact_manager_url or settings.contact_phone %}
+                        <div class="dropdown">
+                            <button type="button" class="qc-icon qc-msg" data-bs-toggle="dropdown" aria-label="Написать" title="Написать" aria-expanded="false">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end qc-dropdown">
+                                {% if settings.contact_whatsapp %}<li><a class="dropdown-item" href="{{ settings.contact_whatsapp }}" target="_blank" rel="noopener">WhatsApp</a></li>{% endif %}
+                                {% if settings.contact_telegram %}<li><a class="dropdown-item" href="{{ settings.contact_telegram }}" target="_blank" rel="noopener">Telegram</a></li>{% endif %}
+                                {% if settings.contact_vk %}<li><a class="dropdown-item" href="{{ settings.contact_vk }}" target="_blank" rel="noopener">ВКонтакте</a></li>{% endif %}
+                                {% if settings.contact_max %}<li><a class="dropdown-item" href="{{ settings.contact_max }}" target="_blank" rel="noopener">MAX</a></li>{% endif %}
+                                {% if settings.contact_manager_url %}<li><a class="dropdown-item" href="{{ settings.contact_manager_url }}" target="_blank" rel="noopener">Личный чат</a></li>{% endif %}
+                                {% if settings.contact_phone %}<li><a class="dropdown-item" href="sms:{{ settings.contact_phone|cut:' '|cut:'('|cut:')'|cut:'-' }}">SMS</a></li>{% endif %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
                     <a href="#" class="btn-black t-btn" data-bs-toggle="modal" data-bs-target="#bookingWizard">Записаться онлайн</a>
                 </div>
                 <div class="collapse navbar-collapse sub-menu-bar" id="navbarSupportedContent">
@@ -129,6 +172,9 @@
                             {% endif %}
                             {% if settings.social_media.vk %}
                                 <a href="{{ settings.social_media.vk }}" class="btn-white2 t-btn" target="_blank">Вконтакте</a>
+                            {% endif %}
+                            {% if settings.social_media.max %}
+                                <a href="{{ settings.social_media.max }}" class="btn-white2 t-btn" target="_blank" rel="noopener">Max</a>
                             {% endif %}
                             {% if settings.social_media.whatsapp %}
                                 <a href="{{ settings.social_media.whatsapp }}" class="btn-white2 t-btn" target="_blank">WhatsApp</a>
