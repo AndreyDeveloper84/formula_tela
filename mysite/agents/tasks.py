@@ -131,8 +131,10 @@ def collect_rank_snapshots(self):
 
     logger.info("collect_rank_snapshots: старт")
     today = datetime.date.today()
+    # Webmaster имеет задержку 2-3 дня + не отдаёт данные за сегодня;
+    # окно (today-7)..(today-1) совпадает с check_webmaster и гарантирует non-empty response.
     date_from = (today - datetime.timedelta(days=7)).isoformat()
-    date_to = today.isoformat()
+    date_to = (today - datetime.timedelta(days=1)).isoformat()
 
     try:
         wm = YandexWebmasterClient.from_settings()
