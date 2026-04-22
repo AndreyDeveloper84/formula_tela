@@ -43,6 +43,22 @@ sitemaps = {
 
 
 def healthz(_request):
+    # Проверяем что приложение может реально обслуживать запросы: БД отвечает,
+    # Redis пишется. Без этого LB/systemd-ping не детектируют падение зависимостей
+    # и маршрутизируют трафик на сломанный инстанс.
+    from django.db import connection
+    from django.core.cache import cache
+    failed = []
+    try:
+        connection.ensure_connection()
+    except Exception:
+        failed.append("db")
+    try:
+        cache.set("healthz-probe", "1", timeout=5)
+    except Exception:
+        failed.append("cache")
+    if failed:
+        return JsonResponse({"status": "error", "failed": failed}, status=503)
     return JsonResponse({"status": "ok"})
 
 
