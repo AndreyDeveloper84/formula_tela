@@ -37,6 +37,9 @@ USE_X_FORWARDED_HOST = True
 # Проверка на старте
 assert not DEBUG, "❌ DEBUG must be False in production!"
 assert ALLOWED_HOSTS, "❌ ALLOWED_HOSTS must be set in production!"
+assert os.getenv("DJANGO_SECRET_KEY", "dev-secret") != "dev-secret", (
+    "❌ DJANGO_SECRET_KEY must be set to a real value in production (not the 'dev-secret' default)!"
+)
 
 import logging as _logging
 _logging.getLogger(__name__).info("Загружены настройки PRODUCTION")
