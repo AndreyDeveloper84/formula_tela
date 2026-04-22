@@ -66,7 +66,7 @@ CONTENT_SECURITY_POLICY = {
     "EXCLUDE_URL_PREFIXES": ["/admin/"],
     "DIRECTIVES": {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "https://w951024.yclients.com"],
+        "script-src": ["'self'", "https://w951024.yclients.com", "https://yastatic.net", "https://cdn.jsdelivr.net"],
         "style-src": ["'self'", "'unsafe-inline'", "https:"],
         "img-src": ["'self'", "data:", "https:"],
         "font-src": ["'self'", "data:", "https:"],
