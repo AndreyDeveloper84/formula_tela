@@ -34,7 +34,7 @@ def test_home_no_popular_bundles_section(client):
 
 @pytest.mark.django_db
 def test_home_promo_banner_wires_booking_modal(client, service, service_option):
-    """Промо с options → кнопка баннера вызывает openBookingModal(svc_id, ...),
+    """Промо с options → кнопка баннера содержит data-svc-id (CSP-совместимо),
     модалка #bookingModal подключена на странице."""
     from datetime import date, timedelta
     promo = baker.make(
@@ -50,7 +50,8 @@ def test_home_promo_banner_wires_booking_modal(client, service, service_option):
     assert resp.status_code == 200
     assert resp.context["promo_booking_svc_id"] == service.id
     html = resp.content.decode("utf-8")
-    assert f"openBookingModal({service.id}," in html
+    assert f'data-svc-id="{service.id}"' in html
+    assert 'js-open-booking-modal' in html
     assert 'id="bookingModal"' in html
     # flatpickr тянется только если модалка нужна
     assert "flatpickr" in html
@@ -153,10 +154,10 @@ def test_home_promo_price_uses_discount_percent(client, service):
     assert resp.context["promo_booking_price"] == 1500  # 2500 × 0.60
     assert resp.context["promo_booking_option_id"] == opt.id
     html = resp.content.decode("utf-8")
-    # promoOpts в onclick
-    assert f"pinnedOptionId: {opt.id}" in html
-    assert "price: 1500" in html
-    assert "autoPickDate: false" in html
+    # promoOpts через data-атрибуты (CSP-совместимо)
+    assert f'data-option-id="{opt.id}"' in html
+    assert 'data-price="1500"' in html
+    assert 'js-open-booking-modal' in html
 
 
 # ─── services ────────────────────────────────────────────────────────────────
