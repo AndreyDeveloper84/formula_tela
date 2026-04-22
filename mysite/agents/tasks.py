@@ -131,9 +131,10 @@ def collect_rank_snapshots(self):
 
     logger.info("collect_rank_snapshots: старт")
     today = datetime.date.today()
-    # Webmaster имеет задержку 2-3 дня + не отдаёт данные за сегодня;
-    # окно (today-7)..(today-1) совпадает с check_webmaster и гарантирует non-empty response.
-    date_from = (today - datetime.timedelta(days=7)).isoformat()
+    # Webmaster имеет задержку 2-3 дня + не отдаёт данные за сегодня. На
+    # малотрафичных сайтах (<10 запросов/день) 7-дневное окно возвращает пусто:
+    # API фильтрует такие данные. 14 дней даёт стабильный non-empty response.
+    date_from = (today - datetime.timedelta(days=14)).isoformat()
     date_to = (today - datetime.timedelta(days=1)).isoformat()
 
     try:
