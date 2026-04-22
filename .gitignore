@@ -31,3 +31,6 @@ data/
 # Environment variables
 .env
 .env.*
+
+# Tool output — repomix генерирует дамп всего репозитория для LLM-контекста
+repomix-output.xml
