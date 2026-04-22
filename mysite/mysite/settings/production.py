@@ -30,8 +30,9 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 # Защита от XSS
 SECURE_BROWSER_XSS_FILTER = True
 
-# Доверяем заголовку от nginx/traefik
+# Доверяем заголовкам от nginx: схема и хост берутся из X-Forwarded-*
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 
 # Проверка на старте
 assert not DEBUG, "❌ DEBUG must be False in production!"

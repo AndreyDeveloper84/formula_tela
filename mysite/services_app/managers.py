@@ -49,9 +49,13 @@ class ServiceOptionQuerySet(models.QuerySet):
 
 
 class ServiceCategoryQuerySet(models.QuerySet):
+    def active(self):
+        """Только видимые категории (is_active=True)."""
+        return self.filter(is_active=True)
+
     def with_active_services(self):
         from services_app.models import Service
-        return self.prefetch_related(
+        return self.active().prefetch_related(
             Prefetch("services", queryset=Service.objects.active())
         ).filter(services__is_active=True).distinct()
 

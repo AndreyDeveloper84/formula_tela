@@ -77,7 +77,7 @@ class CategorySitemap(Sitemap):
 
     def items(self):
         return (
-            ServiceCategory.objects
+            ServiceCategory.objects.active()
             .filter(slug__isnull=False)
             .exclude(slug="")
             .order_by("slug")

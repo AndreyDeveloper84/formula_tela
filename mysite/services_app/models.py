@@ -125,7 +125,7 @@ class Service(models.Model):
         max_length=300,
         blank=True,
         verbose_name="SEO Description",
-        help_text="Для <meta description>. До 160 символов."
+        help_text="Для meta description. До 160 символов."
     )
     subtitle = models.CharField(
         max_length=300,
@@ -262,6 +262,10 @@ class ServiceCategory(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="Название категории")
     description = models.TextField(blank=True, verbose_name="Описание категории")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+    is_active = models.BooleanField(
+        default=True, verbose_name="Активна",
+        help_text="Снимите галочку, чтобы скрыть категорию со всех страниц сайта (главная, services, sitemap). Услуги внутри остаются активными, но не отображаются в каталоге.",
+    )
 
 
     image = models.ImageField(
@@ -287,7 +291,7 @@ class ServiceCategory(models.Model):
     # --- SEO ---
     seo_title = models.CharField(
         "SEO Title", max_length=120, blank=True, default="",
-        help_text="Для <title>. Без суффикса «| Формула Тела» — шаблон добавит сам.",
+        help_text="Для title. Без суффикса «| Формула Тела» — шаблон добавит сам.",
     )
     seo_h1 = models.CharField(
         "H1 заголовок", max_length=200, blank=True, default="",
@@ -295,7 +299,7 @@ class ServiceCategory(models.Model):
     )
     seo_description = models.CharField(
         "SEO Description", max_length=300, blank=True, default="",
-        help_text="Для <meta description>. До 160 символов.",
+        help_text="Для meta description. До 160 символов.",
     )
 
     objects = ServiceCategoryQuerySet.as_manager()
@@ -438,7 +442,7 @@ class ServiceBlock(models.Model):
 
 MEDIA_TYPE_CHOICES = [
     ("photo", "Фотография"),
-    ("video", "Видео (YouTube/ссылка)"),
+    ("video", "Видео (YouTube-ссылка)"),
 ]
 
 MEDIA_DISPLAY_CHOICES = [
@@ -701,7 +705,7 @@ class Master(models.Model):
     slug = models.SlugField(
         max_length=100, unique=True, blank=True, null=True,
         verbose_name="URL-slug",
-        help_text="ЧПУ для /masters/<slug>/. Автозаполняется из ФИО.",
+        help_text="ЧПУ для /masters/[slug]/. Автозаполняется из ФИО.",
     )
     bio = models.TextField(blank=True, verbose_name="Описание / опыт")
     photo = models.ImageField(upload_to="masters/", blank=True, null=True, verbose_name="Фото")
@@ -715,7 +719,7 @@ class Master(models.Model):
     rating = models.DecimalField(max_digits=3, decimal_places=1, blank=True, null=True, verbose_name="Рейтинг")
     photo_mobile = models.ImageField(upload_to="masters/", blank=True, null=True, verbose_name="Фото (мобильное)")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок сортировки")
-    education = models.TextField(blank=True, verbose_name="Образование и квалификация", help_text="HTML: <h2>, <ul>, <li>")
+    education = models.TextField(blank=True, verbose_name="Образование и квалификация", help_text="Разрешён HTML: заголовки h2, списки ul/li")
     work_experience = models.TextField(blank=True, verbose_name="Опыт работы", help_text="HTML разрешён")
     approach = models.TextField(blank=True, verbose_name="Подход к работе", help_text="HTML разрешён")
     reviews_text = models.TextField(blank=True, verbose_name="Отзывы и статистика", help_text="HTML разрешён")
@@ -798,12 +802,12 @@ class Bundle(models.Model):
     seo_title = models.CharField(
         max_length=120, blank=True, default="",
         verbose_name="SEO Title",
-        help_text="Для <title>. Если пусто — '<название> — комплекс услуг'.",
+        help_text="Для тега title. Если пусто — «название — комплекс услуг».",
     )
     seo_description = models.CharField(
         max_length=300, blank=True, default="",
         verbose_name="SEO Description",
-        help_text="Для <meta name=description>. До 160 символов.",
+        help_text="Для meta description. До 160 символов.",
     )
     subtitle = models.CharField(
         max_length=300, blank=True, default="",
@@ -1319,7 +1323,9 @@ class GiftCertificate(models.Model):
     @property
     def is_valid(self):
         from django.utils import timezone
-        today = timezone.now().date()
+        # localdate() уважает settings.TIME_ZONE (Europe/Moscow), а now().date()
+        # всегда возвращает UTC и ломает сравнение в 00:00–03:00 MSK.
+        today = timezone.localdate()
         return (
             self.status in ("paid", "delivered")
             and self.is_active

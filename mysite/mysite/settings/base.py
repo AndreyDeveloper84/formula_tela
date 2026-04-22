@@ -58,12 +58,20 @@ MIDDLEWARE = [
     "website.middleware.RatelimitMiddleware",
 ]
 
-# CSP — расширенный (безопасный) вариант
-CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC  = ("'self'", "https://w951024.yclients.com")
-CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https:")
-CSP_IMG_SRC     = ("'self'", "data:", "https:")
-CSP_FONT_SRC    = ("'self'", "data:", "https:")
+# CSP — django-csp v4 dict-based API.
+# EXCLUDE_URL_PREFIXES: CSP не применяется к этим префиксам. Django admin
+# активно использует inline scripts (sidebar toggle, collapse, datepicker) —
+# под жёстким CSP они ломаются. Публичный сайт остаётся под защитой.
+CONTENT_SECURITY_POLICY = {
+    "EXCLUDE_URL_PREFIXES": ["/admin/"],
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "https://w951024.yclients.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "https:"],
+        "img-src": ["'self'", "data:", "https:"],
+        "font-src": ["'self'", "data:", "https:"],
+    },
+}
 
 ROOT_URLCONF = "mysite.urls"
 WSGI_APPLICATION = "mysite.wsgi.application"
@@ -101,7 +109,7 @@ else:
     }}
 
 LANGUAGE_CODE = os.getenv("DJANGO_LANGUAGE_CODE", "ru")
-TIME_ZONE     = os.getenv("DJANGO_TIME_ZONE", "UTC")
+TIME_ZONE     = os.getenv("DJANGO_TIME_ZONE", "Europe/Moscow")
 USE_I18N = True
 USE_TZ   = True
 

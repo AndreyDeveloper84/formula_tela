@@ -107,76 +107,104 @@ def collect_trends(self):
 )
 def collect_rank_snapshots(self):
     """
-    Ежедневный сбор данных Яндекс.Вебмастера и агрегация по кластерам.
+    Ежедневный сбор данных Яндекс.Вебмастера + fuzzy-агрегация по кластерам.
 
     Алгоритм:
-    1. get_query_stats(today-7, today) — Вебмастер имеет задержку 2-3 дня,
-       окно 7 дней гарантирует наличие данных.
-    2. Для каждого активного SeoKeywordCluster:
-       - Сопоставляет cluster.keywords с query stats (case-insensitive exact match).
-       - Агрегирует: sum(clicks), sum(impressions), weighted avg(ctr), weighted avg(position).
-    3. SeoClusterSnapshot.objects.update_or_create(cluster, date=today, defaults=...).
-    4. Цепочка: запускает analyze_rank_changes.delay().
+    1. get_query_stats/get_top_pages(today-7, today) — окно 7 дней т.к. Вебмастер
+       имеет задержку 2-3 дня.
+    2. Пишет сырые данные в SeoRankSnapshot (query-level + page-level) — upsert
+       по (week_start=today, page_url, query). Source of truth для SEOLandingAgent.
+    3. Для каждого активного SeoKeywordCluster: fuzzy-matching keywords ↔ queries
+       через pymorphy3 лемматизацию + token-overlap (agents._matching.cluster_match).
+    4. Агрегирует matched queries в SeoClusterSnapshot(cluster, date=today).
+    5. Цепочка: analyze_rank_changes.delay().
 
     soft_time_limit=90с — убивает задачу если прокси/API зависает,
     чтобы не блокировать worker slot для run_daily_agents в 09:00.
-
-    При ошибке API — логирует warning, возвращает без retry.
     """
     import datetime
+    from agents._matching import cluster_match, tokens
     from agents.integrations.yandex_webmaster import (
         YandexWebmasterClient, YandexWebmasterError,
     )
-    from agents.models import SeoKeywordCluster, SeoClusterSnapshot
+    from agents.models import SeoClusterSnapshot, SeoKeywordCluster, SeoRankSnapshot
 
     logger.info("collect_rank_snapshots: старт")
     today = datetime.date.today()
-    date_from = (today - datetime.timedelta(days=7)).isoformat()
-    date_to = today.isoformat()
+    # Webmaster имеет задержку 2-3 дня + не отдаёт данные за сегодня. На
+    # малотрафичных сайтах (<10 запросов/день) 7-дневное окно возвращает пусто:
+    # API фильтрует такие данные. 14 дней даёт стабильный non-empty response.
+    date_from = (today - datetime.timedelta(days=14)).isoformat()
+    date_to = (today - datetime.timedelta(days=1)).isoformat()
 
-    # Шаг 1: загружаем данные из Вебмастера
     try:
         wm = YandexWebmasterClient.from_settings()
     except YandexWebmasterError as exc:
-        logger.warning(
-            "collect_rank_snapshots: Вебмастер не настроен — %s", exc
-        )
+        logger.warning("collect_rank_snapshots: Вебмастер не настроен — %s", exc)
         return
 
     query_stats = wm.get_query_stats(date_from, date_to, limit=500)
-    if not query_stats:
+    page_stats = wm.get_top_pages(date_from, date_to, limit=200)
+
+    if not query_stats and not page_stats:
         logger.warning("collect_rank_snapshots: Вебмастер вернул пустые данные")
         return
 
-    # Шаг 2: индекс по нормализованным запросам
-    stats_by_query = {}
-    for qs in query_stats:
-        key = qs["query"].lower().strip()
-        if key:
-            stats_by_query[key] = qs
+    # Шаг 2: сырой дамп в SeoRankSnapshot (query-level + page-level)
+    for q in query_stats:
+        if not q.get("query"):
+            continue
+        SeoRankSnapshot.objects.update_or_create(
+            week_start=today, page_url="", query=q["query"],
+            defaults={
+                "clicks": q["clicks"], "impressions": q["impressions"],
+                "ctr": q["ctr"], "avg_position": q["avg_position"],
+                "source": "webmaster",
+            },
+        )
+    for p in page_stats:
+        if not p.get("url"):
+            continue
+        SeoRankSnapshot.objects.update_or_create(
+            week_start=today, page_url=p["url"], query="",
+            defaults={
+                "clicks": p["clicks"], "impressions": p["impressions"],
+                "ctr": p["ctr"], "avg_position": p["avg_position"],
+                "source": "webmaster",
+            },
+        )
+    logger.info(
+        "collect_rank_snapshots: raw dump — %d queries, %d pages",
+        len(query_stats), len(page_stats),
+    )
 
-    # Шаг 3: итерация по активным кластерам
+    # Шаг 3: fuzzy-matching по кластерам через лемматизацию
+    # Предрасчёт токенов запросов — pymorphy3 lemma кэшируется через lru_cache
+    stats_with_tokens = [(tokens(qs["query"]), qs) for qs in query_stats if qs.get("query")]
+
     clusters = SeoKeywordCluster.objects.filter(is_active=True)
     snapshots_created = 0
 
     for cluster in clusters:
+        matched_ids = set()
         matched = []
         for kw in (cluster.keywords or []):
-            normalized = kw.lower().strip()
-            if normalized in stats_by_query:
-                matched.append(stats_by_query[normalized])
+            kw_tokens = tokens(kw)
+            for q_tokens, qs in stats_with_tokens:
+                qid = id(qs)
+                if qid in matched_ids:
+                    continue
+                if cluster_match(kw_tokens, q_tokens):
+                    matched.append(qs)
+                    matched_ids.add(qid)
 
         matched_count = len(matched)
         if matched_count == 0:
-            # Zero-snapshot — кластер без данных
             SeoClusterSnapshot.objects.update_or_create(
-                cluster=cluster,
-                date=today,
+                cluster=cluster, date=today,
                 defaults={
-                    "total_clicks": 0,
-                    "total_impressions": 0,
-                    "avg_ctr": 0.0,
-                    "avg_position": 0.0,
+                    "total_clicks": 0, "total_impressions": 0,
+                    "avg_ctr": 0.0, "avg_position": 0.0,
                     "matched_queries": 0,
                 },
             )

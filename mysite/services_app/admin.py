@@ -30,13 +30,14 @@ from .forms import ServiceCSVImportForm
 
 @admin.register(ServiceCategory)
 class ServiceCategoryAdmin(admin.ModelAdmin):
-    list_display = ("id","name","description", "slug", "image_preview", "order")
-    list_editable = ("name", "description", "order")
+    list_display = ("id", "name", "is_active", "description", "slug", "image_preview", "order")
+    list_editable = ("name", "is_active", "description", "order")
+    list_filter = ("is_active",)
     search_fields = ("name",)
     prepopulated_fields = {"slug": ("name",)}
     fieldsets = (
         (None, {
-            "fields": ("name", "slug", "description", "order", "image", "image_mobile"),
+            "fields": ("name", "slug", "is_active", "description", "order", "image", "image_mobile"),
         }),
         ("SEO", {
             "fields": ("seo_title", "seo_h1", "seo_description"),

@@ -213,12 +213,18 @@ class Command(BaseCommand):
             row = f"  SeoRankSnapshot     последний {last_rank:%d.%m %H:%M}  ({age_h}ч назад)"
             if age_h > 48:
                 self.stdout.write(E(row))
-                alerts.append(f"SeoRankSnapshot отстаёт на {age_h}ч (Вебмастер?)")
+                alerts.append(
+                    f"SeoRankSnapshot отстаёт на {age_h}ч — collect_rank_snapshots "
+                    f"не отработал или Вебмастер недоступен"
+                )
             else:
                 self.stdout.write(S(row))
         else:
             self.stdout.write(E("  SeoRankSnapshot     нет данных"))
-            alerts.append("SeoRankSnapshot пустой — collect_rank_snapshots не работает")
+            alerts.append(
+                "SeoRankSnapshot ни разу не заполнялся — проверь YANDEX_WEBMASTER_TOKEN "
+                "и запусти collect_rank_snapshots вручную"
+            )
 
         last_cluster = SeoClusterSnapshot.objects.order_by("-date").first()
         if last_cluster:

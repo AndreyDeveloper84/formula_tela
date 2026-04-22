@@ -223,13 +223,13 @@ class SeoKeywordCluster(models.Model):
 
 class SeoRankSnapshot(models.Model):
     """
-    Еженедельный снимок трафиковых метрик по страницам и запросам
-    из Яндекс.Вебмастера.
+    Ежедневный снимок трафиковых метрик по страницам и запросам
+    из Яндекс.Вебмастера (заполняет collect_rank_snapshots, 07:00 MSK).
 
     Для страниц: page_url заполнен, query пустой.
     Для запросов: query заполнен, page_url пустой.
     """
-    week_start   = models.DateField("Начало недели (пн)")
+    week_start   = models.DateField("Дата снимка")
     page_url     = models.CharField(
         "URL страницы", max_length=500, blank=True,
         help_text="Относительный URL, например /uslugi/massazh/"
