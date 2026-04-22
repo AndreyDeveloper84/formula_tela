@@ -1178,6 +1178,18 @@ def api_get_staff(request):
     
     try:
         service_option_id = request.GET.get('service_option_id')
+        all_staff = request.GET.get('all_staff') == '1'
+
+        if all_staff:
+            api = get_yclients_api()
+            staff_list = api.get_staff()
+            logger.info(f"✅ Все мастера YClients: {len(staff_list)}")
+            formatted_staff = [
+                {'id': s.get('id'), 'name': s.get('name', ''),
+                 'specialization': s.get('specialization', ''), 'avatar': s.get('avatar', ''), 'rating': s.get('rating', 0)}
+                for s in staff_list
+            ]
+            return JsonResponse({'success': True, 'data': formatted_staff, 'count': len(formatted_staff)})
 
         if service_option_id:
             # Фильтрация по услуге через YClients API

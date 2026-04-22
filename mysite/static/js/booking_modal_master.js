@@ -91,7 +91,7 @@
     async function loadMas(allStaff){
         const oi=document.getElementById('m-option-select').value;if(!oi&&!allStaff)return;
         const sel=document.getElementById('m-master-select');sel.innerHTML='<option value="">Загрузка...</option>';sel.disabled=true;
-        const url=allStaff?`${API}/api/booking/get_staff/`:`${API}/api/booking/get_staff/?service_option_id=${oi}`;
+        const url=allStaff?`${API}/api/booking/get_staff/?all_staff=1`:`${API}/api/booking/get_staff/?service_option_id=${oi}`;
         try{const r=await fetch(url),d=await r.json();
             if(d.success&&d.data){sel.innerHTML='<option value="">Выберите мастера</option>';if(!d.data.length){sel.innerHTML='<option value="">Нет мастеров</option>';sel.disabled=false;return;}
                 let mid=null;d.data.forEach(m=>{const o=document.createElement('option');o.value=m.id;let n=m.name||'';if(m.specialization)n+=` (${m.specialization})`;o.textContent=n;sel.appendChild(o);
