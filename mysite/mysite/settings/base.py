@@ -70,6 +70,7 @@ CONTENT_SECURITY_POLICY = {
         "style-src": ["'self'", "'unsafe-inline'", "https:"],
         "img-src": ["'self'", "data:", "https:"],
         "font-src": ["'self'", "data:", "https:"],
+        "frame-src": ["'self'", "https://yandex.ru"],
     },
 }
 
