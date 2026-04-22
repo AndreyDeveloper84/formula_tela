@@ -19,6 +19,22 @@
         });
         document.getElementById('modal-booking-form').addEventListener('submit',function(e){e.preventDefault();step2();});
         document.getElementById('m-contact-form').addEventListener('submit',function(e){e.preventDefault();submit();});
+        document.addEventListener('click',function(e){
+            const btn=e.target.closest('.js-open-booking-modal');
+            if(btn){
+                const sId=parseInt(btn.dataset.svcId,10);
+                const sName=btn.dataset.svcName||'';
+                const optId=btn.dataset.optionId?parseInt(btn.dataset.optionId,10):null;
+                const price=btn.dataset.price?parseInt(btn.dataset.price,10):null;
+                window.openBookingModal(sId,sName,optId?{pinnedOptionId:optId,price:price,autoPickDate:false}:null);
+                return;
+            }
+            const btnM=e.target.closest('.js-open-booking-modal-master');
+            if(btnM){
+                e.preventDefault();
+                window.openBookingModalWithMaster(parseInt(btnM.dataset.svcId,10),btnM.dataset.svcName||'',btnM.dataset.masterName||'');
+            }
+        });
     });
 
     window.openBookingModalWithMaster=function(sId,sName,mName){preMaster=mName;window.openBookingModal(sId,sName);};
