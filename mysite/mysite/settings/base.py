@@ -66,11 +66,12 @@ CONTENT_SECURITY_POLICY = {
     "EXCLUDE_URL_PREFIXES": ["/admin/"],
     "DIRECTIVES": {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "https://w951024.yclients.com", "https://yastatic.net", "https://cdn.jsdelivr.net"],
+        "script-src": ["'self'", "https://w951024.yclients.com", "https://yastatic.net", "https://cdn.jsdelivr.net", "https://mc.yandex.ru", "https://mc.yandex.com"],
         "style-src": ["'self'", "'unsafe-inline'", "https:"],
         "img-src": ["'self'", "data:", "https:"],
         "font-src": ["'self'", "data:", "https:"],
         "frame-src": ["'self'", "https://yandex.ru"],
+        "connect-src": ["'self'", "https://mc.yandex.ru", "https://mc.yandex.com", "wss://mc.yandex.com"],
     },
 }
 
