@@ -67,7 +67,7 @@
                 bData.price=displayPrice;bData.optionId=pinned.id;bData.yclientsId=pinned.yclients_id;
                 document.getElementById('modal-loading').style.display='none';
                 document.getElementById('modal-booking-form').style.display='block';
-                loadMas();
+                loadMas(true);
                 return;
             }
         }
@@ -88,10 +88,11 @@
     function onMas(id){if(!id)return;const s=document.getElementById('m-master-select'),o=s.options[s.selectedIndex];bData.staffId=id;bData.masterName=o.textContent;loadDates(id);}
     function onTim(t){if(t)bData.time=t;}
 
-    async function loadMas(){
-        const oi=document.getElementById('m-option-select').value;if(!oi)return;
+    async function loadMas(allStaff){
+        const oi=document.getElementById('m-option-select').value;if(!oi&&!allStaff)return;
         const sel=document.getElementById('m-master-select');sel.innerHTML='<option value="">Загрузка...</option>';sel.disabled=true;
-        try{const r=await fetch(`${API}/api/booking/get_staff/?service_option_id=${oi}`),d=await r.json();
+        const url=allStaff?`${API}/api/booking/get_staff/`:`${API}/api/booking/get_staff/?service_option_id=${oi}`;
+        try{const r=await fetch(url),d=await r.json();
             if(d.success&&d.data){sel.innerHTML='<option value="">Выберите мастера</option>';if(!d.data.length){sel.innerHTML='<option value="">Нет мастеров</option>';sel.disabled=false;return;}
                 let mid=null;d.data.forEach(m=>{const o=document.createElement('option');o.value=m.id;let n=m.name||'';if(m.specialization)n+=` (${m.specialization})`;o.textContent=n;sel.appendChild(o);
                     if(preMaster&&m.name&&m.name.toLowerCase().includes(preMaster.split(' ')[0].toLowerCase()))mid=m.id;});
