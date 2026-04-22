@@ -177,8 +177,11 @@
                     {% endif %}
                     <div class="d-flex justify-content-between align-items-center">
                         {% if promo_booking_svc_id %}
-                        <button type="button" class="btn-white t-btn wow fadeInUp" data-wow-delay=".6s"
-                                onclick="openBookingModal({{ promo_booking_svc_id }}, '{{ promo_booking_svc_name|escapejs }}', { pinnedOptionId: {{ promo_booking_option_id }}, price: {{ promo_booking_price }}, autoPickDate: false })">
+                        <button type="button" class="btn-white t-btn wow fadeInUp js-open-booking-modal" data-wow-delay=".6s"
+                                data-svc-id="{{ promo_booking_svc_id }}"
+                                data-svc-name="{{ promo_booking_svc_name|escapejs }}"
+                                data-option-id="{{ promo_booking_option_id }}"
+                                data-price="{{ promo_booking_price }}">
                             Записаться
                         </button>
                         {% else %}

@@ -184,7 +184,11 @@
                         {% endwith %}
                     </a>
                     {% if s.options.all %}
-                        <a class="btn-black t-btn" href="#" onclick="openBookingModalWithMaster({{ s.id }}, '{{ s.name|escapejs }}', '{{ master.name|escapejs }}'); return false;" style="display:block;width:100%;text-align:center;">Записаться</a>
+                        <a class="btn-black t-btn js-open-booking-modal-master" href="#"
+                           data-svc-id="{{ s.id }}"
+                           data-svc-name="{{ s.name|escapejs }}"
+                           data-master-name="{{ master.name|escapejs }}"
+                           style="display:block;width:100%;text-align:center;">Записаться</a>
                     {% endif %}
                 </div>
                 {% endfor %}
