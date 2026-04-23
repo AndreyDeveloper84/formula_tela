@@ -334,16 +334,9 @@
                     return;
                 }
                 // Офлайн-оплата (наличные / карта в салоне): YClients-запись уже
-                // создана, оплата на месте. Никакого polling'а не нужно — просто
-                // сообщаем об успехе. /payments/success/ — только для online flow.
-                const orderNumber = data.order_number || '';
-                const recordId = data.yclients_record_id ? ' (№ ' + data.yclients_record_id + ')' : '';
-                const msg = 'Запись подтверждена' + recordId + '. Оплата на месте: ' +
-                    (data.payment_method === 'card_offline' ? 'картой в салоне' : 'наличными') +
-                    (orderNumber ? '. Номер заказа: ' + orderNumber : '') + '.';
-                showModalAlert(msg, 'success');
-                btn.textContent = 'Готово';
-                // Кнопка остаётся disabled — повторная отправка не нужна.
+                // создана, оплата на месте. Скрываем форму + summary, показываем
+                // красивый success-блок с деталями.
+                showBookingSuccess(data, paymentMethod);
             } else {
                 let err = data.error || 'Ошибка при создании записи';
                 if (data.errors) {
@@ -363,6 +356,55 @@
 
     function showModalAlert(message, type) {
         document.getElementById('modal-alert').innerHTML = '<div class="alert alert-' + type + ' mt-15">' + message + '</div>';
+    }
+
+    function showBookingSuccess(data, paymentMethod) {
+        // Скрываем предварительный summary и форму
+        const summaryBlock = document.getElementById('booking-summary-block');
+        const form = document.getElementById('contact-form');
+        if (summaryBlock) summaryBlock.style.display = 'none';
+        if (form) form.style.display = 'none';
+
+        // Заполняем success-блок тем что уже знаем + ответ API
+        document.getElementById('success-service').textContent = bookingData.service_name || '';
+        document.getElementById('success-master').textContent = bookingData.master_name || '—';
+        document.getElementById('success-datetime').textContent = formatDate(bookingData.date) + ' в ' + bookingData.time;
+        document.getElementById('success-price').textContent = formatPrice(bookingData.service_price) + ' ₽';
+
+        const paymentLabels = {
+            card_offline: 'Картой в салоне',
+            cash: 'Наличными в салоне',
+            online: 'Онлайн (оплачено)'
+        };
+        document.getElementById('success-payment').textContent = paymentLabels[paymentMethod] || paymentMethod;
+
+        if (data.yclients_record_id) {
+            document.getElementById('success-record').textContent = data.yclients_record_id;
+            document.getElementById('success-record-row').style.display = 'flex';
+        }
+        if (data.order_number) {
+            document.getElementById('success-order').textContent = data.order_number;
+            document.getElementById('success-order-row').style.display = 'flex';
+        }
+
+        document.getElementById('booking-success').style.display = 'block';
+
+        // Сбрасываем состояние формы при закрытии — следующий клиент увидит
+        // чистую форму если снова откроет модалку.
+        const modalEl = document.getElementById('contactModal');
+        modalEl.addEventListener('hidden.bs.modal', function resetOnce() {
+            modalEl.removeEventListener('hidden.bs.modal', resetOnce);
+            document.getElementById('booking-success').style.display = 'none';
+            if (summaryBlock) summaryBlock.style.display = '';
+            if (form) {
+                form.style.display = '';
+                form.reset();
+            }
+            const btn = document.getElementById('confirm-booking');
+            btn.textContent = 'Подтвердить запись';
+            btn.disabled = false;
+            document.getElementById('modal-alert').innerHTML = '';
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {

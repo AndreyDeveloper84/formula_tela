@@ -598,7 +598,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="booking-summary mb-30" style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                    <div class="booking-summary mb-30" id="booking-summary-block" style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
                         <div class="d-flex justify-content-between mb-10">
                             <span>Услуга:</span>
                             <strong id="summary-service"></strong>
@@ -616,7 +616,25 @@
                             <strong id="summary-price"></strong>
                         </div>
                     </div>
-                    
+
+                    <div id="booking-success" style="display:none; text-align:center; padding:10px 0 20px;">
+                        <div style="width:72px;height:72px;margin:0 auto 16px;border-radius:50%;background:#d4edda;display:flex;align-items:center;justify-content:center;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#28a745" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        </div>
+                        <h4 class="semi mb-15" style="color:#28a745;">Запись подтверждена!</h4>
+                        <p class="op50 mb-20">Мастер ждёт вас в указанное время. Если нужно перенести — позвоните в салон.</p>
+                        <div style="background:#f5f5f5;padding:20px;border-radius:8px;text-align:left;">
+                            <div class="d-flex justify-content-between mb-10"><span>Услуга:</span><strong id="success-service"></strong></div>
+                            <div class="d-flex justify-content-between mb-10"><span>Мастер:</span><strong id="success-master"></strong></div>
+                            <div class="d-flex justify-content-between mb-10"><span>Дата и время:</span><strong id="success-datetime"></strong></div>
+                            <div class="d-flex justify-content-between mb-10"><span>Стоимость:</span><strong id="success-price"></strong></div>
+                            <div class="d-flex justify-content-between mb-10"><span>Оплата:</span><strong id="success-payment"></strong></div>
+                            <div class="d-flex justify-content-between mb-10" id="success-record-row" style="display:none;"><span>№ записи:</span><strong id="success-record"></strong></div>
+                            <div class="d-flex justify-content-between" id="success-order-row" style="display:none;"><span>Номер заказа:</span><strong id="success-order" class="op50"></strong></div>
+                        </div>
+                        <button type="button" class="btn-black t-btn mt-20" data-bs-dismiss="modal" style="width:100%;">Готово</button>
+                    </div>
+
                     <form id="contact-form">
                         <div class="in-form">
                             <input type="text" id="client-name" class="form-control"
