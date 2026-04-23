@@ -28,6 +28,27 @@ def _webhook_settings(settings):
 
 
 @pytest.fixture
+def post_webhook(client, django_capture_on_commit_callbacks):
+    """Хелпер: POST на webhook с авто-запуском transaction.on_commit callback'ов.
+
+    Webhook регистрирует fulfill_*.delay(...) через transaction.on_commit(), а
+    под pytest.mark.django_db внешняя транзакция не коммитится — callback'и
+    сами не выполнятся. Оборачиваем POST в capture-контекст (execute=True),
+    чтобы после ответа callback'и отработали ДО assertion'ов теста."""
+    def _post(payload, **kwargs):
+        with django_capture_on_commit_callbacks(execute=True) as callbacks:
+            response = client.post(
+                WEBHOOK_URL,
+                data=json.dumps(payload),
+                content_type="application/json",
+                **kwargs,
+            )
+        return response, callbacks
+
+    return _post
+
+
+@pytest.fixture
 def fulfill_delay_mock(monkeypatch):
     """Мокает fulfill_paid_order.delay — веб-хук не должен пытаться
     реально отправить задачу в Celery broker (в тестах Redis не доступен).
@@ -132,14 +153,35 @@ def test_webhook_updates_order_to_succeeded(
 
 
 def test_webhook_schedules_fulfill_delay(
-    client, order_with_payment, mock_yookassa_client, fulfill_delay_mock
+    post_webhook, order_with_payment, mock_yookassa_client, fulfill_delay_mock
 ):
-    client.post(
-        WEBHOOK_URL,
-        data=json.dumps(_payload("pay_ok_1")),
-        content_type="application/json",
-    )
+    resp, _callbacks = post_webhook(_payload("pay_ok_1"))
+    assert resp.status_code == 200
     fulfill_delay_mock.delay.assert_called_once_with(order_with_payment.id)
+
+
+def test_webhook_enqueues_fulfill_via_on_commit_not_before_save(
+    client, order_with_payment, mock_yookassa_client, fulfill_delay_mock,
+    django_capture_on_commit_callbacks,
+):
+    """Enqueue Celery task должен быть в transaction.on_commit. Если бы был
+    прямой .delay() — он вызвался бы синхронно, до commit'а. С on_commit:
+    внутри capture-контекста с execute=False callback НЕ выполняется, но
+    регистрируется — так мы отличаем паттерны."""
+    with django_capture_on_commit_callbacks(execute=False) as callbacks:
+        client.post(
+            WEBHOOK_URL,
+            data=json.dumps(_payload("pay_ok_1")),
+            content_type="application/json",
+        )
+    # Enqueue отложен — прямого вызова .delay() не было
+    assert fulfill_delay_mock.delay.call_count == 0, (
+        "fulfill не должен быть enqueue'ен до commit — должен быть в on_commit callback"
+    )
+    # Но callback зарегистрирован, значит on_commit сработает при реальном commit
+    assert len(callbacks) >= 1, (
+        "_handle_succeeded должен регистрировать on_commit callback для enqueue"
+    )
 
 
 # ── Webhook: идемпотентность ────────────────────────────────────────────

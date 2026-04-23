@@ -419,7 +419,7 @@ class TestWebhookRoutesCertificate:
         settings.YOOKASSA_WEBHOOK_STRICT_IP = False
 
     def test_routes_certificate_to_fulfill_paid_certificate(
-        self, client, monkeypatch, mock_telegram
+        self, client, monkeypatch, mock_telegram, django_capture_on_commit_callbacks,
     ):
         from decimal import Decimal
         from datetime import date, timedelta
@@ -455,8 +455,12 @@ class TestWebhookRoutesCertificate:
 
         payload = {"type": "notification", "event": "payment.succeeded",
                    "object": {"id": "cert_pay_1", "status": "succeeded"}}
-        client.post("/api/payments/yookassa/webhook/",
-                    json.dumps(payload), content_type="application/json")
+        # Wrap в capture-контекст: enqueue идёт через transaction.on_commit,
+        # под pytest.mark.django_db реальный commit не происходит — execute=True
+        # прогоняет callback'и при выходе из with, до assertion'ов.
+        with django_capture_on_commit_callbacks(execute=True):
+            client.post("/api/payments/yookassa/webhook/",
+                        json.dumps(payload), content_type="application/json")
 
         mock_cert_task.delay.assert_called_once_with(order.id)
         mock_bundle_task.delay.assert_not_called()
