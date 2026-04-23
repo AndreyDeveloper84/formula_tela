@@ -738,7 +738,7 @@ class GiftCertificateAdmin(admin.ModelAdmin):
     @admin.action(description="Повторно отправить PDF-сертификат на email")
     def resend_certificate_email(self, request, queryset):
         from payments.certificate_pdf import generate_certificate_pdf
-        from website.notifications import send_certificate_email
+        from notifications import send_certificate_email
 
         certs = list(queryset.filter(status="paid").select_related("order", "bundle"))
         if not certs:

@@ -258,7 +258,7 @@ class TestBundleOnlinePayment:
             "bundle_id": bundle.id,
             "payment_method": "cash",
         }
-        with patch("website.notifications.http_requests.post", MagicMock()):
+        with patch("notifications.http_requests.post", MagicMock()):
             resp = client.post(self.url, json.dumps(payload), content_type="application/json")
         assert resp.status_code == 200
         from services_app.models import BundleRequest

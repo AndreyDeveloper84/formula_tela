@@ -1282,7 +1282,7 @@ def api_bundle_request(request):
     """API: Заявка на комплекс — сохранение + уведомления."""
     import json
     from services_app.models import Bundle, BundleRequest
-    from website.notifications import send_notification_telegram, send_notification_email
+    from notifications import send_notification_telegram, send_notification_email
 
     try:
         data = json.loads(request.body)
@@ -1509,7 +1509,7 @@ def api_wizard_booking(request):
 
 def _notify_booking_request(booking):
     """Шлёт Telegram и email о новой заявке с формы-мастера (wizard)."""
-    from website.notifications import send_notification_telegram, send_notification_email
+    from notifications import send_notification_telegram, send_notification_email
 
     tg_text = (
         f"📋 Новая заявка с сайта!\n\n"
@@ -1756,7 +1756,7 @@ def api_certificate_request(request):
         })
 
     # --- Офлайн: уведомления администраторам ---
-    from website.notifications import send_notification_email, send_notification_telegram
+    from notifications import send_notification_email, send_notification_telegram
 
     if cert_type == "nominal":
         value_str = f"{nominal:,.0f} ₽".replace(",", " ")
@@ -1820,7 +1820,7 @@ def api_service_order_create(request):
         PaymentError,
     )
     from payments.services import PaymentService
-    from website.notifications import send_notification_telegram
+    from notifications import send_notification_telegram
 
     logger = logging.getLogger(__name__)
 

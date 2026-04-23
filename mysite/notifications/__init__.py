@@ -1,7 +1,17 @@
 """Централизованные уведомления о заявках — Telegram + email.
 
-Вызывается из всех endpoint'ов, где создаётся заявка/заказ:
-api_wizard_booking, api_bundle_request, api_certificate_request и будущие.
+Независимое Python-приложение. Раньше жило в `website/notifications.py`,
+что создавало циклические зависимости:
+  - payments → website.notifications → services_app → website
+  - services_app/admin (lazy) → website.notifications → services_app
+
+Вынос в отдельный пакет `notifications/` разрывает эти циклы: notifications
+теперь зависит только от services_app (для чтения SiteSettings, lazy import)
+и не требует ничего от website/payments.
+
+Вызывается из всех endpoint'ов и задач, где создаётся заявка/заказ:
+api_wizard_booking, api_bundle_request, api_certificate_request,
+payments.views.yookassa_webhook, payments.tasks.fulfill_*.
 
 - Telegram: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID из окружения
 - Email:    список получателей из SiteSettings.notification_emails
@@ -45,6 +55,10 @@ def get_notification_recipients() -> list[str]:
 
     Приоритет — SiteSettings.notification_emails (редактируется в админке),
     fallback на ADMIN_NOTIFICATION_EMAIL из окружения.
+
+    Lazy import SiteSettings намеренно: notifications не должен зависеть от
+    services_app на уровне импорта модуля — это бы создало circular dep при
+    load-order apps.
     """
     from services_app.models import SiteSettings
 

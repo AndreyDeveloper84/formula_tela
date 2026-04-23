@@ -22,7 +22,7 @@ from payments.booking_service import YClientsBookingService
 from payments.certificate_pdf import generate_certificate_pdf
 from payments.exceptions import BookingClientError, BookingValidationError
 from services_app.models import GiftCertificate, Order
-from website.notifications import send_certificate_email, send_notification_telegram
+from notifications import send_certificate_email, send_notification_telegram
 
 logger = logging.getLogger(__name__)
 

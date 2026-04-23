@@ -1,10 +1,10 @@
-"""Тесты централизованных уведомлений website/notifications.py.
+"""Тесты централизованных уведомлений — пакет `notifications/`.
 
 Покрывают:
 - SiteSettings.get_notification_emails() — парсинг поля
-- website.notifications.send_notification_email — получатели из SiteSettings,
+- notifications.send_notification_email — получатели из SiteSettings,
   fallback на ADMIN_NOTIFICATION_EMAIL, пустой список → no-op
-- website.notifications.send_notification_telegram — без токенов no-op
+- notifications.send_notification_telegram — без токенов no-op
 - api_wizard_booking / api_bundle_request / api_certificate_request — все три
   endpoint'а вызывают helpers и шлют email на список из SiteSettings
 """
@@ -16,7 +16,7 @@ import pytest
 from model_bakery import baker
 
 from services_app.models import BookingRequest, SiteSettings
-from website.notifications import (
+from notifications import (
     get_notification_recipients,
     send_notification_email,
     send_notification_telegram,
@@ -76,7 +76,7 @@ def test_get_notification_emails_skips_junk():
     ]
 
 
-# ── website.notifications.get_notification_recipients ───────────────────────
+# ── notifications.get_notification_recipients ──────────────────────────────
 
 @pytest.mark.django_db
 def test_recipients_from_sitesettings_when_present():
@@ -103,12 +103,12 @@ def test_recipients_sitesettings_priority_over_env(settings):
     assert get_notification_recipients() == ["admin@example.com"]
 
 
-# ── website.notifications.send_notification_email ───────────────────────────
+# ── notifications.send_notification_email ──────────────────────────────────
 
 @pytest.mark.django_db
 def test_send_notification_email_uses_sitesettings():
     baker.make(SiteSettings, notification_emails="a@example.com\nb@example.com")
-    with patch("website.notifications.send_mail") as mock_mail:
+    with patch("notifications.send_mail") as mock_mail:
         result = send_notification_email("Тема", "Тело")
     assert result is True
     mock_mail.assert_called_once()
@@ -120,18 +120,18 @@ def test_send_notification_email_uses_sitesettings():
 @pytest.mark.django_db
 def test_send_notification_email_no_recipients_silent(settings):
     settings.ADMIN_NOTIFICATION_EMAIL = ""
-    with patch("website.notifications.send_mail") as mock_mail:
+    with patch("notifications.send_mail") as mock_mail:
         result = send_notification_email("Тема", "Тело")
     assert result is False
     mock_mail.assert_not_called()
 
 
-# ── website.notifications.send_notification_telegram ────────────────────────
+# ── notifications.send_notification_telegram ───────────────────────────────
 
 def test_send_notification_telegram_no_token_silent(settings):
     settings.TELEGRAM_BOT_TOKEN = ""
     settings.TELEGRAM_CHAT_ID = ""
-    with patch("website.notifications.http_requests.post") as mock_post:
+    with patch("notifications.http_requests.post") as mock_post:
         result = send_notification_telegram("Тест")
     assert result is False
     mock_post.assert_not_called()
@@ -140,7 +140,7 @@ def test_send_notification_telegram_no_token_silent(settings):
 def test_send_notification_telegram_sends_when_configured(settings):
     settings.TELEGRAM_BOT_TOKEN = "fake-token"
     settings.TELEGRAM_CHAT_ID = "fake-chat"
-    with patch("website.notifications.http_requests.post") as mock_post:
+    with patch("notifications.http_requests.post") as mock_post:
         result = send_notification_telegram("Тест-сообщение")
     assert result is True
     mock_post.assert_called_once()
@@ -155,7 +155,7 @@ def test_send_notification_telegram_sends_when_configured(settings):
 @pytest.mark.django_db
 def test_wizard_booking_triggers_notification(client, service, mock_telegram):
     baker.make(SiteSettings, notification_emails="tikhonov-a-s@yandex.ru")
-    with patch("website.notifications.send_mail") as mock_mail:
+    with patch("notifications.send_mail") as mock_mail:
         resp = client.post(
             "/api/wizard/booking/",
             data=json.dumps({
@@ -178,7 +178,7 @@ def test_wizard_booking_saves_master_name(client, service, mock_telegram):
     """Покупатель нажал «Записаться» в карточке мастера → master_name
     доходит до BookingRequest и упоминается в уведомлениях."""
     baker.make(SiteSettings, notification_emails="manager@example.com")
-    with patch("website.notifications.send_mail") as mock_mail:
+    with patch("notifications.send_mail") as mock_mail:
         resp = client.post(
             "/api/wizard/booking/",
             data=json.dumps({
@@ -202,7 +202,7 @@ def test_wizard_booking_saves_master_name(client, service, mock_telegram):
 @pytest.mark.django_db
 def test_bundle_request_triggers_notification(client, bundle, mock_telegram):
     baker.make(SiteSettings, notification_emails="manager@example.com")
-    with patch("website.notifications.send_mail") as mock_mail:
+    with patch("notifications.send_mail") as mock_mail:
         resp = client.post(
             "/api/bundle/request/",
             data=json.dumps({
@@ -226,7 +226,7 @@ def test_bundle_request_triggers_notification(client, bundle, mock_telegram):
 @pytest.mark.django_db
 def test_certificate_request_triggers_notification(client, mock_telegram):
     baker.make(SiteSettings, notification_emails="certificates@example.com")
-    with patch("website.notifications.send_mail") as mock_mail:
+    with patch("notifications.send_mail") as mock_mail:
         resp = client.post(
             "/api/certificates/request/",
             data=json.dumps({

@@ -2,7 +2,7 @@
 
 YooKassa API мокается через YooKassaClient.find_payment (verify-path).
 YClients API мокается через YClientsBookingService.create_record.
-Telegram мокается через website.notifications.send_notification_telegram.
+Telegram мокается через notifications.send_notification_telegram.
 
 Celery task прогоняется eagerly: settings.CELERY_TASK_ALWAYS_EAGER=True.
 """

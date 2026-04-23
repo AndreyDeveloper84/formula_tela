@@ -19,7 +19,7 @@ from payments.ip_whitelist import yookassa_ip_only
 from payments.tasks import fulfill_paid_bundle, fulfill_paid_certificate, fulfill_paid_order
 from payments.yookassa_client import get_yookassa_client
 from services_app.models import Order
-from website.notifications import send_notification_telegram
+from notifications import send_notification_telegram
 
 logger = logging.getLogger(__name__)
 
