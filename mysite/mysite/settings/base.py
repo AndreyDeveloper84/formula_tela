@@ -200,6 +200,16 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 # Видеть задачи в STARTED в Flower/монитористе (по умолчанию состояние не пишется).
 CELERY_TASK_TRACK_STARTED = True
+# prefetch=1 — воркер берёт одну задачу за раз (fair dispatch). Без этого
+# worker с несколькими потоками может забрать 4 задачи, одну выполнять 10
+# минут, а остальные 3 ждать — короткие fulfill_paid_order «голодают» за
+# длинными collect_retention_metrics. Критично при acks_late.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Redis visibility_timeout — сколько брокер держит задачу «невидимой» после
+# выдачи worker'у. Если worker не ack'нул за это время, задача вернётся в
+# очередь. Должен быть >= CELERY_TASK_TIME_LIMIT (1860s), иначе долгая
+# задача будет передоставлена и выполнится дважды.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 3600}
 # Жёсткий потолок 30 мин — задача не может висеть бесконечно, иначе воркер
 # залипает и beat не дождётся следующего слота. Задачи агентов укладываются
 # в <5 мин, 30 мин — safety net.

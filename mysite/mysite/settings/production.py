@@ -2,11 +2,32 @@
 Настройки для production окружения (formulatela58.ru)
 Использование: DJANGO_SETTINGS_MODULE=mysite.settings.production
 """
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *
 from .base import _csv, _bool, _scheme  # private helpers not exported by import *
 
 # ⚠️ DEBUG всегда выключен в production
 DEBUG = False
+
+# ⚠️ fail-fast на boot если критичные env vars отсутствуют.
+# ImproperlyConfigured вместо assert — assert выключается флагом python -O.
+_REQUIRED_ENV_VARS = (
+    "DJANGO_SECRET_KEY",
+    "YCLIENTS_PARTNER_TOKEN",
+    "YCLIENTS_USER_TOKEN",
+    "YCLIENTS_COMPANY_ID",
+)
+_missing = [v for v in _REQUIRED_ENV_VARS if not os.getenv(v)]
+if _missing:
+    raise ImproperlyConfigured(
+        f"Production: отсутствуют обязательные env vars: {', '.join(_missing)}"
+    )
+if os.getenv("DJANGO_SECRET_KEY") == "dev-secret":
+    raise ImproperlyConfigured(
+        "Production: DJANGO_SECRET_KEY='dev-secret' — это дефолт из base.py, "
+        "на проде должен быть реальный секрет (см. .env.example)"
+    )
 
 # Разрешённые хосты ТОЛЬКО из .env (безопасность!)
 ALLOWED_HOSTS = _csv("DJANGO_ALLOWED_HOSTS", "formulatela58.ru,www.formulatela58.ru")
@@ -34,12 +55,11 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
-# Проверка на старте
-assert not DEBUG, "❌ DEBUG must be False in production!"
-assert ALLOWED_HOSTS, "❌ ALLOWED_HOSTS must be set in production!"
-assert os.getenv("DJANGO_SECRET_KEY", "dev-secret") != "dev-secret", (
-    "❌ DJANGO_SECRET_KEY must be set to a real value in production (not the 'dev-secret' default)!"
-)
+# Финальная проверка (DEBUG/ALLOWED_HOSTS) — SECRET_KEY уже проверен выше.
+if DEBUG:
+    raise ImproperlyConfigured("Production: DEBUG must be False")
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured("Production: ALLOWED_HOSTS must be set")
 
 import logging as _logging
 _logging.getLogger(__name__).info("Загружены настройки PRODUCTION")
