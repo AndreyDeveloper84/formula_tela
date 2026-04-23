@@ -329,14 +329,21 @@
             const data = await resp.json();
             if (resp.ok && data.success) {
                 if (data.payment_method === 'online' && data.payment_url) {
+                    // Онлайн-оплата: редирект на YooKassa checkout.
                     window.location.href = data.payment_url;
                     return;
                 }
-                showModalAlert(data.message || 'Запись подтверждена!', 'success');
+                // Офлайн-оплата (наличные / карта в салоне): YClients-запись уже
+                // создана, оплата на месте. Никакого polling'а не нужно — просто
+                // сообщаем об успехе. /payments/success/ — только для online flow.
                 const orderNumber = data.order_number || '';
-                setTimeout(() => {
-                    window.location.href = '/payments/success/?order=' + encodeURIComponent(orderNumber);
-                }, 1500);
+                const recordId = data.yclients_record_id ? ' (№ ' + data.yclients_record_id + ')' : '';
+                const msg = 'Запись подтверждена' + recordId + '. Оплата на месте: ' +
+                    (data.payment_method === 'card_offline' ? 'картой в салоне' : 'наличными') +
+                    (orderNumber ? '. Номер заказа: ' + orderNumber : '') + '.';
+                showModalAlert(msg, 'success');
+                btn.textContent = 'Готово';
+                // Кнопка остаётся disabled — повторная отправка не нужна.
             } else {
                 let err = data.error || 'Ошибка при создании записи';
                 if (data.errors) {
