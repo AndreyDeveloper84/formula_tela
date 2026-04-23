@@ -1,0 +1,59 @@
+# Git
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+.venv312/
+env/
+venv/
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Django runtime
+staticfiles/
+media/
+data/
+*.sqlite3
+*.log
+
+# Secrets — КРИТИЧНО не копировать в образ
+.env
+.env.local
+.env.*.local
+
+# Node (Claude Code не нужен в образе)
+node_modules/
+package.json
+package-lock.json
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docs / audits (не нужны в образе runtime)
+docs/
+audits/
+AUDIT_REPORT_*.md
+AUDIT_REPORT_*.pdf
+development-plan.md
+FORMULA_TELA_AI_WORKFLOW.md
+CLAUDE.md
+CLAUDE_NEW.md
+README.md
+repomix-output.xml
+repomix-output.*
+
+# Legacy / unrelated
+BeautyGo/

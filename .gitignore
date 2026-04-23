@@ -2,35 +2,43 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv312/
 env/
-.env
-.env.*
 venv/
-temp_venv/     # ← ДОБАВЬ ЭТУ СТРОКУ
-*.sqlite3
-db.sqlite3
+temp_venv/
 
 # django
+staticfiles/
 /staticfiles/
 /media/
 /data/
 /*.log
-
-# Временные файлы миграции
-data_backup.json     # ← ДОБАВЬ ЭТУ СТРОКУ
-export_data.py       # ← ДОБАВЬ ЭТУ СТРОКУ
-# Python virtual environment
-.venv312/
-venv/
-
-# Django
-staticfiles/
-data/
 *.sqlite3
+db.sqlite3
 
 # Environment variables
+# ВАЖНО: паттерн .env.* слишком широкий и исключает .env.example — не используй его.
 .env
-.env.*
+.env.local
+.env.*.local
 
-# Tool output — repomix генерирует дамп всего репозитория для LLM-контекста
+# Временные файлы миграции
+data_backup.json
+export_data.py
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Node (Claude Code ставится глобально, в проекте не должен быть)
+node_modules/
+
+# Repomix output — дамп всего репозитория для LLM-контекста
 repomix-output.xml
+repomix-output.*
+
+# Pytest
+.pytest_cache/
