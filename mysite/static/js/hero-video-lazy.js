@@ -46,13 +46,25 @@
         }
     }
 
+    function isVisible(el) {
+        // display:none или visibility:hidden → offsetParent === null.
+        // Дополнительная страховка — ненулевой размер (на случай zero-sized).
+        if (el.offsetParent === null) return false;
+        return el.offsetWidth > 0 && el.offsetHeight > 0;
+    }
+
     function start() {
         if (isSlowConnection()) {
             // На slow-2g/saveData видео не активируем — poster остаётся
             return;
         }
+        // На главной два <video> — desktop и mobile, один из них всегда скрыт
+        // через CSS media-query. Активируем ТОЛЬКО видимый, иначе браузер
+        // качает оба файла (~3.2 МБ суммарно вместо 1.2-2 МБ).
         var videos = document.querySelectorAll("video[data-autoplay-hero]");
-        videos.forEach(activateVideo);
+        videos.forEach(function (v) {
+            if (isVisible(v)) activateVideo(v);
+        });
     }
 
     if (document.readyState === "complete") {
