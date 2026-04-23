@@ -56,6 +56,9 @@ MIDDLEWARE = [
     "csp.middleware.CSPMiddleware",
     # Превращает django_ratelimit Ratelimited в 429 JSON для booking API
     "website.middleware.RatelimitMiddleware",
+    # Ловит FileNotFoundError от отсутствующих медиа-файлов в admin (свежий
+    # dev без синка media/ с прода), показывает messages вместо 500.
+    "website.middleware.AdminMissingMediaMiddleware",
 ]
 
 # CSP — django-csp v4 dict-based API.
