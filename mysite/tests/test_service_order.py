@@ -61,7 +61,7 @@ def mock_yclients_booking(monkeypatch):
 @pytest.fixture
 def mock_tg(monkeypatch):
     tg = MagicMock(return_value=True)
-    monkeypatch.setattr("website.notifications.send_notification_telegram", tg)
+    monkeypatch.setattr("notifications.send_notification_telegram", tg)
     return tg
 
 
@@ -195,8 +195,8 @@ def test_cash_sends_telegram_notification(
 ):
     tg = MagicMock(return_value=True)
     # send_notification_telegram импортируется внутри view — мокаем на уровне
-    # исходного модуля website.notifications.
-    monkeypatch.setattr("website.notifications.send_notification_telegram", tg)
+    # исходного модуля notifications.
+    monkeypatch.setattr("notifications.send_notification_telegram", tg)
     client.post(
         ORDER_URL,
         data=json.dumps(_valid_payload(service_option, "cash")),

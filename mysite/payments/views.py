@@ -6,6 +6,7 @@
 import json
 import logging
 
+from django.db import transaction
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -18,7 +19,7 @@ from payments.ip_whitelist import yookassa_ip_only
 from payments.tasks import fulfill_paid_bundle, fulfill_paid_certificate, fulfill_paid_order
 from payments.yookassa_client import get_yookassa_client
 from services_app.models import Order
-from website.notifications import send_notification_telegram
+from notifications import send_notification_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -96,17 +97,22 @@ def _handle_succeeded(order: Order) -> None:
     if order.payment_status == "succeeded":
         logger.info("yookassa_webhook: order=%s already succeeded, skip", order.number)
         return
-    order.payment_status = "succeeded"
-    order.status = "paid"
-    order.paid_at = timezone.now()
-    order.save(update_fields=["payment_status", "status", "paid_at", "updated_at"])
 
-    if order.order_type == "certificate":
-        fulfill_paid_certificate.delay(order.id)
-    elif order.order_type == "bundle":
-        fulfill_paid_bundle.delay(order.id)
-    else:
-        fulfill_paid_order.delay(order.id)
+    # Атомарно обновляем статус И регистрируем enqueue fulfillment task
+    # только на COMMIT. Если save упадёт — on_commit не сработает, задача
+    # не уйдёт в Celery. Без этого возможен race: save ok → .delay() падает
+    # (Redis down) → Order.status=paid но запись в YClients не создана.
+    task_map = {
+        "certificate": fulfill_paid_certificate,
+        "bundle": fulfill_paid_bundle,
+    }
+    task = task_map.get(order.order_type, fulfill_paid_order)
+    with transaction.atomic():
+        order.payment_status = "succeeded"
+        order.status = "paid"
+        order.paid_at = timezone.now()
+        order.save(update_fields=["payment_status", "status", "paid_at", "updated_at"])
+        transaction.on_commit(lambda: task.delay(order.id))
 
     logger.info(
         "yookassa_webhook: order=%s (type=%s) → succeeded, fulfill scheduled",

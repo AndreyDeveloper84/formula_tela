@@ -1,13 +1,14 @@
 /* payment-status-poll.js
    Страница /payments/success/ — опрашивает /api/payments/status/?order=...
    каждые 3 секунды до fulfilled=true или таймаута 60 сек.
-   Параметризуется data-атрибутами на <body data-order="FT-...">.
+   Номер заказа берётся из #payment-config[data-order="FT-..."] (раньше это
+   был inline-script, блокировался CSP).
 */
 (function () {
     "use strict";
 
-    const body = document.body;
-    const orderNumber = body.getAttribute("data-order") || "";
+    const cfg = document.getElementById("payment-config");
+    const orderNumber = cfg ? (cfg.dataset.order || "") : "";
     if (!orderNumber) return;
 
     const POLL_INTERVAL_MS = 3000;

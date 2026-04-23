@@ -124,9 +124,9 @@ class TestSendCertificateEmail:
     def test_sends_email_without_pdf(self, monkeypatch):
         from unittest.mock import MagicMock
         mock_send = MagicMock()
-        monkeypatch.setattr("website.notifications.EmailMessage", mock_send)
+        monkeypatch.setattr("notifications.EmailMessage", mock_send)
 
-        from website.notifications import send_certificate_email
+        from notifications import send_certificate_email
         order, cert = self._make_order_cert()
         result = send_certificate_email(order, cert)
         assert result is True
@@ -137,9 +137,9 @@ class TestSendCertificateEmail:
     def test_attaches_pdf_when_provided(self, monkeypatch):
         from unittest.mock import MagicMock
         mock_cls = MagicMock()
-        monkeypatch.setattr("website.notifications.EmailMessage", mock_cls)
+        monkeypatch.setattr("notifications.EmailMessage", mock_cls)
 
-        from website.notifications import send_certificate_email
+        from notifications import send_certificate_email
         order, cert = self._make_order_cert()
         result = send_certificate_email(order, cert, pdf_bytes=b"%PDF-test")
         assert result is True
@@ -152,7 +152,7 @@ class TestSendCertificateEmail:
         instance.send.assert_called_once()
 
     def test_returns_false_if_no_email(self):
-        from website.notifications import send_certificate_email
+        from notifications import send_certificate_email
         order, cert = self._make_order_cert(email="")
         order.client_email = ""
         result = send_certificate_email(order, cert)
@@ -161,7 +161,7 @@ class TestSendCertificateEmail:
     def test_bundle_cert_value_str(self, monkeypatch):
         from unittest.mock import MagicMock
         mock_cls = MagicMock()
-        monkeypatch.setattr("website.notifications.EmailMessage", mock_cls)
+        monkeypatch.setattr("notifications.EmailMessage", mock_cls)
 
         bundle = baker.make("services_app.Bundle", name="SPA Комплекс")
         order = baker.make(
@@ -182,7 +182,7 @@ class TestSendCertificateEmail:
             valid_until=today + timedelta(days=180),
             status="paid",
         )
-        from website.notifications import send_certificate_email
+        from notifications import send_certificate_email
         send_certificate_email(order, cert)
         body = mock_cls.call_args[1]["body"]
         assert "SPA Комплекс" in body

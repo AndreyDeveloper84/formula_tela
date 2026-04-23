@@ -57,7 +57,7 @@
 
 {% block extra_js %}
 {% if order_number %}
-<script>document.body.setAttribute("data-order", "{{ order_number|escapejs }}");</script>
+<div id="payment-config" data-order="{{ order_number|escapejs }}" hidden></div>
 <script src="{% static 'js/payment-status-poll.js' %}"></script>
 {% endif %}
 {% endblock %}

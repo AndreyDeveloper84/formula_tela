@@ -54,5 +54,17 @@ jobs:
           python manage.py migrate --noinput
           python manage.py collectstatic --noinput
 
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Django deployment checks (non-blocking)
+        run: python manage.py check --deploy --fail-level WARNING || true
+
+      - name: Audit dependencies for known CVEs
+        working-directory: .
+        run: |
+          pip install pip-audit
+          pip-audit --skip-editable || true
+
       - name: Run tests
         run: pytest --cov=. --cov-report=term-missing -q

@@ -38,6 +38,10 @@
 }
 html {
   scroll-behavior: smooth;
+  overflow-y: scroll;
+}
+body.modal-open {
+  padding-right: 0 !important;
 }
 
 body {
@@ -926,6 +930,7 @@ h1, h2, h3, h4, h5, h6 {margin-bottom:32px;}
 .modal-body {padding:0 16px 7px;}
 .modal-open .modal {padding:0;}
 .modal-dialog {margin:0;position:fixed;bottom:0;left:0;right:0;width:100%;max-height:90vh;display:flex;flex-direction:column;}
+.modal-dialog.modal-dialog-centered {position:static;margin:1rem auto;width:calc(100% - 2rem);max-width:500px;min-height:calc(100% - 2rem);align-items:center;}
 .modal-content {border-radius:24px 24px 0 0;max-height:90vh;overflow-y:auto;}
 .modal {bottom:0;}
 .modal-body .in-form.mt-40 {margin-top:20px;}

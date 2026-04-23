@@ -92,7 +92,11 @@
 
                     <form>
                         <div class="in-form2">
-                            <a href="#" class="btn-black t-btn" onclick="openBundleModal({{ bundle.id }}, '{{ bundle.name|escapejs }}', '{{ price|floatformat:0 }}', '{{ min_duration }}'); return false;">Записаться на комплекс</a>
+                            <a href="#" class="btn-black t-btn js-open-bundle-modal"
+                               data-bundle-id="{{ bundle.id }}"
+                               data-bundle-name="{{ bundle.name|escapejs }}"
+                               data-price="{{ price|floatformat:0 }}"
+                               data-duration="{{ min_duration }}">Записаться на комплекс</a>
                         </div>
                     </form>
                 </div>
