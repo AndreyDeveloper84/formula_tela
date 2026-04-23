@@ -33,6 +33,16 @@ function wizardBack(step) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Event delegation — inline onclick="" блокируется CSP (script-src без 'unsafe-inline').
+    // Кнопки с классом .js-open-master-booking и data-master-name открывают wizard с
+    // преднастроенным мастером (карточки на /masters/ и т.п.).
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.js-open-master-booking');
+        if (!btn) return;
+        e.preventDefault();
+        window.openMasterBooking(btn.dataset.masterName || '');
+    });
+
     const wizardEl = document.getElementById('bookingWizard');
     if (!wizardEl) return;
     wizardEl.addEventListener('show.bs.modal', function() {
