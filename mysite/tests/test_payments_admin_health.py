@@ -9,7 +9,9 @@ from django.contrib.admin.sites import AdminSite
 from django.utils import timezone
 from model_bakery import baker
 
-from services_app.admin import OrderAdmin
+# После P2 рефакторинга OrderAdmin с payment-actions живёт в payments/admin.py.
+# services_app/admin.py содержит base-admin без payment-специфики.
+from payments.admin import OrderAdmin
 from services_app.models import Order, SiteSettings
 
 
