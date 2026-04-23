@@ -338,7 +338,9 @@
                 // красивый success-блок с деталями.
                 showBookingSuccess(data, paymentMethod);
             } else {
-                let err = data.error || 'Ошибка при создании записи';
+                // data.error приходит как человекочитаемое сообщение — от YClients
+                // (напр. "Услуга недоступна в выбранное время") или от сервера.
+                let err = data.error || 'Не удалось создать запись, попробуйте ещё раз';
                 if (data.errors) {
                     const fields = Object.keys(data.errors).join(', ');
                     err = err + ' (' + fields + ')';

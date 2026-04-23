@@ -8,7 +8,9 @@ Shared service: используется и в offline-flow (payment_method=cash
 не дёргает YClients API, возвращает существующий record_id/hash. Нужно для
 защиты от двойной обработки webhook и Celery retry.
 """
+import json
 import logging
+import re
 
 from django.utils import timezone
 
@@ -17,6 +19,32 @@ from services_app.models import Order
 from services_app.yclients_api import YClientsAPI, YClientsAPIError, get_yclients_api
 
 logger = logging.getLogger(__name__)
+
+# Текст YClientsAPIError имеет вид "HTTP 422: {...json...}" (см. yclients_api._request).
+_HTTP_STATUS_RE = re.compile(r"^HTTP (\d{3}):\s*(.*)$", re.DOTALL)
+
+
+def _parse_yclients_error(exc: YClientsAPIError) -> tuple[int | None, str]:
+    """Извлечь HTTP-статус и meta.message из текста YClientsAPIError.
+
+    Возвращает (status, human_message). Если парсинг не удался — (None, str(exc)).
+    """
+    m = _HTTP_STATUS_RE.match(str(exc))
+    if not m:
+        return None, str(exc)
+    try:
+        status = int(m.group(1))
+    except ValueError:
+        return None, str(exc)
+    body = m.group(2)
+    try:
+        payload = json.loads(body)
+        meta_msg = (payload.get("meta") or {}).get("message")
+        if meta_msg:
+            return status, meta_msg
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        pass
+    return status, body or str(exc)
 
 
 class YClientsBookingService:
@@ -57,12 +85,22 @@ class YClientsBookingService:
                 comment=order.comment or "",
             )
         except YClientsAPIError as exc:
+            status, human_msg = _parse_yclients_error(exc)
+            # 4xx = validation (неправильные данные от клиента): выбранное время
+            # занято, мастер не оказывает услугу, и т.п. Показываем сообщение
+            # от YClients клиенту как есть. 5xx и прочие — реальная проблема.
+            if status is not None and 400 <= status < 500:
+                logger.warning(
+                    "YClientsBookingService: validation error for order=%s (HTTP %s): %s",
+                    order.number, status, human_msg,
+                )
+                raise BookingValidationError(human_msg) from exc
             logger.exception(
                 "YClientsBookingService: YClients failed for order=%s: %s",
                 order.number, exc,
             )
             raise BookingClientError(
-                f"YClients error for order {order.number}: {exc}"
+                f"YClients error for order {order.number}: {human_msg}"
             ) from exc
 
         record_id = str(booking.get("record_id") or "")

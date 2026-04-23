@@ -1905,7 +1905,23 @@ def api_service_order_create(request):
         # Offline: создаём YClients-запись сразу, клиент платит в салоне.
         try:
             result = YClientsBookingService().create_record(order)
-        except (BookingValidationError, BookingClientError) as exc:
+        except BookingValidationError as exc:
+            # Бизнес-ошибка от YClients (время занято, услуга недоступна и т.п.) —
+            # клиенту показываем сообщение как есть, чтобы мог выбрать другое время.
+            logger.info(
+                "api_service_order_create: YClients validation for order=%s: %s",
+                order.number, exc,
+            )
+            order.status = "cancelled"
+            order.admin_note = f"validation: {exc}"
+            order.save(update_fields=["status", "admin_note", "updated_at"])
+            return JsonResponse(
+                {"success": False, "error": str(exc)},
+                status=400,
+            )
+        except BookingClientError as exc:
+            # Реальная проблема с YClients (5xx, таймаут, неверный формат) —
+            # скрываем технические детали от клиента.
             logger.warning(
                 "api_service_order_create: YClients failed for order=%s: %s",
                 order.number, exc,
@@ -1914,7 +1930,7 @@ def api_service_order_create(request):
             order.admin_note = f"create_booking failed: {exc}"
             order.save(update_fields=["status", "admin_note", "updated_at"])
             return JsonResponse(
-                {"success": False, "error": "booking_failed", "detail": str(exc)},
+                {"success": False, "error": "YClients временно недоступен. Попробуйте через минуту или позвоните в салон."},
                 status=502,
             )
         # Оффлайн-оплата — уведомление админу что клиент зайдёт и оплатит на кассе.

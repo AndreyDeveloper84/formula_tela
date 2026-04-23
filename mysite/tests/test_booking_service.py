@@ -147,3 +147,25 @@ class TestCreateRecordErrors:
             svc.create_record(service_order)
         service_order.refresh_from_db()
         assert service_order.yclients_record_id == ""
+
+    def test_422_parsed_as_validation_with_human_message(self, fake_yclients, service_order):
+        # 4xx от YClients с meta.message — это бизнес-ошибка (время занято и т.п.).
+        # Должно стать BookingValidationError с человеческим сообщением, чтобы
+        # показать клиенту без технических деталей.
+        fake_yclients.create_booking.side_effect = YClientsAPIError(
+            'HTTP 422: {"success":false,"data":null,'
+            '"meta":{"message":"Услуга недоступна в выбранное время. Выберите другое время."}}'
+        )
+        svc = YClientsBookingService(api=fake_yclients)
+        with pytest.raises(BookingValidationError) as exc_info:
+            svc.create_record(service_order)
+        assert "Услуга недоступна в выбранное время" in str(exc_info.value)
+
+    def test_5xx_stays_as_client_error(self, fake_yclients, service_order):
+        # 5xx — реальная проблема YClients, не показываем деталь клиенту.
+        fake_yclients.create_booking.side_effect = YClientsAPIError(
+            'HTTP 503: {"meta":{"message":"service unavailable"}}'
+        )
+        svc = YClientsBookingService(api=fake_yclients)
+        with pytest.raises(BookingClientError):
+            svc.create_record(service_order)
