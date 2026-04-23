@@ -47,10 +47,15 @@
     }
 
     function isVisible(el) {
-        // display:none или visibility:hidden → offsetParent === null.
-        // Дополнительная страховка — ненулевой размер (на случай zero-sized).
-        if (el.offsetParent === null) return false;
-        return el.offsetWidth > 0 && el.offsetHeight > 0;
+        // Проверяем именно computed display — самый надёжный способ для
+        // CSS media-query-based show/hide (.video-pk display:none на mobile,
+        // .video-mob display:none на desktop).
+        //
+        // НЕ используем offsetWidth/offsetHeight: <video preload="none"> до
+        // активации может иметь height=0 (нет видеоданных, нет intrinsic
+        // dimensions), даже когда CSS его реально показывает — это привело
+        // бы к ложному isVisible=false и видео никогда не запустилось бы.
+        return getComputedStyle(el).display !== "none";
     }
 
     function start() {
