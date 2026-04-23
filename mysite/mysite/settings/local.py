@@ -19,6 +19,16 @@ SECURE_HSTS_SECONDS = 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 SECURE_HSTS_PRELOAD = False
 
+# Локально не поднимаем Redis — кэш в памяти процесса. Достаточно для
+# django-ratelimit (сбрасывается при рестарте runserver, это ОК) и для
+# booking-idempotency в ручном тестировании. В prod/staging — Redis.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "formula-tela-local",
+    }
+}
+
 # Логи в консоль с подробностями
 LOGGING = {
     "version": 1,

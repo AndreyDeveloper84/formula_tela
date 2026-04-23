@@ -87,7 +87,11 @@ class TestLandingPageUrl:
     def test_healthz_not_intercepted(self, client):
         """healthz/ не перехватывается slug-маршрутом."""
         response = client.get("/healthz/")
-        assert response.status_code == 200
+        # 200 если все зависимости живы, 503 если Redis/БД недоступны —
+        # оба валидны. Суть теста — что slug-catchall не перехватил маршрут
+        # (иначе был бы 404).
+        assert response.status_code in (200, 503)
+        assert response["Content-Type"].startswith("application/json")
 
 
 # ── HTTP ответы ───────────────────────────────────────────────────────────────

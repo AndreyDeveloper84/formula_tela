@@ -56,6 +56,9 @@ MIDDLEWARE = [
     "csp.middleware.CSPMiddleware",
     # Превращает django_ratelimit Ratelimited в 429 JSON для booking API
     "website.middleware.RatelimitMiddleware",
+    # Ловит FileNotFoundError от отсутствующих медиа-файлов в admin (свежий
+    # dev без синка media/ с прода), показывает messages вместо 500.
+    "website.middleware.AdminMissingMediaMiddleware",
 ]
 
 # CSP — django-csp v4 dict-based API.
@@ -188,6 +191,20 @@ CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 CELERY_TIMEZONE = os.getenv("CELERY_TIMEZONE", "Europe/Moscow")
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
+# Подтверждать задачу ПОСЛЕ выполнения, а не до. Без этого SIGKILL/OOM/
+# рестарт воркера посреди задачи = тихая потеря (default early-ack). В связке
+# с REJECT_ON_WORKER_LOST задача вернётся в очередь и перезапустится.
+# Требует идемпотентности задач — у нас AgentTask.status=RUNNING защищает от
+# двойного выполнения через _lifecycle.ensure_task_finalized.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# Видеть задачи в STARTED в Flower/монитористе (по умолчанию состояние не пишется).
+CELERY_TASK_TRACK_STARTED = True
+# Жёсткий потолок 30 мин — задача не может висеть бесконечно, иначе воркер
+# залипает и beat не дождётся следующего слота. Задачи агентов укладываются
+# в <5 мин, 30 мин — safety net.
+CELERY_TASK_SOFT_TIME_LIMIT = 1800
+CELERY_TASK_TIME_LIMIT = 1860  # hard kill через 60 сек после soft limit
 # Выделяем задачи formula_tela в отдельную queue, чтобы business-markets
 # worker (тот же Redis, DB 0) не воровал наши задачи. Без этого оба worker'а
 # слушают дефолтную queue "celery" → race condition → задачи теряются.
