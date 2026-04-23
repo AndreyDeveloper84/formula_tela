@@ -1,7 +1,10 @@
 import requests
 import logging
+from functools import lru_cache
 from typing import Dict, List, Optional
 from django.conf import settings
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -13,18 +16,23 @@ class YClientsAPIError(Exception):
 
 class YClientsAPI:
     """
-    Клиент для работы с YClients REST API v2
-    
+    Клиент для работы с YClients REST API v2.
+
     Документация: https://developers.yclients.com/ru/
+
+    Использует requests.Session для переиспользования TCP+TLS соединения —
+    hot-paths (retention metrics, booking) экономят ~150-300ms на вызов.
+    Retry на 502/503/504 с exponential backoff через urllib3 Retry adapter.
     """
-    
+
     BASE_URL = "https://api.yclients.com/api/v1"
-    
+
     def __init__(self, partner_token: str, user_token: str, company_id: str):
         self.partner_token = partner_token
         self.user_token = user_token
         self.company_id = company_id
-        
+
+        # WAF-bypass заголовки: без User-Agent + X-Partner-Id YClients отдаёт 403.
         self.headers = {
             "Accept": "application/vnd.yclients.v2+json",
             "Authorization": f"Bearer {self.partner_token}, User {self.user_token}",
@@ -32,6 +40,18 @@ class YClientsAPI:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "X-Partner-Id": "11958",
         }
+
+        # Session переиспользует TCP+TLS и применяет retry для всех запросов.
+        self._session = requests.Session()
+        self._session.headers.update(self.headers)
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.5,  # 0.5s, 1s, 2s между попытками
+            status_forcelist=[502, 503, 504],
+            allowed_methods=["GET", "POST", "PUT", "DELETE"],
+            raise_on_status=False,
+        )
+        self._session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
     
     def _request(
         self,
@@ -58,26 +78,17 @@ class YClientsAPI:
         """
         url = f"{self.BASE_URL}{endpoint}"
 
-        request_headers = {
-            'Accept': 'application/vnd.yclients.v2+json',
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.partner_token}, User {self.user_token}',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'X-Partner-Id': '11958',
-        }
-        
-        if headers:
-            request_headers.update(headers)
-        
         try:
             logger.info(f"📤 API Request: {method} {url}")
             logger.info(f"   Params: {params}")
             if data:
                 logger.info(f"   Data: {data}")
-            response = requests.request(
+            # Session-level headers (self.headers) применяются автоматически,
+            # per-call headers override через merge.
+            response = self._session.request(
                 method=method,
                 url=url,
-                headers=request_headers,
+                headers=headers,
                 params=params,
                 json=data,
                 timeout=30
@@ -794,39 +805,45 @@ YClients API ожидает service_ids[] (массив), а не service_id
             return []
 
 
-def get_yclients_api() -> YClientsAPI:
-    """
-    Получить готовый экземпляр YClientsAPI из настроек
-    
-    Использует токены из .env через Django settings
-    
-    Returns:
-        Сконфигурированный YClientsAPI клиент
-    
-    Example:
-        from services_app.yclients_api import get_yclients_api
-        
-        api = get_yclients_api()
-        services = api.get_services()
-    """
+def _build_yclients_api() -> YClientsAPI:
+    """Фабрика YClientsAPI из Django settings. Не кэшируется — используется
+    внутри кэшированного get_yclients_api() ниже."""
     from django.conf import settings
-    
-    # Проверка наличия всех необходимых настроек
+
     required_settings = {
         'YCLIENTS_PARTNER_TOKEN': settings.YCLIENTS_PARTNER_TOKEN,
         'YCLIENTS_USER_TOKEN': settings.YCLIENTS_USER_TOKEN,
         'YCLIENTS_COMPANY_ID': settings.YCLIENTS_COMPANY_ID,
     }
-    
+
     missing = [k for k, v in required_settings.items() if not v]
     if missing:
         raise YClientsAPIError(
             f"Missing YClients settings: {', '.join(missing)}\n"
             "Please configure them in .env file"
         )
-    
+
     return YClientsAPI(
         partner_token=settings.YCLIENTS_PARTNER_TOKEN,
         user_token=settings.YCLIENTS_USER_TOKEN,
         company_id=settings.YCLIENTS_COMPANY_ID
     )
+
+
+@lru_cache(maxsize=1)
+def get_yclients_api() -> YClientsAPI:
+    """Кэшированный singleton YClientsAPI — один экземпляр на процесс.
+
+    Без кэша каждый вызов создаёт новый объект с новой requests.Session
+    → каждый HTTP-запрос заново открывает TCP+TLS (150-300ms overhead).
+    С singleton соединения переиспользуются между запросами.
+
+    Инвалидация: в тестах — get_yclients_api.cache_clear() (autouse fixture).
+
+    Example:
+        from services_app.yclients_api import get_yclients_api
+
+        api = get_yclients_api()
+        services = api.get_services()
+    """
+    return _build_yclients_api()

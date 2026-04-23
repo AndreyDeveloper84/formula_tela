@@ -32,6 +32,17 @@ def _clear_openai_cache():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _clear_yclients_singleton():
+    """get_yclients_api() — кэшированный singleton (lru_cache). В тестах
+    settings меняются через override_settings — cached instance с прежними
+    токенами пережил бы изменения. Сбрасываем cache между тестами."""
+    from services_app.yclients_api import get_yclients_api
+    get_yclients_api.cache_clear()
+    yield
+    get_yclients_api.cache_clear()
+
+
 # ── Модельные фикстуры ───────────────────────────────────────────────────────
 
 @pytest.fixture

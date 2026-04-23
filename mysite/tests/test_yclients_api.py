@@ -31,7 +31,7 @@ def test_request_success():
     """Успешный запрос возвращает полный JSON-словарь."""
     api = _make_api()
     payload = {"success": True, "data": [{"id": 1}]}
-    with patch("requests.request", return_value=_mock_response(payload)) as mock_req:
+    with patch("requests.Session.request", return_value=_mock_response(payload)) as mock_req:
         result = api._request("GET", "/test")
     assert result == payload
     mock_req.assert_called_once()
@@ -40,7 +40,7 @@ def test_request_success():
 def test_request_http_400_raises():
     """HTTP 4xx → YClientsAPIError."""
     api = _make_api()
-    with patch("requests.request", return_value=_mock_response({}, status_code=400)):
+    with patch("requests.Session.request", return_value=_mock_response({}, status_code=400)):
         with pytest.raises(YClientsAPIError, match="HTTP 400"):
             api._request("GET", "/test")
 
@@ -48,7 +48,7 @@ def test_request_http_400_raises():
 def test_request_timeout_raises():
     """Timeout → YClientsAPIError с 'timeout'."""
     api = _make_api()
-    with patch("requests.request", side_effect=real_requests.exceptions.Timeout):
+    with patch("requests.Session.request", side_effect=real_requests.exceptions.Timeout):
         with pytest.raises(YClientsAPIError, match="timeout"):
             api._request("GET", "/test")
 
@@ -56,7 +56,7 @@ def test_request_timeout_raises():
 def test_request_connection_error_raises():
     """ConnectionError → YClientsAPIError."""
     api = _make_api()
-    with patch("requests.request", side_effect=real_requests.exceptions.ConnectionError):
+    with patch("requests.Session.request", side_effect=real_requests.exceptions.ConnectionError):
         with pytest.raises(YClientsAPIError, match="connection error"):
             api._request("GET", "/test")
 
