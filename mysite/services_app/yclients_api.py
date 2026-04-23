@@ -321,47 +321,33 @@ class YClientsAPI:
             elif isinstance(response, list):
                 staff_list = response
             
-            # Проверяем услуги каждого мастера
+            # Фильтруем только по статусу мастера — /book_staff/?service_id=X
+            # уже возвращает правильный список оказывающих услугу (в т.ч. тех, у
+            # кого она привязана через должность/position, а не явно).
+            # Не делать вторую проверку через get_staff_services: она возвращает
+            # ТОЛЬКО услуги с явной привязкой staff↔service и теряет inherited
+            # от должности — типичный сценарий YClients.
             result = []
             for staff in staff_list:
-                # Пропускаем неактивных
                 if 'active' in staff and not staff.get('active', True):
                     continue
-                
                 if 'bookable' in staff and not staff.get('bookable', True):
                     continue
-                
                 if staff.get('hidden', 0) == 1 or staff.get('fired', 0) == 1:
                     continue
-                
-                staff_id = staff.get('id')
-                if not staff_id:
+                staff_id_ = staff.get('id')
+                if not staff_id_:
                     continue
-                
-                # Проверяем услуги мастера
-                try:
-                    staff_services = self.get_staff_services(staff_id)
-                    service_ids = [s.get('id') for s in staff_services if s.get('id')]
-                    
-                    if service_id not in service_ids:
-                        logger.debug(f"⏭️ Мастер {staff.get('name', 'Unknown')} (ID: {staff_id}) не оказывает услугу {service_id}")
-                        continue
-                    
-                    logger.debug(f"✅ Мастер {staff.get('name', 'Unknown')} (ID: {staff_id}) оказывает услугу {service_id}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось получить услуги для мастера {staff_id}: {e}")
-                    continue
-                
                 result.append({
-                    'id': staff.get('id'),
+                    'id': staff_id_,
                     'name': staff.get('name', ''),
                     'specialization': staff.get('specialization', ''),
                     'rating': staff.get('rating', 0),
                     'avatar': staff.get('avatar', ''),
                     'position': staff.get('position', {}).get('title', '') if isinstance(staff.get('position'), dict) else ''
                 })
-            
-            logger.info(f"✅ Fallback: отфильтровано мастеров для услуги {service_id}: {len(result)} из {len(staff_list)}")
+
+            logger.info(f"✅ book_staff: отфильтровано мастеров для услуги {service_id}: {len(result)} из {len(staff_list)}")
             return result
             
         except Exception as e:
