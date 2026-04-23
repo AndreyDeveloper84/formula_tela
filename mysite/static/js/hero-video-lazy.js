@@ -36,13 +36,18 @@
             s.src = s.dataset.src;
         });
         video.preload = "metadata";
+        // iOS Safari: autoplay политика работает ТОЛЬКО если атрибут autoplay
+        // присутствует на элементе. Программный .play() без user-gesture
+        // блокируется. Устанавливаем autoplay=true ДО load() — iOS запустит
+        // воспроизведение сам, когда metadata загрузятся.
+        video.autoplay = true;
         video.load();
+        // На desktop-браузерах autoplay=true может не сработать без явного
+        // play() в зависимости от аспекта reload'а — дублируем вызов.
+        // Promise отклоняется только на блокировке policy — это OK.
         var p = video.play();
         if (p && typeof p.catch === "function") {
-            p.catch(function () {
-                // Autoplay policy заблокировал — пусть pickupится через
-                // muted-click; не ломаем страницу.
-            });
+            p.catch(function () { /* policy заблокировал, не ломаем страницу */ });
         }
     }
 
