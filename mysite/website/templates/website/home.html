@@ -96,27 +96,20 @@
 {% block content %}
     <!-- ========================= banner start ========================= -->
     <section class="banner d-flex align-items-start">
-        {# Hero video: атрибут media="" на <source> — браузер нативно
-           выбирает ТОЛЬКО подходящий под viewport источник, остальные
-           игнорирует и НЕ качает. Загружается один файл (2 МБ на desktop
-           / 1.2 МБ на mobile) вместо 3.2 МБ суммарно.
-
-           Работает без JS: autoplay+preload стандартные, iOS/Safari ведут
-           себя ожидаемо, без эффектов от программной активации. #}
         <video width="100%" height="" class="video-pk mn7"
                autoplay loop muted playsinline
                preload="metadata"
                poster="{% static 'images/hero-poster.jpg' %}">
-            <source src="{% static 'video/video-pk.mp4' %}" type="video/mp4" media="(min-width: 768px)">
-            <source src="{% static 'video/video-pk.webm' %}" type="video/webm" media="(min-width: 768px)">
+            <source src="{% static 'video/video-pk.mp4' %}" type="video/mp4">
+            <source src="{% static 'video/video-pk.webm' %}" type="video/webm">
             Your browser does not support the video tag.
         </video>
         <video width="100%" height="" class="video-mob mobb7"
                autoplay loop muted playsinline
                preload="metadata"
                poster="{% static 'images/hero-poster.jpg' %}">
-            <source src="{% static 'video/video-mob.mp4' %}" type="video/mp4" media="(max-width: 767px)">
-            <source src="{% static 'video/video-mob.webm' %}" type="video/webm" media="(max-width: 767px)">
+            <source src="{% static 'video/video-mob.mp4' %}" type="video/mp4">
+            <source src="{% static 'video/video-mob.webm' %}" type="video/webm">
             Your browser does not support the video tag.
         </video>
         <div class="black-bg"></div>
