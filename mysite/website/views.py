@@ -787,18 +787,21 @@ def api_create_booking(request):
             f"Record ID: {booking.get('record_id')}"
         )
         
+        from website.serializers import BookingCreateResponseSerializer
+
+        booking_data = {
+            'booking_id': booking.get('record_id'),
+            'booking_hash': booking.get('record_hash') or '',
+            'staff_id': staff_id,
+            'staff_name': master.get('name') or '',
+            'datetime': booking_datetime,
+            'service_ids': service_ids,
+            'client_name': client['name'],
+            'comment': comment,
+        }
         response_payload = {
             'success': True,
-            'data': {
-                'booking_id': booking.get('record_id'),
-                'booking_hash': booking.get('record_hash'),
-                'staff_id': staff_id,
-                'staff_name': master.get('name'),
-                'datetime': booking_datetime,
-                'service_ids': service_ids,
-                'client_name': client['name'],
-                'comment': comment
-            }
+            'data': BookingCreateResponseSerializer(booking_data).data,
         }
         # Кэшируем только успешный ответ. Ошибки YClients не кэшируем —
         # клиент должен иметь возможность немедленно повторить.
@@ -1041,20 +1044,11 @@ def api_service_options(request):
             'error': 'Услуга не найдена'
         }, status=404)
     
+    from website.serializers import ServiceOptionResponseSerializer
+
     options = ServiceOption.objects.active().for_service(service).ordered()
-    
-    data = []
-    for opt in options:
-        data.append({
-            'id': opt.id,
-            'duration': opt.duration_min,
-            'quantity': opt.units,
-            'unit_type': opt.unit_type,
-            'unit_type_display': opt.get_unit_type_display(),
-            'price': float(opt.price),
-            'yclients_id': opt.yclients_service_id or '',
-        })
-    
+    data = ServiceOptionResponseSerializer(options, many=True).data
+
     return JsonResponse({
         'success': True,
         'data': data,
@@ -1176,6 +1170,8 @@ def api_get_staff(request):
     
     logger = logging.getLogger(__name__)
     
+    from website.serializers import StaffSerializer
+
     try:
         service_option_id = request.GET.get('service_option_id')
         all_staff = request.GET.get('all_staff') == '1'
@@ -1184,11 +1180,7 @@ def api_get_staff(request):
             api = get_yclients_api()
             staff_list = api.get_staff()
             logger.info(f"✅ Все мастера YClients: {len(staff_list)}")
-            formatted_staff = [
-                {'id': s.get('id'), 'name': s.get('name', ''),
-                 'specialization': s.get('specialization', ''), 'avatar': s.get('avatar', ''), 'rating': s.get('rating', 0)}
-                for s in staff_list
-            ]
+            formatted_staff = StaffSerializer(staff_list, many=True).data
             return JsonResponse({'success': True, 'data': formatted_staff, 'count': len(formatted_staff)})
 
         if service_option_id:
@@ -1228,18 +1220,8 @@ def api_get_staff(request):
                 # Получаем мастеров, которые могут оказывать эту услугу
                 staff_list = api.get_staff(service_id=service_id_int)
                 logger.info(f"✅ YClients вернул {len(staff_list)} мастеров для услуги {service_id_int}")
-                
-                # Форматируем ответ
-                formatted_staff = []
-                for staff in staff_list:
-                    formatted_staff.append({
-                        'id': staff.get('id'),
-                        'name': staff.get('name', ''),
-                        'specialization': staff.get('specialization', ''),
-                        'avatar': staff.get('avatar', ''),
-                        'rating': staff.get('rating', 0),
-                    })
-                
+
+                formatted_staff = StaffSerializer(staff_list, many=True).data
                 return JsonResponse({
                     'success': True,
                     'data': formatted_staff,
@@ -1402,21 +1384,22 @@ def api_bundle_request(request):
 @require_GET
 def api_wizard_categories(request):
     """Список категорий с количеством активных услуг"""
+    from website.serializers import WizardCategorySerializer
+
     categories = ServiceCategory.objects.active().prefetch_related("services").order_by("order", "name")
-    result = []
+    payload = []
     for cat in categories:
         active_count = cat.services.active().count()
         if active_count > 0:
-            result.append({
-                "id": cat.id,
-                "name": cat.name,
-                "services_count": active_count,
-            })
-    return JsonResponse({"categories": result})
+            payload.append({"id": cat.id, "name": cat.name, "services_count": active_count})
+    data = WizardCategorySerializer(payload, many=True).data
+    return JsonResponse({"categories": data})
 
 @require_GET
 def api_wizard_services(request, category_id):
     """Услуги категории с первым вариантом (цена, длительность)"""
+    from website.serializers import WizardServiceSerializer
+
     services = (
         Service.objects.active()
         .filter(category_id=category_id)
@@ -1424,17 +1407,18 @@ def api_wizard_services(request, category_id):
         .order_by("name")
     )
 
-    result = []
+    payload = []
     for svc in services:
         first_opt = svc.options.active().order_by("order", "price").first()
-        result.append({
+        payload.append({
             "id": svc.id,
             "name": svc.name,
             "duration": first_opt.duration_min if first_opt else None,
             "price": int(first_opt.price) if first_opt and first_opt.price else None,
             "option_id": first_opt.id if first_opt else None,
         })
-    return JsonResponse({"services": result})
+    data = WizardServiceSerializer(payload, many=True).data
+    return JsonResponse({"services": data})
 
 @csrf_exempt
 @ratelimit(key="ip", rate="5/m", method="POST", block=True)

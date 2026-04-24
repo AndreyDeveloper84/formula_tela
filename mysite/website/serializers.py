@@ -1,6 +1,15 @@
 """DRF serializers для customer-facing API website.
 
-Пока содержит только ServiceOrderCreateSerializer для /api/services/order/.
+Input serializers (валидация payload):
+- ServiceOrderCreateSerializer — POST /api/services/order/
+
+Output serializers (закрепляют JSON-контракт ответа, защищают от
+случайного field leak когда модели расширяются):
+- WizardCategorySerializer        — /api/wizard/categories/
+- WizardServiceSerializer         — /api/wizard/categories/<id>/services/
+- ServiceOptionResponseSerializer — /api/booking/service_options/
+- StaffSerializer                 — /api/booking/get_staff/   (data — dict от YClients, не модель)
+- BookingCreateResponseSerializer — /api/booking/create/      (data — dict от YClients + контекст view)
 """
 from datetime import datetime, time as dt_time
 
@@ -73,3 +82,62 @@ class ServiceOrderCreateSerializer(serializers.Serializer):
             id=attrs["service_option_id"]
         )
         return attrs
+
+
+# ── Output serializers ──────────────────────────────────────────────────────
+# Закрепляют JSON-контракт ответа. View собирает source-объект (модель или
+# dict) и передаёт в `Serializer(obj).data` — лишние поля не утекают.
+
+
+class WizardCategorySerializer(serializers.Serializer):
+    """Категория услуг для формы-мастера: id, имя, число активных услуг."""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    services_count = serializers.IntegerField()
+
+
+class WizardServiceSerializer(serializers.Serializer):
+    """Услуга для формы-мастера + первый активный вариант (цена/длительность).
+
+    `duration`/`price`/`option_id` — None, если у услуги нет активных опций.
+    """
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    duration = serializers.IntegerField(allow_null=True)
+    price = serializers.IntegerField(allow_null=True)
+    option_id = serializers.IntegerField(allow_null=True)
+
+
+class ServiceOptionResponseSerializer(serializers.Serializer):
+    """ServiceOption для модалки бронирования: длительность, кол-во, цена."""
+    id = serializers.IntegerField()
+    duration = serializers.IntegerField(source="duration_min")
+    quantity = serializers.IntegerField(source="units")
+    unit_type = serializers.CharField()
+    unit_type_display = serializers.CharField(source="get_unit_type_display")
+    price = serializers.FloatField()
+    yclients_id = serializers.SerializerMethodField()
+
+    def get_yclients_id(self, obj):
+        return obj.yclients_service_id or ""
+
+
+class StaffSerializer(serializers.Serializer):
+    """Мастер из YClients (источник — dict, не модель Django)."""
+    id = serializers.IntegerField(allow_null=True)
+    name = serializers.CharField(allow_blank=True, default="")
+    specialization = serializers.CharField(allow_blank=True, default="")
+    avatar = serializers.CharField(allow_blank=True, default="")
+    rating = serializers.FloatField(default=0)
+
+
+class BookingCreateResponseSerializer(serializers.Serializer):
+    """Ответ POST /api/booking/create/ — поля из YClients + контекст view."""
+    booking_id = serializers.IntegerField(allow_null=True)
+    booking_hash = serializers.CharField(allow_blank=True, default="")
+    staff_id = serializers.IntegerField()
+    staff_name = serializers.CharField(allow_blank=True, default="")
+    datetime = serializers.CharField()
+    service_ids = serializers.ListField(child=serializers.IntegerField())
+    client_name = serializers.CharField()
+    comment = serializers.CharField(allow_blank=True, default="")
