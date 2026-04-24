@@ -96,28 +96,20 @@
 {% block content %}
     <!-- ========================= banner start ========================= -->
     <section class="banner d-flex align-items-start">
-        {# Hero video: defer загрузки до window.load + 500мс (после LCP),
-           preload="none" + data-src на source'ах — нулевой network overhead
-           на first paint. static/js/hero-video-lazy.js копирует data-src→src
-           и зовёт play() после завершения критичного рендера. До этого
-           отображается poster. На slow-2g / Save-Data видео не грузится
-           вообще (poster остаётся). #}
         <video width="100%" height="" class="video-pk mn7"
-               loop muted playsinline
-               preload="none"
-               data-autoplay-hero
+               autoplay loop muted playsinline
+               preload="metadata"
                poster="{% static 'images/hero-poster.jpg' %}">
-            <source data-src="{% static 'video/video-pk.mp4' %}" type="video/mp4">
-            <source data-src="{% static 'video/video-pk.webm' %}" type="video/webm">
+            <source src="{% static 'video/video-pk.mp4' %}" type="video/mp4">
+            <source src="{% static 'video/video-pk.webm' %}" type="video/webm">
             Your browser does not support the video tag.
         </video>
         <video width="100%" height="" class="video-mob mobb7"
-               loop muted playsinline
-               preload="none"
-               data-autoplay-hero
+               autoplay loop muted playsinline
+               preload="metadata"
                poster="{% static 'images/hero-poster.jpg' %}">
-            <source data-src="{% static 'video/video-mob.mp4' %}" type="video/mp4">
-            <source data-src="{% static 'video/video-mob.webm' %}" type="video/webm">
+            <source src="{% static 'video/video-mob.mp4' %}" type="video/mp4">
+            <source src="{% static 'video/video-mob.webm' %}" type="video/webm">
             Your browser does not support the video tag.
         </video>
         <div class="black-bg"></div>
@@ -361,8 +353,6 @@
 {% endblock %}
 
 {% block extra_js %}
-{# Defer hero-video: активируется через 500мс после load, не блокирует LCP #}
-<script src="{% static 'js/hero-video-lazy.js' %}" defer></script>
 {% if promo_booking_svc_id %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
