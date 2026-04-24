@@ -1,0 +1,20 @@
+[Unit]
+Description=MAX Bot daemon for formulatela58.ru (mysite/maxbot)
+After=network.target redis-server.service postgresql.service
+Requires=redis-server.service
+
+[Service]
+Type=simple
+User=taximeter
+Group=taximeter
+WorkingDirectory=/home/taximeter/mysite/formula_tela/mysite
+EnvironmentFile=/home/taximeter/mysite/formula_tela/.env
+Environment=DJANGO_SETTINGS_MODULE=mysite.settings
+ExecStart=/home/taximeter/mysite/formula_tela/.venv312/bin/python -m maxbot.main
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
