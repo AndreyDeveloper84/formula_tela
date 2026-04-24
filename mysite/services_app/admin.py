@@ -19,6 +19,8 @@ from .models import (
     Review,
     BundleRequest,
     BookingRequest,
+    BotUser,
+    HelpArticle,
     ServiceBlock,
     ServiceMedia,
     Order,
@@ -528,11 +530,36 @@ class ReviewAdmin(admin.ModelAdmin):
 
 @admin.register(BookingRequest)
 class BookingRequestAdmin(admin.ModelAdmin):
-    list_display = ("client_name", "client_phone", "service_name", "master_name", "is_processed", "created_at")
-    list_filter = ("is_processed", "created_at")
+    list_display = ("client_name", "client_phone", "service_name", "master_name", "source", "is_processed", "created_at")
+    list_filter = ("source", "is_processed", "created_at")
     list_editable = ("is_processed",)
     search_fields = ("client_name", "client_phone", "service_name", "master_name")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "source", "bot_user")
+    autocomplete_fields = ()  # bot_user — раскроем когда добавим search в BotUserAdmin
+
+
+# ── MAX-бот ───────────────────────────────────────────────────────────
+
+
+@admin.register(BotUser)
+class BotUserAdmin(admin.ModelAdmin):
+    list_display = ("max_user_id", "client_name", "display_name", "client_phone", "first_seen", "last_seen")
+    search_fields = ("max_user_id", "client_name", "display_name", "client_phone")
+    readonly_fields = ("max_user_id", "display_name", "first_seen", "last_seen", "context")
+    fields = ("max_user_id", "display_name", "client_name", "client_phone", "first_seen", "last_seen", "context")
+
+    def has_add_permission(self, request):
+        # Создаются только из бота, не из админки
+        return False
+
+
+@admin.register(HelpArticle)
+class HelpArticleAdmin(admin.ModelAdmin):
+    list_display = ("question", "order", "is_active", "updated_at")
+    list_editable = ("order", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("question", "answer")
+    fields = ("question", "answer", "order", "is_active")
 
 
 # ── Заказы и сертификаты ──────────────────────────────────────────────

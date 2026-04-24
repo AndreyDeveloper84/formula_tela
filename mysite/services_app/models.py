@@ -1022,8 +1022,60 @@ class Review(models.Model):
         return self.author_name[0].upper() if self.author_name else "?"
 
 
+class BotUser(models.Model):
+    """Пользователь MAX-бота (для персонализации диалога между визитами)."""
+
+    SOURCE_NAME = "MAX"
+
+    max_user_id = models.BigIntegerField("ID в MAX", unique=True, db_index=True)
+    display_name = models.CharField("Имя из MAX", max_length=200, blank=True, default="")
+    client_name = models.CharField("Имя как назвался боту", max_length=150, blank=True, default="")
+    client_phone = models.CharField("Телефон", max_length=20, blank=True, default="")
+    first_seen = models.DateTimeField("Первый визит", auto_now_add=True)
+    last_seen = models.DateTimeField("Последний визит", auto_now=True)
+    context = models.JSONField(
+        "Контекст", default=dict, blank=True,
+        help_text='JSON: {"services_viewed": [slug], "faqs_viewed": [id], "bookings_count": N}',
+    )
+
+    class Meta:
+        verbose_name = "Пользователь MAX-бота"
+        verbose_name_plural = "Пользователи MAX-бота"
+        ordering = ["-last_seen"]
+
+    def __str__(self):
+        name = self.client_name or self.display_name or f"#{self.max_user_id}"
+        return f"{name} ({self.SOURCE_NAME}: {self.max_user_id})"
+
+
+class HelpArticle(models.Model):
+    """FAQ-статья для MAX-бота (отдельно от модели FAQ — та привязана к категориям услуг)."""
+
+    question = models.CharField("Вопрос", max_length=255)
+    answer = models.TextField("Ответ")
+    order = models.PositiveIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Активна", default=True)
+    created_at = models.DateTimeField("Создана", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлена", auto_now=True)
+
+    class Meta:
+        verbose_name = "Статья помощи (бот)"
+        verbose_name_plural = "Статьи помощи (бот)"
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.question
+
+
+BOOKING_SOURCE_CHOICES = [
+    ("wizard", "Форма-мастер"),
+    ("bot_max", "MAX-бот"),
+    ("other", "Другое"),
+]
+
+
 class BookingRequest(models.Model):
-    """Заявка на запись через визард на сайте"""
+    """Заявка на запись (визард на сайте или MAX-бот)."""
     category_name = models.CharField("Категория", max_length=200, blank=True, default="")
     service_name = models.CharField("Услуга", max_length=200)
     master_name = models.CharField("Предпочитаемый мастер", max_length=150, blank=True, default="")
@@ -1032,6 +1084,13 @@ class BookingRequest(models.Model):
     comment = models.TextField("Комментарий", blank=True, default="")
     is_processed = models.BooleanField("Обработана", default=False)
     created_at = models.DateTimeField("Дата заявки", auto_now_add=True)
+    source = models.CharField(
+        "Источник", max_length=20, choices=BOOKING_SOURCE_CHOICES, default="wizard",
+    )
+    bot_user = models.ForeignKey(
+        BotUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="booking_requests", verbose_name="Пользователь бота",
+    )
 
     class Meta:
         verbose_name = "Заявка на запись"
