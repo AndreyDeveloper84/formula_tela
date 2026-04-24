@@ -41,7 +41,16 @@ async def run() -> None:
     bot = Bot(token=cfg.token)
     dp = build_dispatcher()
 
-    me = await bot.get_me()
+    try:
+        me = await bot.get_me()
+    except Exception as exc:
+        logger.error(
+            "Не удалось подключиться к MAX API: %s. "
+            "Проверьте MAX_BOT_TOKEN в .env (он должен совпадать с токеном бота "
+            "из MAX для партнёров).",
+            exc,
+        )
+        raise
     logger.info("MAX bot online: user_id=%s username=%s", me.user_id, me.username)
 
     if cfg.mode == "polling":
