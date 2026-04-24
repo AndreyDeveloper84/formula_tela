@@ -5,6 +5,7 @@ main.py импортит get_routers() и регистрирует через dp
 """
 from __future__ import annotations
 
+from .booking import router as booking_router
 from .services import router as services_router
 from .start import router as start_router
 
@@ -16,4 +17,4 @@ def get_routers():
     зарегистрированы раньше общих fallback'ов (T-12 fallback router идёт
     последним).
     """
-    return [start_router, services_router]
+    return [start_router, services_router, booking_router]
