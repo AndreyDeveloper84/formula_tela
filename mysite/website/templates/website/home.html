@@ -96,29 +96,27 @@
 {% block content %}
     <!-- ========================= banner start ========================= -->
     <section class="banner d-flex align-items-start">
-        {# Hero video: defer загрузки src до window.load + 500мс (после LCP),
-           preload="none" + data-src — нулевой network overhead на first paint.
+        {# Hero video: атрибут media="" на <source> — браузер нативно
+           выбирает ТОЛЬКО подходящий под viewport источник, остальные
+           игнорирует и НЕ качает. Загружается один файл (2 МБ на desktop
+           / 1.2 МБ на mobile) вместо 3.2 МБ суммарно.
 
-           Атрибут autoplay сохранён в HTML — iOS Safari читает его при
-           первом load события и сам запускает воспроизведение когда буфер
-           достаточен. Программный .play() на iOS без user-gesture блокируется,
-           поэтому полагаемся на стандартный autoplay attribute + muted + playsinline. #}
+           Работает без JS: autoplay+preload стандартные, iOS/Safari ведут
+           себя ожидаемо, без эффектов от программной активации. #}
         <video width="100%" height="" class="video-pk mn7"
                autoplay loop muted playsinline
-               preload="none"
-               data-autoplay-hero
+               preload="metadata"
                poster="{% static 'images/hero-poster.jpg' %}">
-            <source data-src="{% static 'video/video-pk.mp4' %}" type="video/mp4">
-            <source data-src="{% static 'video/video-pk.webm' %}" type="video/webm">
+            <source src="{% static 'video/video-pk.mp4' %}" type="video/mp4" media="(min-width: 768px)">
+            <source src="{% static 'video/video-pk.webm' %}" type="video/webm" media="(min-width: 768px)">
             Your browser does not support the video tag.
         </video>
         <video width="100%" height="" class="video-mob mobb7"
                autoplay loop muted playsinline
-               preload="none"
-               data-autoplay-hero
+               preload="metadata"
                poster="{% static 'images/hero-poster.jpg' %}">
-            <source data-src="{% static 'video/video-mob.mp4' %}" type="video/mp4">
-            <source data-src="{% static 'video/video-mob.webm' %}" type="video/webm">
+            <source src="{% static 'video/video-mob.mp4' %}" type="video/mp4" media="(max-width: 767px)">
+            <source src="{% static 'video/video-mob.webm' %}" type="video/webm" media="(max-width: 767px)">
             Your browser does not support the video tag.
         </video>
         <div class="black-bg"></div>
@@ -362,8 +360,6 @@
 {% endblock %}
 
 {% block extra_js %}
-{# Defer hero-video: активируется через 500мс после load, не блокирует LCP #}
-<script src="{% static 'js/hero-video-lazy.js' %}" defer></script>
 {% if promo_booking_svc_id %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
