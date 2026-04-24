@@ -532,6 +532,22 @@ background-color: #fff;}
 .banner .container {position:relative;}
 .banner {position:relative;}
 
+/* Hero video: позиционируем абсолютно, чтобы размер не зависел от
+   intrinsic dimensions <video> (при preload="none" они = 0).
+   object-fit:cover — сохранить пропорции, заполнить блок. z-index ниже
+   .black-bg и .container — текст поверх видео. */
+.banner > .video-pk,
+.banner > .video-mob {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+}
+.banner .container { z-index: 2; }
+.banner .black-bg { z-index: 1; }
+
 .banner .d-flex {font-size:24px;position:absolute;bottom:65px;width:100%;}
 .banner .d-flex span:nth-child(2) {opacity:50%;}
 
