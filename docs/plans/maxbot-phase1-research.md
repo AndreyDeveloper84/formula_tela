@@ -11,11 +11,17 @@
 | Параметр | Значение |
 |---|---|
 | Имя пакета (PyPI) | `maxapi` |
-| Версия | **0.9.4** |
+| Версия | **1.0.0** (стабильная на 2026-04-24) |
 | Python | `>=3.10` (3.12 поддерживается) |
 | Лицензия | MIT |
-| Установка | `pip install 'maxapi==0.9.4'` (pin на текущую стабильную) |
-| Webhook | `pip install 'maxapi[webhook]==0.9.4'` (добавляет fastapi+uvicorn) |
+| Установка | `pip install 'maxapi==1.0.0'` |
+| Webhook | `pip install 'maxapi[webhook]==1.0.0'` (добавляет fastapi+uvicorn) |
+
+⚠ **НЕ используй 0.9.x** — там `Bot.params = {'access_token': token}`, MAX API
+теперь жёстко отвергает: `401 verify.token "Query parameter access_token is
+deprecated, use Authorization header"`. Версия 1.0.0 переехала на
+`headers = {"Authorization": token}` (см. `maxapi/bot.py:194`). Также 1.0.0
+читает `MAX_BOT_TOKEN` из env автоматически в `Bot()`.
 
 **Зависимости:**
 - `aiohttp>=3.12.14`
