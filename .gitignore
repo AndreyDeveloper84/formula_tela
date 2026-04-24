@@ -35,6 +35,14 @@ Thumbs.db
 
 # Node (Claude Code ставится глобально, в проекте не должен быть)
 node_modules/
+package.json
+package-lock.json
+
+# Claude Code локальная конфигурация (settings.local.json, hooks, agents)
+.claude/
+
+# Локальные debug-скриншоты
+screens/
 
 # Repomix output — дамп всего репозитория для LLM-контекста
 repomix-output.xml
