@@ -26,14 +26,11 @@ logger = logging.getLogger("maxbot")
 
 
 def build_dispatcher() -> Dispatcher:
-    """Собирает Dispatcher с зарегистрированными handler'ами.
+    """Собирает Dispatcher с зарегистрированными router'ами из handlers/."""
+    from maxbot.handlers import get_routers
 
-    На T-03 — пустой каркас (handler'ы добавим в T-07..T-12).
-    """
     dp = Dispatcher()
-    # T-07: dp.include_router(start.router)
-    # T-08: dp.include_router(services.router)
-    # ...
+    dp.include_routers(*get_routers())
     return dp
 
 
