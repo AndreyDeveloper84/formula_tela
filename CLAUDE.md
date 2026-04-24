@@ -29,14 +29,19 @@ mysite/                  <- корень git
 │   ├── services_app/    <- основное приложение: каталог услуг, блоки, медиа, FAQ, отзывы
 │   ├── website/         <- frontend: views, шаблоны, context processors
 │   ├── booking/         <- заявки на запись, синхронизация с YClients
+│   ├── notifications/   <- Telegram + email уведомления (extracted из website/ в P2)
+│   ├── payments/        <- YooKassa integration; содержит admin.py с payment-actions
+│   │                       для Order/GiftCertificate (переехали из services_app/admin.py)
 │   ├── agents/          <- AI-агенты: аналитика, SEO, маркетинговая автоматизация
 │   │   ├── agents/      <- модули агентов (analytics, seo_landing, smm_growth и др.)
 │   │   ├── integrations/ <- внешние API (yandex_metrika, yandex_webmaster, vk_ads, yandex_direct)
 │   │   └── management/  <- management commands (check_metrika, check_webmaster)
-│   ├── tests/           <- тесты pytest
+│   ├── tests/           <- тесты pytest (691 test'ов)
 │   └── manage.py
+├── audits/              <- markdown-отчёты codebase-audit-suite (ln-6XX worker'ов)
 ├── docker-compose.yml
 ├── Dockerfile
+├── .dockerignore        <- исключает .env, .git, .venv, audits, media из Docker-context
 ├── requirements.txt
 └── pytest.ini
 ```
@@ -90,6 +95,25 @@ Frontend views: главная, каталог услуг, детальная с
 
 ### booking
 Минимальный — placeholder `booking()` view. Booking API endpoint'ы живут в `website/views.py`.
+
+### notifications (P2 2026-04-23)
+Python-пакет (не Django-app, нет моделей) с централизованными уведомлениями:
+- `send_notification_telegram(text)` — Telegram, читает `TELEGRAM_BOT_TOKEN/CHAT_ID` из env
+- `send_notification_email(subject, msg)` — email, получатели из `SiteSettings.notification_emails` → fallback на `ADMIN_NOTIFICATION_EMAIL`
+- `get_notification_recipients()` — lazy-импортит `SiteSettings` (единственная зависимость от services_app)
+- `send_certificate_email(order, cert, pdf_bytes=None)` — письмо покупателю после оплаты сертификата
+
+Импорт: `from notifications import send_notification_telegram, send_certificate_email, ...`.
+Раньше жил как `website/notifications.py` — вынесен в отдельный пакет чтобы разорвать циклы `payments ↔ website`, `services_app ↔ website`, `website ↔ agents` (4 пары из ln-644 аудита).
+
+### payments
+YooKassa-интеграция + админ-акции для Order/GiftCertificate:
+- `payments/services.py::PaymentService.create_for_order(order)` — создание YooKassa-платежа
+- `payments/booking_service.py::YClientsBookingService.create_record(order)` — shared-service создания YClients-записи
+- `payments/views.py::yookassa_webhook` — приём callback'ов, verify-через-API, `transaction.atomic + on_commit` для enqueue fulfillment task
+- `payments/tasks.py` — Celery-задачи `fulfill_paid_order/certificate/bundle` с idempotency через `yclients_record_id`
+- `payments/admin.py` (новый в P2 2026-04-23) — subclass'ы `OrderAdmin` и `GiftCertificateAdmin` с payment-actions (recreate payment link, mark as paid, resend certificate email). Паттерн unregister+register: `services_app/admin.py` регистрирует базовые admin'ы, `payments/admin.py` их перерегистрирует с payment-actions. Разрывает цикл `services_app → payments` (ln-644 H1, H2).
+- `payments/ip_whitelist.py` — YooKassa IP-subnet check, отключаемо через `YOOKASSA_WEBHOOK_STRICT_IP=0`.
 
 ---
 
@@ -249,6 +273,11 @@ pytest mysite/tests/test_booking_live.py -v -s
 - **OpenAI клиент централизован**: все агенты импортируют `get_openai_client()` из `agents/agents/__init__.py` — не создавать `OpenAI()` напрямую. Клиент автоматически поднимает HTTP-прокси из `OPENAI_PROXY` (нужно на русских серверах)
 - Telegram API (`agents/telegram.py`) также использует `OPENAI_PROXY`/`TELEGRAM_PROXY` т.к. api.telegram.org заблокирован в РФ
 - Sitemap — через `django.contrib.sitemaps` (4 sitemap: static/services/categories/landings), классы в `mysite/website/sitemaps.py`
+- **YClientsAPI — singleton через `lru_cache`** (P1 2026-04-23): `get_yclients_api()` возвращает кэшированный экземпляр с переиспользуемой `requests.Session` + urllib3 `Retry` adapter (3 попытки, backoff 0.5s, для 502/503/504). В тестах `conftest.py::_clear_yclients_singleton` сбрасывает кэш. Мокать HTTP через `patch("requests.Session.request", ...)`, не `requests.request`.
+- **Payment webhook = atomic + on_commit** (P1 2026-04-23): `payments/views.py::_handle_succeeded` обернут в `transaction.atomic()`, enqueue fulfillment task — через `transaction.on_commit(lambda: task.delay(order.id))`. Защищает от потери задачи если save() откатится. В тестах используй `django_capture_on_commit_callbacks(execute=True)` или фикстуру `post_webhook` (в test_webhook.py).
+- **Celery settings (base.py)** (P1 2026-04-23): `CELERY_TASK_ACKS_LATE=True`, `CELERY_TASK_REJECT_ON_WORKER_LOST=True`, `CELERY_WORKER_PREFETCH_MULTIPLIER=1`, `CELERY_BROKER_TRANSPORT_OPTIONS={"visibility_timeout": 3600}`, `CELERY_TASK_SOFT_TIME_LIMIT=1800`, `CELERY_TASK_TIME_LIMIT=1860`. Защита от тихой потери задач при деплое / OOM / SIGKILL.
+- **Production fail-fast** (P0 2026-04-23): `settings/production.py` бросает `ImproperlyConfigured` на boot если отсутствуют `DJANGO_SECRET_KEY`, `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_TOKEN`, `YCLIENTS_COMPANY_ID` (не `assert` — он гасится флагом `python -O`).
+- **Ноль циклов между app'ами** (P2 2026-04-23): `services_app` не импортирует ни из `payments`, ни из `agents`, ни из `website`, ни из `notifications`. Все 8 циклических зависимостей из ln-644 аудита разорваны. Фичевые app → domain, domain ничего не знает о features.
 
 ---
 
@@ -424,6 +453,16 @@ git pull origin dev
 # Новые ветки — только по явной просьбе
 ```
 
+### Prod deploy — ТОЛЬКО через GitHub PR (не локальный merge)
+После инцидента 2026-04-23 где я сделал локальный `git merge dev → main + push origin main` вместо PR через UI, **правило**: prod-деплой идёт через Pull Request `dev → main` на GitHub. Это даёт:
+- Diff-review в UI (видно что именно улетит в прод)
+- Approval flow
+- Автоматический запуск CI + deploy workflow связанных с PR merge
+- Историю PR-ов в репо (timeline релизов)
+
+### Feature PRs — push ВСЕ коммиты до merge
+После инцидента 2026-04-23 где PR #78 был смержен когда в ветке был только 1 коммит, а ещё 2 запушил ПОСЛЕ merge — они остались висеть в remote-ветке, в dev не попали, потратил 2 часа на диагностику. **Правило**: перед кликом "Merge" на PR дождаться что **все намеченные коммиты запушены**. GitHub merge'ит snapshot на момент клика, последующие push в ту же ветку не подхватываются.
+
 ---
 
 ## Типичные ошибки
@@ -558,7 +597,19 @@ python manage.py check
 - **GET `/api/agents/health/`**: JSON endpoint — healthy/degraded/unhealthy, per-agent SLA, stuck_tasks, error_rate_24h
 - **DailyMetric timing**: поля `agent_runs` (JSON), `total_duration`, `error_count` — заполняются из `run_daily_agents`
 
+#### Audit remediation (2026-04-23 — сессия ln-640-pattern-evolution-auditor)
+10 audit-отчётов в `audits/` (запускалось `/codebase-audit-suite:ln-640-pattern-evolution-auditor` + ln-641..647). Исходный weighted score 5.2/10, 42 finding (5 CRITICAL + 19 HIGH). Сделано P0+P1+P2:
+- **P0 security**: ротация `DB_PASSWORD_STAGING` и `DB_PASSWORD` GitHub secrets (были пустые), `.env.example` очищен от live YOOKASSA key, `.gitignore` исправлен (`.env.*` → `.env.local`), создан `.dockerignore`, production.py fail-fast на missing env vars.
+- **P1 reliability**: Celery `acks_late + reject_on_worker_lost + prefetch=1 + visibility_timeout=3600`; webhook `transaction.atomic + on_commit` для enqueue Celery task; YClients `requests.Session + Retry + lru_cache singleton`.
+- **P1 CI/CD**: `pg_dump` hardening в deploy-staging.yml и deploy.yml — size-check ≥1KB + `exit 1` на fail (87 пустых staging backup удалены).
+- **P2 architecture**: вынос `notifications/` в отдельный пакет, payment-actions перенесены в `payments/admin.py` — все 8 циклов между app'ами разорваны (ln-644 H1, H2, C1, C2, H3, H4).
+
+Ожидаемый score после: ~8.2/10. PR #83 `dev → main` открыт, ждёт merge для деплоя на prod.
+
 ### Следующие задачи
+- **P2-3**: DRF output serializers для booking API (ln-643 H1) — website/views.py возвращает JSON через ручную сборку dict'ов вместо сериалайзеров.
+- **P3 foundation**: `docs/architecture.md` + `docs/project/dependency_rules.yaml` (разблокирует CI-проверку boundary через `pytest-archon`).
+- **Infra**: nginx gzip/brotli для CSS/JS (sudo команда лежит в todo — даст -60% на text-assets); убрать зомби-gunicorn `djangoProject` на 0.0.0.0:8000.
 - Circuit breaker для внешних API (Метрика, Вебмастер, VK, Директ)
 - Новые методы Метрики: `get_exit_pages()`, `get_scroll_depth()`
 - Обогащение SEOLandingAgent: exit pages, поведенческие алерты в Telegram
@@ -575,7 +626,7 @@ python manage.py check
 
 ---
 
-*Последнее обновление: 2026-04-17*
+*Последнее обновление: 2026-04-24 (после audit remediation P0+P1+P2, notifications/ + payments/admin.py extracted, SSH fail2ban lesson, PR-workflow правила)*
 
 ---
 
