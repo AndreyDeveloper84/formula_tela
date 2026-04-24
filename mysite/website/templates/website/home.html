@@ -96,14 +96,15 @@
 {% block content %}
     <!-- ========================= banner start ========================= -->
     <section class="banner d-flex align-items-start">
-        {# Hero video: defer загрузки до window.load + 500мс (после LCP),
-           preload="none" + data-src на source'ах — нулевой network overhead
-           на first paint. static/js/hero-video-lazy.js копирует data-src→src
-           и зовёт play() после завершения критичного рендера. До этого
-           отображается poster. На slow-2g / Save-Data видео не грузится
-           вообще (poster остаётся). #}
+        {# Hero video: defer загрузки src до window.load + 500мс (после LCP),
+           preload="none" + data-src — нулевой network overhead на first paint.
+
+           Атрибут autoplay сохранён в HTML — iOS Safari читает его при
+           первом load события и сам запускает воспроизведение когда буфер
+           достаточен. Программный .play() на iOS без user-gesture блокируется,
+           поэтому полагаемся на стандартный autoplay attribute + muted + playsinline. #}
         <video width="100%" height="" class="video-pk mn7"
-               loop muted playsinline
+               autoplay loop muted playsinline
                preload="none"
                data-autoplay-hero
                poster="{% static 'images/hero-poster.jpg' %}">
@@ -112,7 +113,7 @@
             Your browser does not support the video tag.
         </video>
         <video width="100%" height="" class="video-mob mobb7"
-               loop muted playsinline
+               autoplay loop muted playsinline
                preload="none"
                data-autoplay-hero
                poster="{% static 'images/hero-poster.jpg' %}">

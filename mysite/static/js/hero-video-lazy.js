@@ -35,20 +35,21 @@
         sources.forEach(function (s) {
             s.src = s.dataset.src;
         });
-        video.preload = "metadata";
-        // iOS Safari: autoplay политика работает ТОЛЬКО если атрибут autoplay
-        // присутствует на элементе. Программный .play() без user-gesture
-        // блокируется. Устанавливаем autoplay=true ДО load() — iOS запустит
-        // воспроизведение сам, когда metadata загрузятся.
-        video.autoplay = true;
+        // preload="auto" — iOS Safari требует достаточный буфер для autoplay.
+        // metadata недостаточно: iOS ждёт готовности к непрерывному воспроизведению
+        // до конца и показывает play-button если данных мало.
+        video.preload = "auto";
         video.load();
-        // На desktop-браузерах autoplay=true может не сработать без явного
-        // play() в зависимости от аспекта reload'а — дублируем вызов.
-        // Promise отклоняется только на блокировке policy — это OK.
-        var p = video.play();
-        if (p && typeof p.catch === "function") {
-            p.catch(function () { /* policy заблокировал, не ломаем страницу */ });
-        }
+        // Атрибут autoplay уже в HTML — браузер (iOS и desktop) сам запустит
+        // воспроизведение когда буфера хватит. Программный .play() на iOS без
+        // user-gesture блокируется и может сломать ожидающий autoplay.
+        // На всякий случай пробуем на desktop — iOS просто проглотит.
+        try {
+            var p = video.play();
+            if (p && typeof p.catch === "function") {
+                p.catch(function () { /* policy заблокировал — autoplay сам отработает */ });
+            }
+        } catch (e) { /* старые браузеры без Promise */ }
     }
 
     function isVisible(el) {
