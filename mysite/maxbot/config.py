@@ -29,7 +29,8 @@ class MaxBotConfig:
     mode: str
     webhook_host: str
     webhook_port: int
-    webhook_secret: str  # пустая строка = без secret
+    webhook_path: str
+    webhook_secret: str  # пустая строка = без secret-header validation
 
 
 def get_config() -> MaxBotConfig:
@@ -47,10 +48,18 @@ def get_config() -> MaxBotConfig:
             f"Должно быть одно из: {VALID_MODES}."
         )
 
+    try:
+        port = int(os.environ.get("MAX_WEBHOOK_PORT", "8003"))
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"MAX_WEBHOOK_PORT — нечисловое: {exc}")
+    if not (1 <= port <= 65535):
+        raise ImproperlyConfigured(f"MAX_WEBHOOK_PORT={port} — вне диапазона 1..65535")
+
     return MaxBotConfig(
         token=token,
         mode=mode,
         webhook_host=os.environ.get("MAX_WEBHOOK_HOST", "127.0.0.1"),
-        webhook_port=int(os.environ.get("MAX_WEBHOOK_PORT", "8003")),
+        webhook_port=port,
+        webhook_path=os.environ.get("MAX_WEBHOOK_PATH", "/api/maxbot/webhook/"),
         webhook_secret=os.environ.get("MAX_WEBHOOK_SECRET", "").strip(),
     )

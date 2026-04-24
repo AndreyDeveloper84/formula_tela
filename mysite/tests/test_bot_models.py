@@ -61,6 +61,17 @@ def test_help_article_active_default():
     assert a.is_active is True
 
 
+@pytest.mark.django_db
+def test_help_article_active_queryset_method():
+    """HelpArticle.objects.active() — отфильтровывает is_active=False (проектный паттерн)."""
+    a1 = baker.make("services_app.HelpArticle", question="Q1", answer="A", is_active=True)
+    a2 = baker.make("services_app.HelpArticle", question="Q2", answer="A", is_active=False)
+    from services_app.models import HelpArticle
+    active_ids = list(HelpArticle.objects.active().values_list("id", flat=True))
+    assert a1.id in active_ids
+    assert a2.id not in active_ids
+
+
 # ─── BookingRequest расширения ──────────────────────────────────────────────
 
 @pytest.mark.django_db

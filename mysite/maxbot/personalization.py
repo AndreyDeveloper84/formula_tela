@@ -1,38 +1,39 @@
 """Персонализация диалога: get_or_create_bot_user, greet_text, update_context.
 
 Основа: services_app.BotUser. Все ORM-операции через sync_to_async — handler'ы
-async, ORM sync.
+async, ORM sync. Конкурентные обновления context защищены через
+transaction.atomic + select_for_update (один webhook на user обычно
+сериализуется MAX-ом, но при ретраях/быстрых double-tap'ах race возможен).
 """
 from __future__ import annotations
 
 from asgiref.sync import sync_to_async
+from django.db import transaction
+from django.utils import timezone
 
 from maxbot import texts
+from services_app.models import BotUser
 
 
 @sync_to_async
 def get_or_create_bot_user(max_user_id: int, display_name: str = ""):
     """Возвращает (BotUser, created: bool).
 
-    При повторном визите — обновляет display_name (от MAX) если он изменился,
-    но НЕ перезаписывает client_name (который клиент сам ввёл боту).
-
-    last_seen обновится автоматически через `auto_now=True` при сохранении.
+    Для existing user — атомарный UPDATE одной командой (не save!) — экономит
+    1 query на hot path /start. Не перезаписывает client_name (его клиент
+    ввёл боту, а display_name приходит от MAX автоматически).
     """
-    from services_app.models import BotUser
-
     user, created = BotUser.objects.get_or_create(
         max_user_id=max_user_id,
         defaults={"display_name": display_name},
     )
     if not created:
-        # update display_name (с MAX) если поменялся
+        # Один UPDATE вместо обращения user.save() — нет re-fetch, нет race на других полях.
+        update_kwargs = {"last_seen": timezone.now()}
         if display_name and user.display_name != display_name:
-            user.display_name = display_name
-            user.save(update_fields=["display_name", "last_seen"])
-        else:
-            # просто прокинуть last_seen
-            user.save(update_fields=["last_seen"])
+            update_kwargs["display_name"] = display_name
+            user.display_name = display_name  # Sync in-memory копию для caller'а
+        BotUser.objects.filter(pk=user.pk).update(**update_kwargs)
     return user, created
 
 
@@ -49,21 +50,19 @@ def greet_text(bot_user, *, is_new: bool) -> str:
 
 @sync_to_async
 def update_context(bot_user_id: int, **updates) -> None:
-    """Atomically merges kwargs в context dict. Перезаписывает существующие ключи."""
-    from services_app.models import BotUser
-
-    user = BotUser.objects.get(pk=bot_user_id)
-    user.context.update(updates)
-    user.save(update_fields=["context", "last_seen"])
+    """Atomic merge updates в context dict (защита от race при concurrent webhook'ах)."""
+    with transaction.atomic():
+        user = BotUser.objects.select_for_update().get(pk=bot_user_id)
+        user.context.update(updates)
+        user.save(update_fields=["context", "last_seen"])
 
 
 @sync_to_async
 def append_to_context(bot_user_id: int, key: str, value) -> None:
-    """Добавить value в список под ключом key. Без дублей."""
-    from services_app.models import BotUser
-
-    user = BotUser.objects.get(pk=bot_user_id)
-    lst = user.context.setdefault(key, [])
-    if value not in lst:
-        lst.append(value)
-        user.save(update_fields=["context", "last_seen"])
+    """Atomic append value в список под ключом key. Без дублей."""
+    with transaction.atomic():
+        user = BotUser.objects.select_for_update().get(pk=bot_user_id)
+        lst = user.context.setdefault(key, [])
+        if value not in lst:
+            lst.append(value)
+            user.save(update_fields=["context", "last_seen"])

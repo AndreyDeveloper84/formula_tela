@@ -51,14 +51,16 @@ async def run() -> None:
         await dp.start_polling(bot)
     else:
         logger.info(
-            "Mode: webhook on %s:%s (secret_path=%s)",
-            cfg.webhook_host, cfg.webhook_port, bool(cfg.webhook_secret),
+            "Mode: webhook %s:%s path=%s secret=%s",
+            cfg.webhook_host, cfg.webhook_port, cfg.webhook_path, bool(cfg.webhook_secret),
         )
+        # secret=None если пустая строка → SDK не валидирует X-Max-Bot-Api-Secret
         await dp.handle_webhook(
             bot=bot,
             host=cfg.webhook_host,
             port=cfg.webhook_port,
-            log_level="info",
+            path=cfg.webhook_path,
+            secret=cfg.webhook_secret or None,
         )
 
 

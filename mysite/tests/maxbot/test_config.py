@@ -43,3 +43,26 @@ def test_config_invalid_mode_raises(monkeypatch):
     from maxbot.config import get_config
     with pytest.raises(ImproperlyConfigured, match="MAX_BOT_MODE"):
         get_config()
+
+
+def test_config_default_webhook_path(monkeypatch):
+    monkeypatch.setenv("MAX_BOT_TOKEN", "x")
+    monkeypatch.delenv("MAX_WEBHOOK_PATH", raising=False)
+    from maxbot.config import get_config
+    assert get_config().webhook_path == "/api/maxbot/webhook/"
+
+
+def test_config_invalid_webhook_port(monkeypatch):
+    monkeypatch.setenv("MAX_BOT_TOKEN", "x")
+    monkeypatch.setenv("MAX_WEBHOOK_PORT", "0")
+    from maxbot.config import get_config
+    with pytest.raises(ImproperlyConfigured, match="MAX_WEBHOOK_PORT"):
+        get_config()
+
+
+def test_config_non_numeric_webhook_port(monkeypatch):
+    monkeypatch.setenv("MAX_BOT_TOKEN", "x")
+    monkeypatch.setenv("MAX_WEBHOOK_PORT", "abc")
+    from maxbot.config import get_config
+    with pytest.raises(ImproperlyConfigured, match="MAX_WEBHOOK_PORT"):
+        get_config()

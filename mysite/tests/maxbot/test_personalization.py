@@ -3,7 +3,10 @@ import pytest
 from asgiref.sync import sync_to_async
 from model_bakery import baker
 
-pytestmark = pytest.mark.django_db
+# transaction=True обязательно для async-тестов с DB:
+# обычный django_db использует savepoints через TestCase, что некорректно
+# работает в async-контексте (см. code-reviewer review #2).
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 # baker.make нельзя вызывать из async — оборачиваем

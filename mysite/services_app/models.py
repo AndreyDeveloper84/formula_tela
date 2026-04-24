@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from .managers import (
     BundleQuerySet,
+    HelpArticleQuerySet,
     MasterQuerySet,
     PromotionQuerySet,
     ReviewQuerySet,
@@ -1057,6 +1058,8 @@ class HelpArticle(models.Model):
     is_active = models.BooleanField("Активна", default=True)
     created_at = models.DateTimeField("Создана", auto_now_add=True)
     updated_at = models.DateTimeField("Обновлена", auto_now=True)
+
+    objects = HelpArticleQuerySet.as_manager()
 
     class Meta:
         verbose_name = "Статья помощи (бот)"
