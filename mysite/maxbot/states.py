@@ -10,3 +10,12 @@ class BookingStates(StatesGroup):
     awaiting_name = State()
     awaiting_phone = State()
     awaiting_confirm = State()
+
+
+class AskStates(StatesGroup):
+    """FSM для свободного диалога с AI-помощником (T-06c).
+
+    awaiting_question — клиент кликнул «❓ Задать вопрос», ждём текст вопроса.
+    После получения ответа state очищается (one-shot).
+    """
+    awaiting_question = State()
