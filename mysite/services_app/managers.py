@@ -119,3 +119,9 @@ class ReviewQuerySet(models.QuerySet):
 class HelpArticleQuerySet(models.QuerySet):
     def active(self):
         return self.filter(is_active=True)
+
+
+class BotInquiryQuerySet(models.QuerySet):
+    def unanswered(self):
+        """Inquiry без reply_text (или с пустым) — ждут ответа менеджера."""
+        return self.filter(reply_text="")

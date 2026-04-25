@@ -21,6 +21,7 @@ from .models import (
     BookingRequest,
     BotUser,
     HelpArticle,
+    BotInquiry,
     ServiceBlock,
     ServiceMedia,
     Order,
@@ -560,6 +561,69 @@ class HelpArticleAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("question", "answer")
     fields = ("question", "answer", "order", "is_active")
+
+
+@admin.register(BotInquiry)
+class BotInquiryAdmin(admin.ModelAdmin):
+    """Вопросы клиентов которые AI-помощник передал менеджеру.
+
+    Workflow для менеджера:
+    1. Открыть unanswered (фильтр sent_to_max=False) — отсортированы по asked_at DESC
+    2. Прочитать question, написать reply_text
+    3. Выделить запись → action «📤 Отправить ответ клиенту в MAX»
+    4. После успешной отправки sent_to_max=True, replied_at + replied_by заполнятся
+    """
+
+    list_display = ("id", "question_preview", "bot_user_name", "asked_at",
+                    "is_replied", "sent_to_max")
+    list_filter = ("sent_to_max", "asked_at")
+    search_fields = ("question", "reply_text", "bot_user__client_name",
+                     "bot_user__display_name")
+    readonly_fields = ("bot_user", "chat_id", "question", "asked_at",
+                       "replied_at", "replied_by", "sent_to_max")
+    fields = ("bot_user", "chat_id", "question", "asked_at",
+              "reply_text", "replied_at", "replied_by", "sent_to_max")
+    actions = ["send_reply_to_client"]
+
+    def has_add_permission(self, request):
+        return False  # Создаются только из бота
+
+    def question_preview(self, obj):
+        return obj.question[:80] + ("…" if len(obj.question) > 80 else "")
+    question_preview.short_description = "Вопрос"
+
+    def bot_user_name(self, obj):
+        return obj.bot_user.client_name or obj.bot_user.display_name or f"#{obj.bot_user.max_user_id}"
+    bot_user_name.short_description = "Клиент"
+
+    def is_replied(self, obj):
+        return bool(obj.reply_text)
+    is_replied.boolean = True
+    is_replied.short_description = "Ответ написан"
+
+    @admin.action(description="📤 Отправить ответ клиенту в MAX")
+    def send_reply_to_client(self, request, queryset):
+        # Фактическая отправка реализуется в T-09 (push-back флоу через bot.send_message).
+        # Сейчас — stub: помечает sent_to_max=True если reply_text есть.
+        from django.utils import timezone
+        from django.contrib import messages
+
+        sent = 0
+        skipped = 0
+        for inq in queryset:
+            if not inq.reply_text.strip():
+                skipped += 1
+                continue
+            # TODO T-09: реальный bot.send_message(chat_id=inq.chat_id, text=inq.reply_text)
+            inq.sent_to_max = True
+            inq.replied_at = timezone.now()
+            inq.replied_by = request.user
+            inq.save(update_fields=["sent_to_max", "replied_at", "replied_by"])
+            sent += 1
+        if sent:
+            messages.success(request, f"Отмечено как отправлено: {sent}. (T-09: реальная отправка в MAX будет позже.)")
+        if skipped:
+            messages.warning(request, f"Пропущено (пустой ответ): {skipped}")
 
 
 # ── Заказы и сертификаты ──────────────────────────────────────────────

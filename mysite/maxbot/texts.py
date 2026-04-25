@@ -35,6 +35,7 @@ BOOKING_CONFIRM = (
     "💆 {service}\n\n"
     "Всё верно?"
 )
+BOOKING_ACCEPTING = "Принимаю заявку, секунду…"
 BOOKING_DONE = (
     "Спасибо! Заявка №{request_id} принята. "
     "Менеджер перезвонит в ближайшее время. ✅"
