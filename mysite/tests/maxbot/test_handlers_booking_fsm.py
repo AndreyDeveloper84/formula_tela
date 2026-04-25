@@ -220,6 +220,57 @@ async def test_confirm_yes_increments_bookings_count_in_context():
 # ─── on_confirm_no (cb:confirm:no) ──────────────────────────────────────────
 
 @pytest.mark.asyncio
+async def test_confirm_yes_idempotency_double_click_creates_one_booking():
+    """Двойной клик «✅ Да» в течение TTL → одна заявка, второй клик использует cache."""
+    from maxbot.handlers.booking import on_confirm_yes
+    from maxbot.states import BookingStates
+    from services_app.models import BookingRequest
+    from django.core.cache import cache
+
+    cache.clear()
+    svc = await amake("services_app.Service", name="DoubleClick", slug="dc", is_active=True)
+    await amake("services_app.BotUser", max_user_id=7100)
+
+    async def _click():
+        ev = _make_callback(user_id=7100, payload="cb:confirm:yes")
+        ctx = MemoryContext(chat_id=100, user_id=7100)
+        await ctx.set_state(BookingStates.awaiting_confirm)
+        await ctx.update_data(service_id=svc.id, name="Иван", phone="+79991234567")
+        with patch("maxbot.handlers.booking._notify_bot_booking", new=MagicMock()):
+            await on_confirm_yes(ev, ctx)
+        return ev
+
+    ev1 = await _click()
+    ev2 = await _click()  # повтор СРАЗУ — должен быть idempotent
+
+    # Только ОДНА заявка в БД
+    count = await sync_to_async(BookingRequest.objects.filter(client_phone="+79991234567").count)()
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_yes_sends_immediate_feedback():
+    """Перед долгими операциями (Telegram POST) шлёт «Принимаю заявку…»."""
+    from maxbot.handlers.booking import on_confirm_yes
+    from maxbot.states import BookingStates
+    from django.core.cache import cache
+
+    cache.clear()
+    svc = await amake("services_app.Service", name="X", slug="x-feedback", is_active=True)
+    await amake("services_app.BotUser", max_user_id=7101)
+    event = _make_callback(user_id=7101, payload="cb:confirm:yes")
+    ctx = MemoryContext(chat_id=100, user_id=7101)
+    await ctx.set_state(BookingStates.awaiting_confirm)
+    await ctx.update_data(service_id=svc.id, name="Иван", phone="+79991234567")
+    with patch("maxbot.handlers.booking._notify_bot_booking", new=MagicMock()):
+        await on_confirm_yes(event, ctx)
+    # Должно быть 2 send_message: «Принимаю…» и финальное «Спасибо!»
+    assert event.bot.send_message.await_count == 2
+    first_text = event.bot.send_message.await_args_list[0].kwargs["text"]
+    assert "Принимаю" in first_text or "секунду" in first_text
+
+
+@pytest.mark.asyncio
 async def test_confirm_no_clears_state_without_creating_booking():
     from maxbot.handlers.booking import on_confirm_no
     from maxbot.states import BookingStates

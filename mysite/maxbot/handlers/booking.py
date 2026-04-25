@@ -17,6 +17,7 @@ import logging
 import re
 
 from asgiref.sync import sync_to_async
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
@@ -37,6 +38,11 @@ router = Router()
 _NAME_RE = re.compile(r"^[А-Яа-яЁёA-Za-z\s\-]+$")
 NAME_MIN = 2
 NAME_MAX = 100
+
+# Idempotency TTL — окно в которое второй клик «✅ Да» считается дублем.
+# 60 секунд достаточно для двойного клика + retry проксей; следующая
+# осознанная попытка через минуту бьёт код заново (новая заявка).
+BOOKING_IDEMPOTENCY_TTL = 60
 
 
 # ─── Awaiting name ──────────────────────────────────────────────────────────
@@ -95,7 +101,15 @@ async def on_phone_input(event: MessageCreated, context: MemoryContext) -> None:
 
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_CONFIRM_YES)
 async def on_confirm_yes(callback: MessageCallback, context: MemoryContext) -> None:
-    """Создаём BookingRequest, шлём уведомления, возвращаем в меню."""
+    """Создаём BookingRequest, шлём уведомления, возвращаем в меню.
+
+    Защита от двойного клика (известный prod bug 2026-04-25):
+    - Idempotency через django.core.cache (Redis на проде) с ключом
+      maxbot:confirm:{user_id}:{service_id}, TTL 60s. Повторный клик в окне
+      → возвращает кэшированный booking_id, НЕ создаёт второй BookingRequest.
+    - Immediate feedback («Принимаю заявку...») перед долгими операциями
+      (Telegram POST через прокси может занять 5-10 секунд).
+    """
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None:
         return
@@ -107,6 +121,25 @@ async def on_confirm_yes(callback: MessageCallback, context: MemoryContext) -> N
         return
 
     user = callback.callback.user
+
+    # Idempotency check ДО любых side-effects
+    idem_key = f"maxbot:confirm:{user.user_id}:{data['service_id']}"
+    cached_id = await sync_to_async(cache.get)(idem_key)
+    if cached_id is not None:
+        logger.info("on_confirm_yes: idempotent hit user=%s service=%s booking=%s",
+                    user.user_id, data["service_id"], cached_id)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=texts.BOOKING_DONE.format(request_id=cached_id),
+            attachments=[keyboards.main_menu_keyboard()],
+        )
+        await context.clear()
+        return
+
+    # Сразу даём клиенту знать что заявка принята — до медленных операций
+    # (Telegram POST через прокси, ORM, и т.д.)
+    await callback.bot.send_message(chat_id=chat_id, text=texts.BOOKING_ACCEPTING)
+
     bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
     booking = await _create_booking(
         bot_user_id=bot_user.id,
@@ -114,8 +147,11 @@ async def on_confirm_yes(callback: MessageCallback, context: MemoryContext) -> N
         client_name=data["name"],
         client_phone=data["phone"],
     )
-    # T-09.5: запоминаем client_name/phone в BotUser, чтобы при следующей
-    # записи бот пропустил FSM (см. services.py::on_pick_service)
+    # Запомнить ID СРАЗУ — до Telegram чтобы повторный клик отлавливался
+    # даже если уведомление зависнет.
+    await sync_to_async(cache.set)(idem_key, booking.id, BOOKING_IDEMPOTENCY_TTL)
+
+    # T-09.5: запоминаем client_name/phone в BotUser
     await _persist_client_to_bot_user(
         bot_user_id=bot_user.id,
         client_name=data["name"],
