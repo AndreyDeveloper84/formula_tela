@@ -148,6 +148,35 @@ async def test_show_services_truncates_to_max_keyboard_rows():
 
 
 @pytest.mark.asyncio
+async def test_show_categories_works_for_menu_book_callback():
+    """Кнопка «📅 Записаться» (cb:menu:book) ведёт на тот же список категорий что и cb:menu:services."""
+    from maxbot.handlers.services import on_show_categories
+    from maxbot.keyboards import PAYLOAD_CAT_PREFIX
+    cat = await amake("services_app.ServiceCategory", name="Массаж", is_active=True)
+    await amake("services_app.Service", name="Спина", slug="spina", is_active=True, category=cat)
+    event = _make_callback(user_id=6020, payload="cb:menu:book")
+    ctx = MemoryContext(chat_id=100, user_id=6020)
+    await on_show_categories(event, ctx)
+    payloads = [
+        b.payload for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+        for b in row
+    ]
+    assert f"{PAYLOAD_CAT_PREFIX}{cat.id}" in payloads
+
+
+def test_router_handles_both_book_and_services_payloads():
+    """Регистрационная проверка: оба payload'а имеют handler."""
+    from maxbot.handlers.services import router
+    payloads_handled = []
+    for h in router.event_handlers:
+        if h.func_event.__name__ == "on_show_categories":
+            # filters[0] — это PayloadFilter с magic — проверим что их 2 экземпляра
+            payloads_handled.append(h)
+    # Должно быть 2 регистрации (по одной на каждый @router.message_callback декоратор)
+    assert len(payloads_handled) == 2
+
+
+@pytest.mark.asyncio
 async def test_show_categories_skips_when_message_deleted():
     from maxbot.handlers.services import on_show_categories
     event = _make_callback(user_id=6011)

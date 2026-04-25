@@ -61,6 +61,9 @@ def _get_service_or_none(service_id: int) -> Service | None:
     return Service.objects.filter(id=service_id, is_active=True).first()
 
 
+# Обе кнопки главного меню — «📅 Записаться» и «ℹ️ Услуги» — ведут на список
+# категорий. С точки зрения UX это одно действие: «выбрать что хочу записать».
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_BOOK)
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_SERVICES)
 async def on_show_categories(callback: MessageCallback, context: MemoryContext) -> None:
     """Шаг 1: показываем список категорий."""
