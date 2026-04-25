@@ -47,10 +47,25 @@ def test_main_menu_payloads():
 # ─── services_keyboard ──────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_services_keyboard_includes_back_button():
+def test_services_keyboard_includes_back_to_categories():
+    """Back-кнопка теперь ведёт к КАТЕГОРИЯМ (cb:menu:services), не в главное меню."""
     s1 = baker.make("services_app.Service", name="Массаж спины", is_active=True)
     kb = keyboards.services_keyboard([s1])
-    assert "cb:back" in _payloads(kb)
+    assert keyboards.PAYLOAD_MENU_SERVICES in _payloads(kb)
+
+
+@pytest.mark.django_db
+def test_categories_keyboard_includes_back_button():
+    cat = baker.make("services_app.ServiceCategory", name="Массаж", is_active=True)
+    kb = keyboards.categories_keyboard([cat])
+    assert keyboards.PAYLOAD_BACK in _payloads(kb)
+
+
+@pytest.mark.django_db
+def test_categories_keyboard_callback_contains_cat_id():
+    cat = baker.make("services_app.ServiceCategory", name="Массаж", is_active=True)
+    kb = keyboards.categories_keyboard([cat])
+    assert f"{keyboards.PAYLOAD_CAT_PREFIX}{cat.id}" in _payloads(kb)
 
 
 @pytest.mark.django_db

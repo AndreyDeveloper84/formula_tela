@@ -25,6 +25,11 @@ PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 
 PAYLOAD_SVC_PREFIX = "cb:svc:"
 PAYLOAD_FAQ_PREFIX = "cb:faq:"
+PAYLOAD_CAT_PREFIX = "cb:cat:"
+
+# MAX API лимит: 30 рядов в inline keyboard (см. dev.max.ru/docs-api).
+# Резервируем 1 ряд под кнопку «Назад» → 29 кнопок-контента max.
+MAX_KEYBOARD_ROWS = 29
 
 
 def main_menu_keyboard():
@@ -41,17 +46,33 @@ def main_menu_keyboard():
     return builder.as_markup()
 
 
-def services_keyboard(services: Iterable) -> object:
-    """Список услуг по 1 в ряду + кнопка «Назад».
+def categories_keyboard(categories: Iterable) -> object:
+    """Список категорий по 1 в ряду + «Назад в главное меню».
 
-    services — iterable Service-инстансов; используем .id и .name.
+    categories — iterable ServiceCategory-инстансов; используем .id и .name.
+    Лимит MAX_KEYBOARD_ROWS = 29 → молча обрезаем (8 категорий — норма).
     """
     builder = InlineKeyboardBuilder()
-    for svc in services:
+    for cat in list(categories)[:MAX_KEYBOARD_ROWS]:
+        builder.row(
+            CallbackButton(text=cat.name, payload=f"{PAYLOAD_CAT_PREFIX}{cat.id}"),
+        )
+    builder.row(CallbackButton(text="← Назад в меню", payload=PAYLOAD_BACK))
+    return builder.as_markup()
+
+
+def services_keyboard(services: Iterable) -> object:
+    """Список услуг внутри категории + «Назад к категориям».
+
+    Лимит: MAX_KEYBOARD_ROWS=29 услуг + 1 ряд под «Назад» = 30 рядов
+    (хард-лимит MAX API). Излишек обрезается.
+    """
+    builder = InlineKeyboardBuilder()
+    for svc in list(services)[:MAX_KEYBOARD_ROWS]:
         builder.row(
             CallbackButton(text=f"💆 {svc.name}", payload=f"{PAYLOAD_SVC_PREFIX}{svc.id}"),
         )
-    builder.row(CallbackButton(text="← Назад в меню", payload=PAYLOAD_BACK))
+    builder.row(CallbackButton(text="← Категории", payload=PAYLOAD_MENU_SERVICES))
     return builder.as_markup()
 
 

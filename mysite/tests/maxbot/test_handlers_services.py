@@ -1,4 +1,4 @@
-"""T-08 RED: handler "Услуги" (каталог + клик на услугу → FSM awaiting_name)."""
+"""T-08 + T-08.5 RED: handler "Услуги" (двухуровневое меню + клик → FSM)."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from asgiref.sync import sync_to_async
@@ -28,72 +28,132 @@ def _make_callback(*, chat_id=100, user_id=200, first_name="Иван", payload="
     return event
 
 
-# ─── on_show_services (cb:menu:services) ────────────────────────────────────
+# ─── on_show_categories (cb:menu:services) — шаг 1 ──────────────────────────
 
 @pytest.mark.asyncio
-async def test_show_services_reads_active_from_db():
-    """Только Service(is_active=True) попадают в клавиатуру."""
-    from maxbot.handlers.services import on_show_services
-    from maxbot.keyboards import PAYLOAD_SVC_PREFIX
-
-    s_active = await amake("services_app.Service", name="Спина", slug="spina", is_active=True)
-    await amake("services_app.Service", name="Скрытая", slug="hidden", is_active=False)
-
+async def test_show_categories_lists_active_with_services():
+    """Категория попадает в клавиатуру если у неё есть active services."""
+    from maxbot.handlers.services import on_show_categories
+    from maxbot.keyboards import PAYLOAD_CAT_PREFIX
+    cat = await amake("services_app.ServiceCategory", name="Массаж", is_active=True)
+    await amake("services_app.Service", name="Спина", slug="spina", is_active=True, category=cat)
     event = _make_callback(user_id=6001)
     ctx = MemoryContext(chat_id=100, user_id=6001)
-    await on_show_services(event, ctx)
-
-    event.bot.send_message.assert_awaited_once()
+    await on_show_categories(event, ctx)
     payloads = [
         b.payload for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
         for b in row
     ]
-    assert f"{PAYLOAD_SVC_PREFIX}{s_active.id}" in payloads
-    # inactive не должен попасть
-    assert not any(p.startswith(PAYLOAD_SVC_PREFIX) and p != f"{PAYLOAD_SVC_PREFIX}{s_active.id}" for p in payloads)
+    assert f"{PAYLOAD_CAT_PREFIX}{cat.id}" in payloads
 
 
 @pytest.mark.asyncio
-async def test_show_services_includes_back_button():
-    from maxbot.handlers.services import on_show_services
-    from maxbot.keyboards import PAYLOAD_BACK
-    await amake("services_app.Service", name="Спина", slug="spina", is_active=True)
+async def test_show_categories_skips_empty_categories():
+    """Категория без active services НЕ попадает."""
+    from maxbot.handlers.services import on_show_categories
+    from maxbot.keyboards import PAYLOAD_CAT_PREFIX
+    empty_cat = await amake("services_app.ServiceCategory", name="Пустая", is_active=True)
     event = _make_callback(user_id=6002)
     ctx = MemoryContext(chat_id=100, user_id=6002)
-    await on_show_services(event, ctx)
+    await on_show_categories(event, ctx)
     payloads = [
-        b.payload for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+        getattr(b, "payload", None) for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
         for b in row
     ]
-    assert PAYLOAD_BACK in payloads
+    assert f"{PAYLOAD_CAT_PREFIX}{empty_cat.id}" not in payloads
 
 
 @pytest.mark.asyncio
-async def test_show_services_when_no_active_services():
-    """Нет active услуг → fallback-сообщение + кнопка Назад, не падает."""
-    from maxbot.handlers.services import on_show_services
+async def test_show_categories_fallback_when_empty():
+    from maxbot.handlers.services import on_show_categories
     from maxbot.keyboards import PAYLOAD_BACK
     event = _make_callback(user_id=6003)
     ctx = MemoryContext(chat_id=100, user_id=6003)
-    await on_show_services(event, ctx)
-    event.bot.send_message.assert_awaited_once()
+    await on_show_categories(event, ctx)
     text = event.bot.send_message.await_args.kwargs["text"]
-    # Должен быть какой-то fallback-текст
-    assert text  # непустой
+    assert text
     payloads = [
-        b.payload for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+        getattr(b, "payload", None)
+        for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
         for b in row
     ]
     assert PAYLOAD_BACK in payloads
 
 
+# ─── on_show_services (cb:cat:{id}) — шаг 2 ─────────────────────────────────
+
 @pytest.mark.asyncio
-async def test_show_services_skips_when_message_deleted():
+async def test_show_services_lists_services_in_category():
     from maxbot.handlers.services import on_show_services
-    event = _make_callback(user_id=6004)
-    event.message = None
-    ctx = MemoryContext(chat_id=0, user_id=6004)
+    from maxbot.keyboards import PAYLOAD_SVC_PREFIX
+    cat = await amake("services_app.ServiceCategory", name="Массаж", is_active=True)
+    other = await amake("services_app.ServiceCategory", name="Аппаратные", is_active=True)
+    s_in = await amake("services_app.Service", name="Спина", slug="spina", is_active=True, category=cat)
+    s_out = await amake("services_app.Service", name="LPG", slug="lpg", is_active=True, category=other)
+    event = _make_callback(user_id=6004, payload=f"cb:cat:{cat.id}")
+    ctx = MemoryContext(chat_id=100, user_id=6004)
     await on_show_services(event, ctx)
+    payloads = [
+        b.payload for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+        for b in row
+    ]
+    assert f"{PAYLOAD_SVC_PREFIX}{s_in.id}" in payloads
+    assert f"{PAYLOAD_SVC_PREFIX}{s_out.id}" not in payloads
+
+
+@pytest.mark.asyncio
+async def test_show_services_includes_back_to_categories():
+    from maxbot.handlers.services import on_show_services
+    from maxbot.keyboards import PAYLOAD_MENU_SERVICES
+    cat = await amake("services_app.ServiceCategory", name="Cat", is_active=True)
+    await amake("services_app.Service", name="X", slug="x", is_active=True, category=cat)
+    event = _make_callback(user_id=6005, payload=f"cb:cat:{cat.id}")
+    ctx = MemoryContext(chat_id=100, user_id=6005)
+    await on_show_services(event, ctx)
+    payloads = [
+        b.payload for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+        for b in row
+    ]
+    # Кнопка «Назад» теперь ведёт обратно к КАТЕГОРИЯМ, не в главное меню
+    assert PAYLOAD_MENU_SERVICES in payloads
+
+
+@pytest.mark.asyncio
+async def test_show_services_invalid_category_id():
+    from maxbot.handlers.services import on_show_services
+    event = _make_callback(user_id=6006, payload="cb:cat:99999")
+    ctx = MemoryContext(chat_id=100, user_id=6006)
+    await on_show_services(event, ctx)
+    text = event.bot.send_message.await_args.kwargs["text"]
+    assert "недоступна" in text.lower() or text
+
+
+@pytest.mark.asyncio
+async def test_show_services_truncates_to_max_keyboard_rows():
+    """Если в категории > MAX_KEYBOARD_ROWS услуг — обрезаем (защита от MAX API errors.maxRows)."""
+    from maxbot.handlers.services import on_show_services
+    from maxbot.keyboards import MAX_KEYBOARD_ROWS, PAYLOAD_SVC_PREFIX
+    cat = await amake("services_app.ServiceCategory", name="BigCat", is_active=True)
+    # Создаём MAX_KEYBOARD_ROWS + 5 услуг
+    for i in range(MAX_KEYBOARD_ROWS + 5):
+        await amake("services_app.Service", name=f"Svc{i:03d}", slug=f"s{i:03d}", is_active=True, category=cat)
+    event = _make_callback(user_id=6007, payload=f"cb:cat:{cat.id}")
+    ctx = MemoryContext(chat_id=100, user_id=6007)
+    await on_show_services(event, ctx)
+    rows = event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+    # MAX_KEYBOARD_ROWS услуг + 1 ряд «Назад» = MAX_KEYBOARD_ROWS+1 ≤ 30
+    assert len(rows) == MAX_KEYBOARD_ROWS + 1
+    svc_payloads = [b.payload for row in rows for b in row if b.payload and b.payload.startswith(PAYLOAD_SVC_PREFIX)]
+    assert len(svc_payloads) == MAX_KEYBOARD_ROWS
+
+
+@pytest.mark.asyncio
+async def test_show_categories_skips_when_message_deleted():
+    from maxbot.handlers.services import on_show_categories
+    event = _make_callback(user_id=6011)
+    event.message = None
+    ctx = MemoryContext(chat_id=0, user_id=6011)
+    await on_show_categories(event, ctx)
     event.bot.send_message.assert_not_awaited()
 
 
