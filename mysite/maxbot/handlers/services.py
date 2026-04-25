@@ -23,6 +23,11 @@ from maxbot.states import BookingStates
 from services_app.models import Service, ServiceCategory
 
 
+def _has_full_client_data(bot_user) -> bool:
+    """True если в BotUser сохранены имя клиента (как он сам назвался) + телефон."""
+    return bool(bot_user.client_name and bot_user.client_phone)
+
+
 logger = logging.getLogger("maxbot.services")
 router = Router()
 
@@ -56,6 +61,9 @@ def _get_service_or_none(service_id: int) -> Service | None:
     return Service.objects.filter(id=service_id, is_active=True).first()
 
 
+# Обе кнопки главного меню — «📅 Записаться» и «ℹ️ Услуги» — ведут на список
+# категорий. С точки зрения UX это одно действие: «выбрать что хочу записать».
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_BOOK)
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_SERVICES)
 async def on_show_categories(callback: MessageCallback, context: MemoryContext) -> None:
     """Шаг 1: показываем список категорий."""
@@ -149,13 +157,36 @@ async def on_pick_service(callback: MessageCallback, context: MemoryContext) -> 
         )
         return
 
-    await context.set_state(BookingStates.awaiting_name)
-    await context.update_data(service_id=svc.id, service_name=svc.name)
-
     user = callback.callback.user
     bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
     await append_to_context(bot_user.id, "services_viewed", svc.slug)
 
+    # T-09.5: «бот помнит». Если у нас уже есть полные данные клиента из
+    # прошлой записи — пропускаем FSM, сразу к подтверждению со старыми
+    # name/phone. Кнопка «Указать другие» сбрасывает в начало FSM.
+    if _has_full_client_data(bot_user):
+        await context.set_state(BookingStates.awaiting_confirm)
+        await context.update_data(
+            service_id=svc.id,
+            service_name=svc.name,
+            name=bot_user.client_name,
+            phone=bot_user.client_phone,
+        )
+        confirm_text = texts.BOOKING_CONFIRM.format(
+            name=bot_user.client_name,
+            phone=bot_user.client_phone,
+            service=svc.name,
+        )
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=confirm_text,
+            attachments=[keyboards.confirm_booking_keyboard(with_other=True)],
+        )
+        return
+
+    # Новый клиент или нет данных — обычный FSM
+    await context.set_state(BookingStates.awaiting_name)
+    await context.update_data(service_id=svc.id, service_name=svc.name)
     await callback.bot.send_message(
         chat_id=chat_id,
         text=texts.BOOKING_ASK_NAME,

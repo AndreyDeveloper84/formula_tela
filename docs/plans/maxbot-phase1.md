@@ -692,5 +692,11 @@ location /api/maxbot/webhook/ {
 ## STATUS
 
 - **APPROVED** 2026-04-24 — план зафиксирован, T-01 стартовал
-- **CODE COMPLETE** 2026-04-25 — T-01..T-13 + T-06.5 review fixes + T-14a infra artifacts реализованы. 770 passed, 0 регрессий
-- **PROD DEPLOY**: pending T-14b (см. `infra/README.md`)
+- **CODE COMPLETE** 2026-04-25 — T-01..T-13 + T-06.5 review fixes + T-14a infra artifacts реализованы. 776 passed (после T-08.5 двухуровневое меню), 0 регрессий
+- **DEPLOYED 2026-04-25** — PR #85 merged, autodeploy + ручной T-14b: systemd unit активен, nginx location добавлен, webhook subscribed. Smoke на проде пройден end-to-end (категории → услуга → FSM-заявка → BookingRequest source=bot_max + Telegram уведомление)
+
+## Известные доработки post-deploy
+
+- **T-09.5 (UX)** — после первой заявки сохранять `client_name`/`client_phone` в `BotUser` и при повторной записи пропускать FSM (бот «помнит» клиента). Сейчас бот спрашивает имя каждый раз.
+- **NLP free-text → FAQ routing** — backlog (см. секцию выше): варианты 1-5 от keyword-match до RAG MCP-сервера.
+- **Фаза 2** — нативная запись через YClients API, SMS-напоминания.
