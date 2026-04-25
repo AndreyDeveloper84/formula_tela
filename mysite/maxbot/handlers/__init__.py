@@ -5,6 +5,7 @@ main.py импортит get_routers() и регистрирует через dp
 """
 from __future__ import annotations
 
+from .ai_assistant import router as ai_assistant_router
 from .booking import router as booking_router
 from .contacts import router as contacts_router
 from .fallback import router as fallback_router
@@ -17,8 +18,14 @@ def get_routers():
     """Возвращает список всех Router'ов в порядке регистрации.
 
     Порядок важен для фильтров — более специфичные handler'ы должны быть
-    зарегистрированы раньше общих fallback'ов. fallback_router ВСЕГДА
-    последним — он ловит весь не-matched text input.
+    зарегистрированы раньше общих fallback'ов.
+
+    Структура (T-06c):
+    - start/services/booking/contacts/faq — кнопочные сценарии (specific
+      callbacks или state-фильтры BookingStates.X для FSM-вводов)
+    - ai_assistant — БЕЗ state-фильтра, ловит всё остальное (free-text,
+      AskStates.awaiting_question)
+    - fallback — резервный для edge-case'ов (системные сообщения без sender)
     """
     return [
         start_router,
@@ -26,5 +33,6 @@ def get_routers():
         booking_router,
         contacts_router,
         faq_router,
+        ai_assistant_router,
         fallback_router,
     ]
