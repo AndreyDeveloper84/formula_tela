@@ -169,7 +169,20 @@ async def chat_rag(
     # 1. Прямой вызов search_faq (минуя LLM-роутер)
     try:
         result = await mcp_client.call_tool("search_faq", {"query": user_text, "k": top_k})
-        faq_items = json.loads(result.content[0].text) if result.content else []
+        if not result.content:
+            faq_items = []
+        else:
+            data = json.loads(result.content[0].text)
+            # search_faq возвращает {"results": [...]} (dict-обёртка); резерв
+            # для случая single dict (legacy) или list (на случай других tools)
+            if isinstance(data, dict) and "results" in data:
+                faq_items = data["results"]
+            elif isinstance(data, list):
+                faq_items = data
+            elif isinstance(data, dict):
+                faq_items = [data]
+            else:
+                faq_items = []
     except Exception:  # noqa: BLE001
         logger.exception("chat_rag: search_faq failed")
         return LLM_GIVEUP_MESSAGE

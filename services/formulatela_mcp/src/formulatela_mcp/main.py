@@ -27,7 +27,7 @@ def ping() -> str:
 
 
 @mcp.tool()
-def search_faq(query: str, k: int = 3) -> list[dict]:
+def search_faq(query: str, k: int = 3) -> dict:
     """Найти top-k FAQ-статей семантически близких к query.
 
     Использует embeddings (см. embeddings/chroma_backend.py). Возвращает
@@ -55,14 +55,18 @@ def search_faq(query: str, k: int = 3) -> list[dict]:
         provider=provider,
     )
     results = store.search(query, k=k)
-    return [
-        {
-            "question": r.metadata.get("question", ""),
-            "answer": r.metadata.get("answer", ""),
-            "score": round(r.score, 3),
-        }
-        for r in results
-    ]
+    # Возвращаем dict-обёртку (НЕ list) — FastMCP сериализует list[dict] странно
+    # (только первый элемент в content[0]). Dict гарантированно один JSON.
+    return {
+        "results": [
+            {
+                "question": r.metadata.get("question", ""),
+                "answer": r.metadata.get("answer", ""),
+                "score": round(r.score, 3),
+            }
+            for r in results
+        ]
+    }
 
 
 # T-XX (Фаза 2.2): search_services

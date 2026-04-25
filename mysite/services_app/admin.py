@@ -603,27 +603,47 @@ class BotInquiryAdmin(admin.ModelAdmin):
 
     @admin.action(description="📤 Отправить ответ клиенту в MAX")
     def send_reply_to_client(self, request, queryset):
-        # Фактическая отправка реализуется в T-09 (push-back флоу через bot.send_message).
-        # Сейчас — stub: помечает sent_to_max=True если reply_text есть.
-        from django.utils import timezone
+        """T-09: реальная отправка ответа клиенту через MAX API.
+
+        Менеджер заполняет `reply_text` → жмёт action → каждый отмеченный
+        BotInquiry получает bot.send_message(chat_id, reply_text). При успехе
+        — sent_to_max=True + replied_at + replied_by + добавление к ответу
+        приветствия от салона.
+        """
         from django.contrib import messages
+        from django.utils import timezone
+        from notifications.max_bot import send_max_message
 
         sent = 0
         skipped = 0
+        failed = 0
         for inq in queryset:
             if not inq.reply_text.strip():
                 skipped += 1
                 continue
-            # TODO T-09: реальный bot.send_message(chat_id=inq.chat_id, text=inq.reply_text)
+
+            # Формат сообщения для клиента: явно указываем что это ответ менеджера
+            client_text = (
+                f"💬 Ответ от менеджера на ваш вопрос:\n«{inq.question[:200]}»\n\n"
+                f"{inq.reply_text}"
+            )
+            ok = send_max_message(chat_id=inq.chat_id, text=client_text)
+            if not ok:
+                failed += 1
+                continue
+
             inq.sent_to_max = True
             inq.replied_at = timezone.now()
             inq.replied_by = request.user
             inq.save(update_fields=["sent_to_max", "replied_at", "replied_by"])
             sent += 1
+
         if sent:
-            messages.success(request, f"Отмечено как отправлено: {sent}. (T-09: реальная отправка в MAX будет позже.)")
+            messages.success(request, f"Отправлено в MAX: {sent}")
         if skipped:
             messages.warning(request, f"Пропущено (пустой ответ): {skipped}")
+        if failed:
+            messages.error(request, f"Не удалось отправить (см. логи): {failed}")
 
 
 # ── Заказы и сертификаты ──────────────────────────────────────────────

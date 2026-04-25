@@ -109,16 +109,23 @@ async def _get_ai_answer(user_text: str, sender) -> str:
     Быстрее chat_with_tools на ~30%. Если top FAQ-similarity < threshold —
     возвращаем GIVEUP без вызова LLM (экономия ещё ~2s).
     """
+    import time
+    started = time.perf_counter()
     try:
         mcp_client = MaxbotMCPClient.instance()
-        return await chat_rag(
+        answer = await chat_rag(
             user_text=user_text,
             system_prompt=texts.AI_SYSTEM_PROMPT,
             mcp_client=mcp_client,
         )
+        elapsed = time.perf_counter() - started
+        logger.info("ai_assistant: %.2fs user_id=%s text=%r answer_len=%d",
+                    elapsed, sender.user_id, user_text[:60], len(answer))
+        return answer
     except Exception:  # noqa: BLE001
-        logger.exception("ai_assistant: chat_rag crashed for user_id=%s text=%r",
-                         sender.user_id, user_text[:80])
+        elapsed = time.perf_counter() - started
+        logger.exception("ai_assistant: chat_rag crashed after %.2fs user_id=%s text=%r",
+                         elapsed, sender.user_id, user_text[:80])
         return LLM_GIVEUP_MESSAGE
 
 
