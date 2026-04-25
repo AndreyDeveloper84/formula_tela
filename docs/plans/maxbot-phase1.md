@@ -678,4 +678,8 @@ location /api/maxbot/webhook/ {
 
 ---
 
-## STATUS: APPROVED — приступаем к T-01 (2026-04-24)
+## STATUS
+
+- **APPROVED** 2026-04-24 — план зафиксирован, T-01 стартовал
+- **CODE COMPLETE** 2026-04-25 — T-01..T-13 + T-06.5 review fixes + T-14a infra artifacts реализованы. 770 passed, 0 регрессий
+- **PROD DEPLOY**: pending T-14b (см. `infra/README.md`)
