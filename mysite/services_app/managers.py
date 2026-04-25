@@ -114,3 +114,8 @@ class ReviewQuerySet(models.QuerySet):
 
     def ordered(self):
         return self.order_by("order", "-date", "-created_at")
+
+
+class HelpArticleQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(is_active=True)

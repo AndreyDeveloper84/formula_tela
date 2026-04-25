@@ -115,6 +115,47 @@ YooKassa-интеграция + админ-акции для Order/GiftCertifica
 - `payments/admin.py` (новый в P2 2026-04-23) — subclass'ы `OrderAdmin` и `GiftCertificateAdmin` с payment-actions (recreate payment link, mark as paid, resend certificate email). Паттерн unregister+register: `services_app/admin.py` регистрирует базовые admin'ы, `payments/admin.py` их перерегистрирует с payment-actions. Разрывает цикл `services_app → payments` (ln-644 H1, H2).
 - `payments/ip_whitelist.py` — YooKassa IP-subnet check, отключаемо через `YOOKASSA_WEBHOOK_STRICT_IP=0`.
 
+### maxbot (Фаза 1, 2026-04-24/25)
+**Standalone async-процесс** (НЕ Django-app) для бота в мессенджере MAX
+(`max-messenger/maxapi==1.0.0`). Запускается отдельным systemd-юнитом
+`formula-tela-maxbot.service` рядом с gunicorn'ом.
+
+```
+mysite/maxbot/
+├── main.py                  # asyncio entry, run() с polling/webhook switch
+├── django_bootstrap.py      # идемпотентный django.setup() для standalone
+├── config.py                # MaxBotConfig (frozen dataclass), env-валидация
+├── states.py                # BookingStates (StatesGroup из maxapi SDK)
+├── keyboards.py             # 5 фабрик InlineKeyboard + payload-константы
+├── personalization.py       # get_or_create_bot_user, greet_text, update_context
+├── middleware.py            # Logging + ErrorAlert (Telegram через notifications/)
+├── texts.py                 # все user-facing строки (DRY)
+└── handlers/                # 6 router'ов
+    ├── start.py             # /start + bot_started + cb:back
+    ├── services.py          # cb:menu:services + cb:svc:{id} → FSM awaiting_name
+    ├── booking.py           # FSM awaiting_name → awaiting_phone → awaiting_confirm
+    ├── contacts.py          # cb:menu:contacts (ClipboardButton для tel)
+    ├── faq.py               # cb:menu:faq + cb:faq:{id}
+    └── fallback.py          # @router.message_created() БЕЗ state — последним
+```
+
+Связанные модели в `services_app`:
+- `BotUser` — персонализация диалога (max_user_id, client_name, context JSONField)
+- `HelpArticle` — FAQ-статьи бота (отдельно от FAQ по услугам)
+- `BookingRequest.source` (`wizard`/`bot_max`/`other`) + `bot_user` FK SET_NULL
+
+**Запуск локально:**
+```bash
+MAX_BOT_TOKEN=<token> MAX_BOT_MODE=polling python -m maxbot.main
+```
+
+**Prod-деплой:** `infra/README.md` (systemd unit, nginx location, `subscribe_webhook`).
+Webhook: `https://formulatela58.ru/api/maxbot/webhook/` → 127.0.0.1:8003. Защита через
+header `X-Max-Bot-Api-Secret` (env `MAX_WEBHOOK_SECRET`).
+
+Plan: `docs/plans/maxbot-phase1.md` (15 задач) + `maxbot-phase1-research.md` (SDK
+особенности). Review-отчёты T-06.5: `maxbot-phase1-review-{summary,code-reviewer,ln623,ln624}.md`.
+
 ---
 
 ## URL-паттерны
@@ -144,6 +185,9 @@ YooKassa-интеграция + админ-акции для Order/GiftCertifica
 - `/api/wizard/categories/` — категории для формы-мастера
 - `/api/wizard/categories/<id>/services/` — услуги в категории
 - `/api/wizard/booking/` — бронирование через форму-мастер
+
+**MAX-бот webhook (отдельный процесс на 127.0.0.1:8003 за nginx):**
+- `/api/maxbot/webhook/` — приём updates из MAX, защищён `MAX_WEBHOOK_SECRET`
 
 ---
 
@@ -606,15 +650,39 @@ python manage.py check
 
 Ожидаемый score после: ~8.2/10. PR #83 `dev → main` открыт, ждёт merge для деплоя на prod.
 
+#### Audit P2-3 (2026-04-24): DRF output serializers для top-5 booking endpoints (PR #84)
+- 5 output-сериалайзеров в `website/serializers.py` для wizard/services/staff/booking-create endpoint'ов
+- Envelope (`success`/`data`/`count`) сохранён, фронт не трогали
+- 6 contract-тестов с `assert set(keys) == {...}` ловят accidental field leak
+- Закрыт ln-643 H1 (entity leakage)
+
+#### Infra: nginx gzip (2026-04-24)
+- `gzip_types` для CSS/JS/SVG/JSON в `/etc/nginx/nginx.conf` — раскомментировал дефолтный блок Debian
+- Замеры: CSS −77..87%, JS −72..74%, SVG −55%
+- Бэкап: `/etc/nginx/nginx.conf.bak.20260424_125403`
+- ⚠ "зомби-gunicorn djangoProject" на :8000 оказался **активным Docker-backend для dev.gobeauty.site** — НЕ убивать (см. memory `reference_ssh_prod.md`)
+
+#### MAX-бот Фаза 1 (2026-04-24/25, T-01..T-15)
+Полный MVP бота в мессенджере MAX для приёма заявок и FAQ. См. секцию `### maxbot`.
+- 14 коммитов (T-01..T-14a), 770 passed (+~80 новых тестов), 0 регрессий
+- 6 routers: start/services/booking/contacts/faq/fallback + 2 middleware
+- 2 новые модели + миграция 0057, расширение BookingRequest source/bot_user
+- 2-слойное code review (project + ln-623 + ln-624) с 6 fix'ов в T-06.5
+- Plan-файлы: `docs/plans/maxbot-phase1*.md`
+- Deploy artifacts: `infra/systemd/`, `infra/nginx/`, `infra/README.md`
+- Осталось: T-14b (прод-деплой) + T-15 (этот раздел CLAUDE.md)
+
 ### Следующие задачи
-- **P2-3**: DRF output serializers для booking API (ln-643 H1) — website/views.py возвращает JSON через ручную сборку dict'ов вместо сериалайзеров.
-- **P3 foundation**: `docs/architecture.md` + `docs/project/dependency_rules.yaml` (разблокирует CI-проверку boundary через `pytest-archon`).
-- **Infra**: nginx gzip/brotli для CSS/JS (sudo команда лежит в todo — даст -60% на text-assets); убрать зомби-gunicorn `djangoProject` на 0.0.0.0:8000.
+- **T-14b**: prod-деплой MAX-бота — установить systemd unit + nginx location + subscribe webhook (см. `infra/README.md`)
+- **P3 foundation**: `docs/architecture.md` + `docs/project/dependency_rules.yaml` (разблокирует CI-проверку boundary через `pytest-archon`)
+- **Brotli** (опц.): apt install libnginx-mod-brotli для +15% поверх gzip
 - Circuit breaker для внешних API (Метрика, Вебмастер, VK, Директ)
 - Новые методы Метрики: `get_exit_pages()`, `get_scroll_depth()`
 - Обогащение SEOLandingAgent: exit pages, поведенческие алерты в Telegram
 - Telegram дайджест рекомендаций (пятница 17:00)
 - Расширение `check_agents` статистикой по AgentRecommendationOutcome
+- MAX-бот Фаза 2: нативная запись через YClients API (вместо `BookingRequest` + ручной перезвон), SMS-напоминания, история клиента в боте
+- **RAG MCP-сервер** — обязательно разобрать как технологию: отдельный Model Context Protocol сервис с embedding-store, переиспользуем для NLP-роутинга MAX-бота (ввод → FAQ HelpArticle), для AI-агентов (analytics/seo_landing — поиск по документам/гайдам), и для будущих ботов. См. варианты 1-5 в `docs/plans/maxbot-phase1.md` Backlog (keyword-match → LLM-router → embeddings → RAG MCP)
 
 ---
 
@@ -626,7 +694,7 @@ python manage.py check
 
 ---
 
-*Последнее обновление: 2026-04-24 (после audit remediation P0+P1+P2, notifications/ + payments/admin.py extracted, SSH fail2ban lesson, PR-workflow правила)*
+*Последнее обновление: 2026-04-25 (после MAX-бот Фаза 1 T-01..T-14a code complete, T-06.5 review fixes, audit P2-3 DRF serializers, nginx gzip)*
 
 ---
 
