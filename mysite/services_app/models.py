@@ -3,6 +3,7 @@ from django.db.models import Q
 from decimal import Decimal
 
 from .managers import (
+    BotInquiryQuerySet,
     BundleQuerySet,
     HelpArticleQuerySet,
     MasterQuerySet,
@@ -1068,6 +1069,64 @@ class HelpArticle(models.Model):
 
     def __str__(self):
         return self.question
+
+
+class BotInquiry(models.Model):
+    """Вопрос клиента, на который AI-помощник не нашёл ответ → передан менеджеру.
+
+    Workflow (Фаза 2.1):
+    1. Клиент пишет свободный текст в MAX-бот
+    2. AI-помощник через MCP+RAG не нашёл подходящую HelpArticle
+    3. Создаётся BotInquiry, клиенту: «Передал вопрос менеджеру, ответит в течение часа»
+    4. Менеджер видит inquiry в админке (фильтр unanswered), пишет reply_text
+    5. Action «📤 Отправить ответ клиенту» → bot.send_message в исходный chat_id +
+       sent_to_max=True + replied_by + replied_at
+    """
+
+    bot_user = models.ForeignKey(
+        "BotUser",
+        on_delete=models.PROTECT,  # PROTECT — не теряем историю при ошибке cleanup
+        related_name="inquiries",
+        verbose_name="Пользователь бота",
+    )
+    chat_id = models.BigIntegerField(
+        "ID чата в MAX",
+        help_text="Куда отправить ответ менеджера. У одного BotUser может быть несколько чатов.",
+    )
+    question = models.TextField("Вопрос клиента")
+    asked_at = models.DateTimeField("Задан", auto_now_add=True)
+
+    reply_text = models.TextField(
+        "Ответ менеджера",
+        blank=True,
+        default="",
+        help_text="Заполните чтобы action «Отправить» стал доступен.",
+    )
+    replied_at = models.DateTimeField("Отвечен", null=True, blank=True)
+    replied_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,  # удаление автора не должно стирать ответ
+        null=True, blank=True,
+        related_name="bot_inquiries_replied",
+        verbose_name="Кто ответил",
+    )
+    sent_to_max = models.BooleanField(
+        "Доставлен в MAX",
+        default=False,
+        help_text="True после успешного bot.send_message клиенту.",
+    )
+
+    objects = BotInquiryQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Вопрос клиента (бот)"
+        verbose_name_plural = "Вопросы клиентов (бот)"
+        ordering = ["-asked_at"]
+
+    def __str__(self):
+        preview = self.question[:60] + ("…" if len(self.question) > 60 else "")
+        status = "✓" if self.sent_to_max else ("📝" if self.reply_text else "❓")
+        return f"{status} {preview}"
 
 
 BOOKING_SOURCE_CHOICES = [
