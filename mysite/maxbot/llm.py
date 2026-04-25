@@ -32,6 +32,13 @@ MAX_TOOL_ITERATIONS = 5
 # Сообщение клиенту когда модель не справилась за лимит
 LLM_GIVEUP_MESSAGE = "Не получилось разобраться. Передаю вопрос менеджеру."
 
+# RAG порог: если max similarity ниже — не зовём LLM, сразу giveup.
+# Экономит ~2.3s LLM call'а в случаях когда вопрос явно не из FAQ.
+RAG_MIN_SCORE = 0.45
+
+# Сколько top-результатов из FAQ кладём в context для LLM
+RAG_TOP_K = 3
+
 
 def get_async_openai_client() -> AsyncOpenAI:
     """AsyncOpenAI с прокси из OPENAI_PROXY (для async-handler'ов maxbot)."""
@@ -135,3 +142,63 @@ async def chat_with_tools(
 
     logger.warning("chat_with_tools: hit max_iterations=%d, giving up", max_iterations)
     return LLM_GIVEUP_MESSAGE
+
+
+async def chat_rag(
+    *,
+    user_text: str,
+    system_prompt: str,
+    mcp_client: MaxbotMCPClient,
+    model: str = DEFAULT_MODEL,
+    openai_client: AsyncOpenAI | None = None,
+    min_score: float = RAG_MIN_SCORE,
+    top_k: int = RAG_TOP_K,
+) -> str:
+    """RAG-as-context: search_faq → context в system → 1 LLM call (без tools).
+
+    Быстрее чем chat_with_tools на ~30% (3 OpenAI calls → 2). Если top-1
+    результат имеет score < min_score — возвращаем LLM_GIVEUP_MESSAGE
+    БЕЗ вызова LLM (экономия ещё ~2s + не платим OpenAI за гарантированный
+    bot inquiry).
+
+    Используется в основном flow ai_assistant.py. chat_with_tools остаётся
+    для будущих сложных tools (Фаза 2.3 — booking через YClients).
+    """
+    await mcp_client.ensure_started()
+
+    # 1. Прямой вызов search_faq (минуя LLM-роутер)
+    try:
+        result = await mcp_client.call_tool("search_faq", {"query": user_text, "k": top_k})
+        faq_items = json.loads(result.content[0].text) if result.content else []
+    except Exception:  # noqa: BLE001
+        logger.exception("chat_rag: search_faq failed")
+        return LLM_GIVEUP_MESSAGE
+
+    if not faq_items:
+        logger.info("chat_rag: no FAQ items found, giveup")
+        return LLM_GIVEUP_MESSAGE
+
+    top_score = max(item.get("score", 0) for item in faq_items)
+    if top_score < min_score:
+        logger.info("chat_rag: top score %.3f < min %.3f, giveup", top_score, min_score)
+        return LLM_GIVEUP_MESSAGE
+
+    # 2. Формируем context из найденных FAQ
+    context_lines = ["Найденные FAQ для контекста (используй чтобы ответить):"]
+    for i, item in enumerate(faq_items, 1):
+        context_lines.append(
+            f"\n{i}. Q: {item.get('question', '')}\n   A: {item.get('answer', '')}"
+            f"\n   (similarity: {item.get('score', 0):.2f})"
+        )
+    context = "\n".join(context_lines)
+
+    # 3. Один LLM call без tools
+    client = openai_client or get_async_openai_client()
+    resp = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt + "\n\n" + context},
+            {"role": "user", "content": user_text},
+        ],
+    )
+    return resp.choices[0].message.content or LLM_GIVEUP_MESSAGE

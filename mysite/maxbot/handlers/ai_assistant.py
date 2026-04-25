@@ -27,10 +27,11 @@ from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards, texts
-from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_with_tools
+from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag
 from maxbot.mcp_client import MaxbotMCPClient
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.states import AskStates
+from notifications import send_notification_telegram
 from services_app.models import BotInquiry
 
 
@@ -103,27 +104,36 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
 
 
 async def _get_ai_answer(user_text: str, sender) -> str:
-    """Вызов chat_with_tools с защитой от exception → giveup."""
+    """RAG-as-context (1 LLM call после search_faq, без tool-use loop).
+
+    Быстрее chat_with_tools на ~30%. Если top FAQ-similarity < threshold —
+    возвращаем GIVEUP без вызова LLM (экономия ещё ~2s).
+    """
     try:
         mcp_client = MaxbotMCPClient.instance()
-        return await chat_with_tools(
-            messages=[
-                {"role": "system", "content": texts.AI_SYSTEM_PROMPT},
-                {"role": "user", "content": user_text},
-            ],
+        return await chat_rag(
+            user_text=user_text,
+            system_prompt=texts.AI_SYSTEM_PROMPT,
             mcp_client=mcp_client,
         )
     except Exception:  # noqa: BLE001
-        logger.exception("ai_assistant: chat_with_tools crashed for user_id=%s text=%r",
+        logger.exception("ai_assistant: chat_rag crashed for user_id=%s text=%r",
                          sender.user_id, user_text[:80])
         return LLM_GIVEUP_MESSAGE
 
 
 async def _create_bot_inquiry(*, user_id: int, full_name: str, chat_id: int, question: str) -> None:
-    """Создаём BotInquiry для менеджера (T-02 модель)."""
+    """Создаём BotInquiry для менеджера + Telegram-алерт."""
     bot_user, _ = await get_or_create_bot_user(user_id, full_name)
-    await sync_to_async(BotInquiry.objects.create)(
+    inquiry = await sync_to_async(BotInquiry.objects.create)(
         bot_user=bot_user,
         chat_id=chat_id,
         question=question,
+    )
+    # Алерт менеджеру в Telegram (через прокси, см. notifications/)
+    await sync_to_async(send_notification_telegram)(
+        f"🤖 Вопрос для менеджера от MAX-бота\n\n"
+        f"👤 {bot_user.client_name or bot_user.display_name or f'#{user_id}'}\n"
+        f"❓ {question}\n\n"
+        f"Ответить: /admin/services_app/botinquiry/{inquiry.id}/change/"
     )

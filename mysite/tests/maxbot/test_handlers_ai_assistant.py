@@ -123,7 +123,8 @@ async def test_free_text_creates_bot_inquiry_on_giveup():
     ctx = MemoryContext(chat_id=777, user_id=20005)
 
     with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)):
+               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)), \
+         patch("maxbot.handlers.ai_assistant.send_notification_telegram") as _:
         await on_free_text(event, ctx)
 
     inquiries = await sync_to_async(list)(BotInquiry.objects.all())
@@ -134,6 +135,24 @@ async def test_free_text_creates_bot_inquiry_on_giveup():
     # Сообщение клиенту — про менеджера, не giveup-message
     final_text = event.bot.send_message.await_args_list[1].kwargs["text"]
     assert "менеджер" in final_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_free_text_sends_telegram_alert_on_giveup():
+    """При создании BotInquiry — Telegram-алерт менеджеру (через notifications/)."""
+    from maxbot.handlers.ai_assistant import on_free_text
+    from maxbot.llm import LLM_GIVEUP_MESSAGE
+
+    event = _make_text_message(user_id=20009, chat_id=888, text="Что-то странное")
+    ctx = MemoryContext(chat_id=888, user_id=20009)
+    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
+               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)), \
+         patch("maxbot.handlers.ai_assistant.send_notification_telegram") as mock_tg:
+        await on_free_text(event, ctx)
+    mock_tg.assert_called_once()
+    msg = mock_tg.call_args.args[0]
+    assert "Что-то странное" in msg
+    assert "менеджер" in msg.lower() or "вопрос" in msg.lower()
 
 
 @pytest.mark.asyncio
@@ -156,12 +175,12 @@ async def test_free_text_skips_empty_message():
 
 
 @pytest.mark.asyncio
-async def test_free_text_handles_chat_with_tools_exception():
-    """Если внутри LLM/MCP exception — _get_ai_answer возвращает GIVEUP, BotInquiry создаётся."""
+async def test_free_text_handles_chat_rag_exception():
+    """Если внутри LLM/MCP exception — _get_ai_answer возвращает GIVEUP."""
     from maxbot.handlers.ai_assistant import _get_ai_answer
     from maxbot.llm import LLM_GIVEUP_MESSAGE
     sender = MagicMock(user_id=20008, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_with_tools",
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
                AsyncMock(side_effect=RuntimeError("LLM down"))):
         result = await _get_ai_answer("?", sender)
     assert result == LLM_GIVEUP_MESSAGE

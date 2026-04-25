@@ -182,6 +182,86 @@ async def test_chat_handles_mcp_tool_exception():
     assert result == "Не нашёл, передаю менеджеру"
 
 
+# ─── chat_rag (RAG-as-context, новый flow для AI-помощника) ────────────────
+
+
+def _mcp_with_search_faq_response(items: list[dict]):
+    """MCP-клиент мок где search_faq возвращает заданный список."""
+    import json as _json
+    mock = MagicMock()
+    mock.ensure_started = AsyncMock()
+    result = MagicMock()
+    result.content = [MagicMock(text=_json.dumps(items))]
+    mock.call_tool = AsyncMock(return_value=result)
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_returns_llm_answer_when_score_high():
+    from maxbot.llm import chat_rag
+    mcp = _mcp_with_search_faq_response([
+        {"question": "Как записаться?", "answer": "Через бот.", "score": 0.85},
+    ])
+    openai = _mock_openai_client_returning_text("Запись через бот.")
+    result = await chat_rag(
+        user_text="Хочу записаться",
+        system_prompt="Ты ассистент.",
+        mcp_client=mcp,
+        openai_client=openai,
+    )
+    assert result == "Запись через бот."
+    # Только ОДИН LLM call (без tools loop)
+    assert openai.chat.completions.create.await_count == 1
+    # search_faq вызван прямо
+    mcp.call_tool.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_returns_giveup_when_score_below_threshold():
+    """Если top score < min_score → возврат giveup БЕЗ LLM call."""
+    from maxbot.llm import chat_rag, LLM_GIVEUP_MESSAGE
+    mcp = _mcp_with_search_faq_response([
+        {"question": "X?", "answer": "A", "score": 0.3},
+    ])
+    openai = MagicMock()
+    openai.chat.completions.create = AsyncMock()
+    result = await chat_rag(
+        user_text="любимый цвет?",
+        system_prompt="...",
+        mcp_client=mcp,
+        openai_client=openai,
+        min_score=0.5,
+    )
+    assert result == LLM_GIVEUP_MESSAGE
+    openai.chat.completions.create.assert_not_awaited()  # сэкономили LLM call
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_returns_giveup_when_no_faq_found():
+    from maxbot.llm import chat_rag, LLM_GIVEUP_MESSAGE
+    mcp = _mcp_with_search_faq_response([])
+    openai = MagicMock()
+    openai.chat.completions.create = AsyncMock()
+    result = await chat_rag(
+        user_text="?", system_prompt="...", mcp_client=mcp, openai_client=openai,
+    )
+    assert result == LLM_GIVEUP_MESSAGE
+    openai.chat.completions.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_returns_giveup_when_search_faq_crashes():
+    from maxbot.llm import chat_rag, LLM_GIVEUP_MESSAGE
+    mock = MagicMock()
+    mock.ensure_started = AsyncMock()
+    mock.call_tool = AsyncMock(side_effect=RuntimeError("MCP died"))
+    openai = MagicMock()
+    result = await chat_rag(
+        user_text="?", system_prompt="...", mcp_client=mock, openai_client=openai,
+    )
+    assert result == LLM_GIVEUP_MESSAGE
+
+
 @pytest.mark.asyncio
 async def test_chat_max_iterations_returns_giveup_message():
     """Если LLM зациклил tool_calls — после max_iterations возвращаем fallback."""
