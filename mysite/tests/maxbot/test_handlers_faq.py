@@ -68,6 +68,43 @@ async def test_faq_list_respects_order():
 
 
 @pytest.mark.asyncio
+async def test_faq_list_truncates_to_max_keyboard_rows():
+    """>29 active HelpArticle → клавиатура обрезана (MAX errors.maxRows)."""
+    from maxbot.handlers.faq import on_show_faq
+    from maxbot.keyboards import MAX_KEYBOARD_ROWS, PAYLOAD_FAQ_PREFIX
+    for i in range(MAX_KEYBOARD_ROWS + 5):
+        await amake("services_app.HelpArticle", question=f"Q{i:03d}?", answer="A", is_active=True, order=i)
+    event = _make_callback(user_id=9099)
+    ctx = MemoryContext(chat_id=100, user_id=9099)
+    await on_show_faq(event, ctx)
+    rows = event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+    # MAX_KEYBOARD_ROWS faq + 1 «Назад» = MAX_KEYBOARD_ROWS+1 ≤ 30
+    assert len(rows) == MAX_KEYBOARD_ROWS + 1
+    faq_payloads = [b.payload for row in rows for b in row if b.payload and b.payload.startswith(PAYLOAD_FAQ_PREFIX)]
+    assert len(faq_payloads) == MAX_KEYBOARD_ROWS
+
+
+@pytest.mark.asyncio
+async def test_faq_long_question_text_truncated_to_64():
+    """MAX лимит text кнопки 64 chars — длинные question обрезаются с многоточием."""
+    from maxbot.handlers.faq import on_show_faq
+    long_q = "Очень-очень длинный вопрос про массаж который точно не влезет в 64 символа никак?"
+    a = await amake("services_app.HelpArticle", question=long_q, answer="A", is_active=True)
+    event = _make_callback(user_id=9098)
+    ctx = MemoryContext(chat_id=100, user_id=9098)
+    await on_show_faq(event, ctx)
+    texts = [
+        b.text
+        for row in event.bot.send_message.await_args.kwargs["attachments"][0].payload.buttons
+        for b in row
+    ]
+    # Какая-то из кнопок — обрезанный вариант ≤64 chars
+    long_button = next((t for t in texts if "длинный" in t), None)
+    assert long_button is not None
+    assert len(long_button) <= 64
+
+
+@pytest.mark.asyncio
 async def test_faq_list_empty_fallback():
     from maxbot.handlers.faq import on_show_faq
     event = _make_callback(user_id=9003)
