@@ -185,13 +185,18 @@ async def test_chat_handles_mcp_tool_exception():
 # ─── chat_rag (RAG-as-context, новый flow для AI-помощника) ────────────────
 
 
-def _mcp_with_search_faq_response(items: list[dict]):
-    """MCP-клиент мок где search_faq возвращает заданный список."""
+def _mcp_with_search_faq_response(items: list[dict], wrap_dict: bool = True):
+    """MCP-клиент мок где search_faq возвращает items.
+
+    wrap_dict=True (default) — оборачивает в {"results": [...]} как реальный
+    search_faq tool после fix'а. False — возвращает list напрямую (legacy).
+    """
     import json as _json
     mock = MagicMock()
     mock.ensure_started = AsyncMock()
     result = MagicMock()
-    result.content = [MagicMock(text=_json.dumps(items))]
+    payload = {"results": items} if wrap_dict else items
+    result.content = [MagicMock(text=_json.dumps(payload))]
     mock.call_tool = AsyncMock(return_value=result)
     return mock
 
@@ -247,6 +252,21 @@ async def test_chat_rag_returns_giveup_when_no_faq_found():
     )
     assert result == LLM_GIVEUP_MESSAGE
     openai.chat.completions.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_handles_legacy_list_format():
+    """Backward-compat: если search_faq возвращает list (legacy) — обрабатываем."""
+    from maxbot.llm import chat_rag
+    mcp = _mcp_with_search_faq_response(
+        [{"question": "Q", "answer": "A", "score": 0.85}],
+        wrap_dict=False,  # legacy list
+    )
+    openai = _mock_openai_client_returning_text("ok")
+    result = await chat_rag(
+        user_text="?", system_prompt="...", mcp_client=mcp, openai_client=openai,
+    )
+    assert result == "ok"
 
 
 @pytest.mark.asyncio

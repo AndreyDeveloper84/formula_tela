@@ -68,7 +68,11 @@ def test_search_faq_returns_top_k_with_scores(tmp_path, monkeypatch):
     reindex_help_articles(store)
 
     from formulatela_mcp.main import search_faq
-    results = search_faq("Хочу записаться", k=2)
+    response = search_faq("Хочу записаться", k=2)
+    # Возвращается dict-обёртка (FastMCP сериализует list[dict] странно)
+    assert isinstance(response, dict)
+    assert "results" in response
+    results = response["results"]
     assert len(results) == 2
     # Топ — про запись (semantic match)
     assert "записаться" in results[0]["question"].lower()
@@ -90,8 +94,8 @@ def test_search_faq_caps_k_to_10(tmp_path, monkeypatch):
     store = ChromaStore(persist_path=str(tmp_path), provider="default")
     reindex_help_articles(store)
     from formulatela_mcp.main import search_faq
-    results = search_faq("anything", k=999)
-    assert len(results) <= 10
+    response = search_faq("anything", k=999)
+    assert len(response["results"]) <= 10
 
 
 @pytest.mark.django_db(transaction=True)
@@ -99,4 +103,4 @@ def test_search_faq_empty_store_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setenv("CHROMA_PATH", str(tmp_path))
     monkeypatch.setenv("EMBEDDING_PROVIDER", "default")
     from formulatela_mcp.main import search_faq
-    assert search_faq("anything", k=3) == []
+    assert search_faq("anything", k=3) == {"results": []}
