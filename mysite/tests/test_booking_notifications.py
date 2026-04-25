@@ -141,6 +141,7 @@ def test_send_notification_telegram_sends_when_configured(settings):
     settings.TELEGRAM_BOT_TOKEN = "fake-token"
     settings.TELEGRAM_CHAT_ID = "fake-chat"
     with patch("notifications.http_requests.post") as mock_post:
+        mock_post.return_value.ok = True
         result = send_notification_telegram("Тест-сообщение")
     assert result is True
     mock_post.assert_called_once()
@@ -148,6 +149,54 @@ def test_send_notification_telegram_sends_when_configured(settings):
     assert "fake-token" in url_arg
     assert mock_post.call_args.kwargs["json"]["chat_id"] == "fake-chat"
     assert mock_post.call_args.kwargs["json"]["text"] == "Тест-сообщение"
+
+
+# ── Hot fix: proxy для api.telegram.org (заблокирован в РФ) ──────────────────
+
+def test_send_notification_telegram_uses_telegram_proxy(settings):
+    """TELEGRAM_PROXY → передаётся в proxies={'https': ...}."""
+    settings.TELEGRAM_BOT_TOKEN = "tok"
+    settings.TELEGRAM_CHAT_ID = "ch"
+    settings.TELEGRAM_PROXY = "http://user:pass@proxy.example:3128"
+    settings.OPENAI_PROXY = ""
+    with patch("notifications.http_requests.post") as mock_post:
+        mock_post.return_value.ok = True
+        send_notification_telegram("X")
+    assert mock_post.call_args.kwargs["proxies"] == {"https": "http://user:pass@proxy.example:3128"}
+
+
+def test_send_notification_telegram_falls_back_to_openai_proxy(settings):
+    """OPENAI_PROXY как fallback если TELEGRAM_PROXY пуст."""
+    settings.TELEGRAM_BOT_TOKEN = "tok"
+    settings.TELEGRAM_CHAT_ID = "ch"
+    settings.TELEGRAM_PROXY = ""
+    settings.OPENAI_PROXY = "http://openai-proxy:8080"
+    with patch("notifications.http_requests.post") as mock_post:
+        mock_post.return_value.ok = True
+        send_notification_telegram("X")
+    assert mock_post.call_args.kwargs["proxies"] == {"https": "http://openai-proxy:8080"}
+
+
+def test_send_notification_telegram_no_proxies_when_none_set(settings):
+    settings.TELEGRAM_BOT_TOKEN = "tok"
+    settings.TELEGRAM_CHAT_ID = "ch"
+    settings.TELEGRAM_PROXY = ""
+    settings.OPENAI_PROXY = ""
+    with patch("notifications.http_requests.post") as mock_post:
+        mock_post.return_value.ok = True
+        send_notification_telegram("X")
+    assert mock_post.call_args.kwargs["proxies"] is None
+
+
+def test_send_notification_telegram_returns_false_on_http_error(settings):
+    """Если Telegram вернул не-2xx — возвращаем False (раньше всегда True)."""
+    settings.TELEGRAM_BOT_TOKEN = "tok"
+    settings.TELEGRAM_CHAT_ID = "ch"
+    with patch("notifications.http_requests.post") as mock_post:
+        mock_post.return_value.ok = False
+        mock_post.return_value.status_code = 400
+        mock_post.return_value.text = "bad request"
+        assert send_notification_telegram("X") is False
 
 
 # ── api_wizard_booking — интеграция ─────────────────────────────────────────

@@ -29,22 +29,37 @@ logger = logging.getLogger(__name__)
 def send_notification_telegram(text: str) -> bool:
     """Отправляет текст в Telegram чат администратора.
 
+    api.telegram.org заблокирован в РФ — используем HTTP-прокси из
+    TELEGRAM_PROXY (приоритет) или OPENAI_PROXY (fallback) если задано.
+    Без прокси на проде в РФ запрос упадёт с Network unreachable.
+
     Ничего не делает, если TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID не заданы
     или если POST упал (ошибка логируется, исключение не пробрасывается).
-    Возвращает True при успешной отправке.
+    Возвращает True при успешной отправке (HTTP 2xx).
     """
     token = getattr(django_settings, "TELEGRAM_BOT_TOKEN", "")
     chat_id = getattr(django_settings, "TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         return False
 
+    proxy_url = (
+        getattr(django_settings, "TELEGRAM_PROXY", "")
+        or getattr(django_settings, "OPENAI_PROXY", "")
+    )
+    proxies = {"https": proxy_url} if proxy_url else None
+
     try:
-        http_requests.post(
+        r = http_requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            timeout=5,
+            timeout=10,
+            proxies=proxies,
         )
-        return True
+        if not r.ok:
+            logger.warning(
+                "Telegram notification HTTP %s: %s", r.status_code, r.text[:200]
+            )
+        return r.ok
     except Exception as e:
         logger.warning(f"Telegram notification failed: {e}")
         return False
