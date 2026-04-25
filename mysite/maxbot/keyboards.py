@@ -81,11 +81,15 @@ def faq_keyboard(articles: Iterable) -> object:
     """Список FAQ-статей по 1 в ряду + «Назад».
 
     articles — iterable HelpArticle, используем .id и .question.
+    Лимит MAX_KEYBOARD_ROWS=29 + 1 ряд под Назад = 30 (хард-лимит MAX API).
+    На 168 статьях обрезается; полный список ищется через RAG (T-05+).
     """
     builder = InlineKeyboardBuilder()
-    for art in articles:
+    for art in list(articles)[:MAX_KEYBOARD_ROWS]:
+        # MAX лимит на text кнопки — обрезаем длинные question (>64 chars)
+        text = art.question if len(art.question) <= 64 else art.question[:61] + "…"
         builder.row(
-            CallbackButton(text=art.question, payload=f"{PAYLOAD_FAQ_PREFIX}{art.id}"),
+            CallbackButton(text=text, payload=f"{PAYLOAD_FAQ_PREFIX}{art.id}"),
         )
     builder.row(CallbackButton(text="← Назад в меню", payload=PAYLOAD_BACK))
     return builder.as_markup()
