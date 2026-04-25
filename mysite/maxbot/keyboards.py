@@ -22,6 +22,7 @@ PAYLOAD_MENU_FAQ = "cb:menu:faq"
 PAYLOAD_BACK = "cb:back"
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
+PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
 
 PAYLOAD_SVC_PREFIX = "cb:svc:"
 PAYLOAD_FAQ_PREFIX = "cb:faq:"
@@ -97,11 +98,19 @@ def back_to_menu_keyboard() -> object:
     return builder.as_markup()
 
 
-def confirm_booking_keyboard() -> object:
-    """Подтверждение/отмена заявки — 2 кнопки в ряду."""
+def confirm_booking_keyboard(*, with_other: bool = False) -> object:
+    """Подтверждение/отмена заявки.
+
+    with_other=True добавляет кнопку «📝 Указать другие данные» — для сценария
+    повторной записи где бот предлагает использовать сохранённые имя/телефон.
+    """
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="✅ Да, всё верно", payload=PAYLOAD_CONFIRM_YES),
         CallbackButton(text="❌ Отмена", payload=PAYLOAD_CONFIRM_NO),
     )
+    if with_other:
+        builder.row(
+            CallbackButton(text="📝 Указать другие данные", payload=PAYLOAD_CONFIRM_OTHER),
+        )
     return builder.as_markup()

@@ -114,6 +114,13 @@ async def on_confirm_yes(callback: MessageCallback, context: MemoryContext) -> N
         client_name=data["name"],
         client_phone=data["phone"],
     )
+    # T-09.5: запоминаем client_name/phone в BotUser, чтобы при следующей
+    # записи бот пропустил FSM (см. services.py::on_pick_service)
+    await _persist_client_to_bot_user(
+        bot_user_id=bot_user.id,
+        client_name=data["name"],
+        client_phone=data["phone"],
+    )
     await _bump_bookings_count(bot_user.id)
     await sync_to_async(_notify_bot_booking)(booking)
     await context.clear()
@@ -137,6 +144,23 @@ async def on_confirm_no(callback: MessageCallback, context: MemoryContext) -> No
         text=texts.BOOKING_CANCELLED,
         attachments=[keyboards.main_menu_keyboard()],
     )
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_CONFIRM_OTHER)
+async def on_confirm_other(callback: MessageCallback, context: MemoryContext) -> None:
+    """T-09.5: «Указать другие данные» — сбросить name/phone из ctx, начать FSM с awaiting_name."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    data = await context.get_data()
+    # Полностью сбрасываем data (set_data, не update_data — нужно стереть name/phone),
+    # сохраняя только service_id/name. Переход в awaiting_name.
+    await context.set_state(BookingStates.awaiting_name)
+    await context.set_data({
+        "service_id": data.get("service_id"),
+        "service_name": data.get("service_name"),
+    })
+    await callback.bot.send_message(chat_id=chat_id, text=texts.BOOKING_ASK_NAME)
 
 
 # ─── Sync helpers ───────────────────────────────────────────────────────────
@@ -172,6 +196,15 @@ def _bump_bookings_count(bot_user_id: int) -> None:
         bu = BotUser.objects.select_for_update().get(pk=bot_user_id)
         bu.context["bookings_count"] = bu.context.get("bookings_count", 0) + 1
         bu.save(update_fields=["context", "last_seen"])
+
+
+@sync_to_async
+def _persist_client_to_bot_user(*, bot_user_id: int, client_name: str, client_phone: str) -> None:
+    """Запомнить имя/телефон клиента в BotUser для пропуска FSM при повторной записи."""
+    BotUser.objects.filter(pk=bot_user_id).update(
+        client_name=client_name,
+        client_phone=client_phone,
+    )
 
 
 def _notify_bot_booking(booking: BookingRequest) -> None:
