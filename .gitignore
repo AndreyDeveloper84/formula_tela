@@ -50,3 +50,4 @@ repomix-output.*
 
 # Pytest
 .pytest_cache/
+*.egg-info/

@@ -244,12 +244,17 @@ result = collection.query(query_texts=["как записаться?"], n_result
 
 ## 5. Pin'ы для requirements.txt
 
-После research зафиксированы:
+После research **и реальной установки** (T-03 smoke):
 ```
-mcp[cli]>=2026.1.0,<2027
-chromadb>=0.5.0,<1.0
+mcp[cli]>=1.20.0,<2.0      # semver! на 2026-04-25 актуальная 1.27.0 (НЕ calver как сначала думал)
+chromadb>=0.5.0,<2.0
 # openai уже есть (1.99.9)
 ```
+
+⚠ **Гочча T-03 smoke:** при spawn'е MCP-сервера через `stdio_client` нужно явно
+передать `env=dict(os.environ)` И добавить `PYTHONPATH=<repo>/mysite/` —
+иначе subprocess не найдёт `mysite.settings`. В `infra/systemd/...` будем
+прописывать `Environment=PYTHONPATH=/home/taximeter/mysite/formula_tela/mysite`.
 
 ---
 
