@@ -32,6 +32,9 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
 ADMIN_NOTIFICATION_EMAIL = os.environ.get('ADMIN_NOTIFICATION_EMAIL', '')
 
+# MAX-бот (для admin-action push-back BotInquiry → bot.send_message в MAX)
+MAX_BOT_TOKEN = os.environ.get('MAX_BOT_TOKEN', '')
+
 INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
