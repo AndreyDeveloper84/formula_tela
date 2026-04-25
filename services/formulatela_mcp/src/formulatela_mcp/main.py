@@ -26,6 +26,27 @@ def ping() -> str:
     return "pong"
 
 
+# Singleton ChromaStore — instance один на subprocess, переиспользуется на
+# каждый call_tool. Без этого chromadb client (~600MB heap) пересоздавался
+# на КАЖДЫЙ запрос — главная причина 2.4s gap в latency-логах.
+_chroma_store_singleton = None
+
+
+def _get_chroma_store():
+    global _chroma_store_singleton
+    if _chroma_store_singleton is not None:
+        return _chroma_store_singleton
+    from formulatela_mcp.embeddings.chroma_backend import ChromaStore
+    from formulatela_mcp.embeddings.reindex import get_default_store_path
+    import os
+    provider = os.environ.get("EMBEDDING_PROVIDER", "default")
+    _chroma_store_singleton = ChromaStore(
+        persist_path=get_default_store_path(),
+        provider=provider,
+    )
+    return _chroma_store_singleton
+
+
 @mcp.tool()
 def search_faq(query: str, k: int = 3) -> dict:
     """Найти top-k FAQ-статей семантически близких к query.
@@ -44,16 +65,8 @@ def search_faq(query: str, k: int = 3) -> dict:
         query: текст вопроса клиента (например "как записаться?")
         k: сколько результатов вернуть (1..10)
     """
-    from formulatela_mcp.embeddings.chroma_backend import ChromaStore
-    from formulatela_mcp.embeddings.reindex import get_default_store_path
-    import os
-
     k = max(1, min(k, 10))
-    provider = os.environ.get("EMBEDDING_PROVIDER", "default")
-    store = ChromaStore(
-        persist_path=get_default_store_path(),
-        provider=provider,
-    )
+    store = _get_chroma_store()  # singleton, без re-init
     results = store.search(query, k=k)
     # Возвращаем dict-обёртку (НЕ list) — FastMCP сериализует list[dict] странно
     # (только первый элемент в content[0]). Dict гарантированно один JSON.
