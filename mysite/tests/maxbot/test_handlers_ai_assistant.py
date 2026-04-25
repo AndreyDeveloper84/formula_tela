@@ -194,3 +194,97 @@ def test_main_menu_includes_ask_button():
     kb = main_menu_keyboard()
     payloads = [b.payload for row in kb.payload.buttons for b in row]
     assert PAYLOAD_MENU_ASK in payloads
+
+
+# ─── Response cache — _get_ai_answer integration ──────────────────────────
+
+
+@pytest.fixture
+def _clear_cache():
+    from django.core.cache import cache
+    cache.clear()
+    yield
+    cache.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_ai_answer_returns_cached_without_calling_chat_rag(_clear_cache):
+    """Кэш-хит → не зовём chat_rag, не платим ~6.7s OpenAI/MCP."""
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.response_cache import set_cached_answer
+
+    await set_cached_answer("Как записаться?", "Кэш-ответ")
+    sender = MagicMock(user_id=30001, full_name="X")
+
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
+               AsyncMock(return_value="не должен быть вызван")) as mock_rag:
+        result = await _get_ai_answer("Как записаться?", sender)
+
+    assert result == "Кэш-ответ"
+    mock_rag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_ai_answer_caches_successful_answer(_clear_cache):
+    """После успешного ответа — следующий вызов того же вопроса кэш-хит."""
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.response_cache import get_cached_answer
+
+    sender = MagicMock(user_id=30002, full_name="X")
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
+               AsyncMock(return_value="свежий ответ от LLM")):
+        result = await _get_ai_answer("Сколько стоит массаж спины?", sender)
+
+    assert result == "свежий ответ от LLM"
+    # Проверяем что ответ положили в кэш
+    assert await get_cached_answer("Сколько стоит массаж спины?") == "свежий ответ от LLM"
+
+
+@pytest.mark.asyncio
+async def test_get_ai_answer_does_not_cache_giveup(_clear_cache):
+    """LLM_GIVEUP_MESSAGE не кэшируем — пусть retry имеет шанс."""
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.llm import LLM_GIVEUP_MESSAGE
+    from maxbot.response_cache import get_cached_answer
+
+    sender = MagicMock(user_id=30003, full_name="X")
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
+               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)):
+        result = await _get_ai_answer("Что-то странное", sender)
+
+    assert result == LLM_GIVEUP_MESSAGE
+    assert await get_cached_answer("Что-то странное") is None
+
+
+@pytest.mark.asyncio
+async def test_get_ai_answer_does_not_cache_on_exception(_clear_cache):
+    """Exception → GIVEUP, не кэшируется."""
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.llm import LLM_GIVEUP_MESSAGE
+    from maxbot.response_cache import get_cached_answer
+
+    sender = MagicMock(user_id=30004, full_name="X")
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
+               AsyncMock(side_effect=RuntimeError("OpenAI down"))):
+        result = await _get_ai_answer("Какой режим работы?", sender)
+
+    assert result == LLM_GIVEUP_MESSAGE
+    assert await get_cached_answer("Какой режим работы?") is None
+
+
+@pytest.mark.asyncio
+async def test_get_ai_answer_cache_hits_normalized_variants(_clear_cache):
+    """Кэш по «как записаться?» хитит при «КАК ЗАПИСАТЬСЯ.», «как  записаться»."""
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.response_cache import set_cached_answer
+
+    await set_cached_answer("как записаться", "Через бота или по телефону.")
+    sender = MagicMock(user_id=30005, full_name="X")
+
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
+               AsyncMock(return_value="не должен быть вызван")) as mock_rag:
+        for variant in ["Как записаться?", "КАК ЗАПИСАТЬСЯ.", "как  записаться  "]:
+            result = await _get_ai_answer(variant, sender)
+            assert result == "Через бота или по телефону.", f"variant={variant!r}"
+
+    mock_rag.assert_not_awaited()

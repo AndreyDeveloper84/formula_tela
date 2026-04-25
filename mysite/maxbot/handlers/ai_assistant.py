@@ -30,6 +30,7 @@ from maxbot import keyboards, texts
 from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag
 from maxbot.mcp_client import MaxbotMCPClient
 from maxbot.personalization import get_or_create_bot_user
+from maxbot.response_cache import get_cached_answer, set_cached_answer
 from maxbot.states import AskStates
 from notifications import send_notification_telegram
 from services_app.models import BotInquiry
@@ -108,9 +109,21 @@ async def _get_ai_answer(user_text: str, sender) -> str:
 
     Быстрее chat_with_tools на ~30%. Если top FAQ-similarity < threshold —
     возвращаем GIVEUP без вызова LLM (экономия ещё ~2s).
+
+    Перед запуском пайплайна — проверка response cache (24ч TTL): повторные
+    «как записаться?» отдаются мгновенно без OpenAI/MCP. Кэшируем только
+    успешные ответы (LLM_GIVEUP_MESSAGE — нет, чтобы retry имел шанс).
     """
     import time
     started = time.perf_counter()
+
+    cached = await get_cached_answer(user_text)
+    if cached is not None:
+        elapsed = time.perf_counter() - started
+        logger.info("ai_assistant: CACHE HIT %.3fs user_id=%s text=%r",
+                    elapsed, sender.user_id, user_text[:60])
+        return cached
+
     try:
         mcp_client = MaxbotMCPClient.instance()
         answer = await chat_rag(
@@ -121,6 +134,8 @@ async def _get_ai_answer(user_text: str, sender) -> str:
         elapsed = time.perf_counter() - started
         logger.info("ai_assistant: %.2fs user_id=%s text=%r answer_len=%d",
                     elapsed, sender.user_id, user_text[:60], len(answer))
+        if answer != LLM_GIVEUP_MESSAGE:
+            await set_cached_answer(user_text, answer)
         return answer
     except Exception:  # noqa: BLE001
         elapsed = time.perf_counter() - started
