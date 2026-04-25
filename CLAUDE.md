@@ -682,6 +682,7 @@ python manage.py check
 - Telegram дайджест рекомендаций (пятница 17:00)
 - Расширение `check_agents` статистикой по AgentRecommendationOutcome
 - MAX-бот Фаза 2: нативная запись через YClients API (вместо `BookingRequest` + ручной перезвон), SMS-напоминания, история клиента в боте
+- **RAG MCP-сервер** — обязательно разобрать как технологию: отдельный Model Context Protocol сервис с embedding-store, переиспользуем для NLP-роутинга MAX-бота (ввод → FAQ HelpArticle), для AI-агентов (analytics/seo_landing — поиск по документам/гайдам), и для будущих ботов. См. варианты 1-5 в `docs/plans/maxbot-phase1.md` Backlog (keyword-match → LLM-router → embeddings → RAG MCP)
 
 ---
 

@@ -38,6 +38,17 @@
 - Рекомендации на основе истории (ML)
 - Telegram/WhatsApp версии
 - Multimedia (видео, голосовые, карусели)
+- **NLP-роутинг свободного текста на FAQ** (см. backlog ниже)
+
+### Backlog: NLP free-text → FAQ routing (после Фазы 1)
+
+Сейчас `fallback.py::on_fallback` ловит ВСЕ нематченные text-сообщения и отвечает «Не совсем понял» — без проверки против `HelpArticle`. Это intentional для MVP, но клиенты пишут естественные вопросы. Опции по нарастанию сложности:
+
+1. **Keyword-match** — нормализация через `pymorphy3` (уже в requirements) + intersect слов с `HelpArticle.question`. ~30 мин, бесплатно. Низкий precision на сложных формулировках.
+2. **LLM-router** — GPT-4o-mini выбирает `HelpArticle.id` или null. ~1 час, ~$0.0001/запрос. Хороший precision.
+3. **LLM + answer-generation fallback** — если ни одна FAQ не подошла, GPT генерирует ответ. Рискованно (галлюцинации про услуги/цены). Нужны guardrails.
+4. **RAG через embeddings** — векторизуем `HelpArticle` (`text-embedding-3-small`), косинусная близость с эмбеддингом ввода → top-1 article. ~3 часа, дешёвый embedding ($0.02/1M tokens) + retrieval offline. Лучший precision/cost.
+5. **🎯 RAG MCP-сервер** — отдельный MCP (Model Context Protocol) сервис который держит embedding-store, отвечает агентам/боту через единый интерфейс. **Обязательно разобрать как технологию** — переиспользуется для всех будущих ботов и AI-агентов в проекте (analytics, seo_landing, smm и т.д. могут таскать FAQ/документы через него). Сложнее (~6+ часов на основу), но архитектурный выигрыш долгосрочный.
 
 ---
 
