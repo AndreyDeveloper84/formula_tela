@@ -47,6 +47,7 @@ def _make_text_message(*, chat_id=100, user_id=200, text="Как записат�
     event.message.body = body
     event.bot = MagicMock()
     event.bot.send_message = AsyncMock()
+    event.bot.send_action = AsyncMock()
     return event
 
 
@@ -80,7 +81,12 @@ async def test_ask_button_skips_when_message_deleted():
 
 @pytest.mark.asyncio
 async def test_free_text_returns_llm_answer():
-    """LLM вернул нормальный ответ → клиент получает + главное меню."""
+    """LLM вернул нормальный ответ → клиент получает один send_message + меню.
+
+    После замены AI_THINKING на send_action(TYPING_ON) — финальный ответ
+    единственное сообщение в чате (не два).
+    """
+    from maxapi.enums.sender_action import SenderAction
     from maxbot.handlers.ai_assistant import on_free_text
     event = _make_text_message(user_id=20003, text="Как записаться?")
     ctx = MemoryContext(chat_id=100, user_id=20003)
@@ -89,11 +95,14 @@ async def test_free_text_returns_llm_answer():
                AsyncMock(return_value="Запись через бот, кнопка «Записаться».")):
         await on_free_text(event, ctx)
 
-    # 2 send_message: AI_THINKING и финальный ответ
-    assert event.bot.send_message.await_count == 2
-    final_call = event.bot.send_message.await_args_list[1].kwargs
+    # Typing indicator — нативный, не сообщение
+    event.bot.send_action.assert_awaited_once_with(
+        chat_id=100, action=SenderAction.TYPING_ON,
+    )
+    # Финальный ответ — единственный send_message
+    assert event.bot.send_message.await_count == 1
+    final_call = event.bot.send_message.await_args.kwargs
     assert "Запись через бот" in final_call["text"]
-    # Главное меню в attachments
     assert "attachments" in final_call
 
 
@@ -132,8 +141,9 @@ async def test_free_text_creates_bot_inquiry_on_giveup():
     assert inquiries[0].chat_id == 777
     assert inquiries[0].question == "Какой ваш любимый цвет?"
     assert inquiries[0].sent_to_max is False  # не отправлен ещё (T-09 push back)
-    # Сообщение клиенту — про менеджера, не giveup-message
-    final_text = event.bot.send_message.await_args_list[1].kwargs["text"]
+    # Сообщение клиенту — единственный send_message с упоминанием менеджера
+    assert event.bot.send_message.await_count == 1
+    final_text = event.bot.send_message.await_args.kwargs["text"]
     assert "менеджер" in final_text.lower()
 
 
@@ -163,6 +173,7 @@ async def test_free_text_skips_message_without_sender():
     ctx = MemoryContext(chat_id=100, user_id=20006)
     await on_free_text(event, ctx)
     event.bot.send_message.assert_not_awaited()
+    event.bot.send_action.assert_not_awaited()  # typing-индикатор не должен светиться
 
 
 @pytest.mark.asyncio
@@ -172,6 +183,28 @@ async def test_free_text_skips_empty_message():
     ctx = MemoryContext(chat_id=100, user_id=20007)
     await on_free_text(event, ctx)
     event.bot.send_message.assert_not_awaited()
+    event.bot.send_action.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_free_text_typing_indicator_survives_send_action_failure():
+    """Если send_action упал (сетевой сбой) — AI flow должен продолжиться.
+
+    Typing-индикатор это best-effort UX, его падение не должно блокировать
+    ответ клиенту.
+    """
+    from maxbot.handlers.ai_assistant import on_free_text
+    event = _make_text_message(user_id=20010, text="Сколько стоит?")
+    event.bot.send_action = AsyncMock(side_effect=RuntimeError("network blip"))
+    ctx = MemoryContext(chat_id=100, user_id=20010)
+
+    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
+               AsyncMock(return_value="3000 руб.")):
+        await on_free_text(event, ctx)
+
+    # Финальный ответ всё равно ушёл
+    event.bot.send_message.assert_awaited_once()
+    assert "3000" in event.bot.send_message.await_args.kwargs["text"]
 
 
 @pytest.mark.asyncio

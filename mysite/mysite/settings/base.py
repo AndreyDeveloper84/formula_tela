@@ -129,6 +129,16 @@ STATICFILES_DIRS = [
 MEDIA_URL   = "/media/"
 MEDIA_ROOT  = os.getenv("MEDIA_ROOT", str(BASE_DIR / "media"))
 
+# === MAX-бот ===
+# Welcome-картинка для новых пользователей (отправляется первым контактом
+# в bot_started только для is_new=True). Если файла нет — приветствие
+# отправляется без картинки. Сменить на свою — переопределить env-переменной
+# или положить файл по другому пути.
+MAXBOT_WELCOME_IMAGE_PATH = os.getenv(
+    "MAXBOT_WELCOME_IMAGE_PATH",
+    str(BASE_DIR / "static" / "images" / "massaj-big.jpg"),
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGGING = {
