@@ -222,14 +222,21 @@ async def test_chat_rag_returns_llm_answer_when_score_high():
 
 
 @pytest.mark.asyncio
-async def test_chat_rag_returns_giveup_when_score_below_threshold():
-    """Если top score < min_score → возврат giveup БЕЗ LLM call."""
-    from maxbot.llm import chat_rag, LLM_GIVEUP_MESSAGE
+async def test_chat_rag_low_score_calls_llm_with_empty_context():
+    """Изменение поведения 2026-04-26: при top score < min_score БОЛЬШЕ НЕ
+    делаем early-giveup. LLM вызывается с пустым FAQ-context, и по правилам
+    system_prompt'а решает: вежливо редиректить (off-topic) или giveup
+    (real-but-no-FAQ). Раньше клиент видел «передам менеджеру» на любую
+    мелочь типа «привет» — теперь это intent-router'ом перехватывается,
+    а здесь LLM умнее работает с low-confidence cases.
+    """
+    from maxbot.llm import chat_rag
     mcp = _mcp_with_search_faq_response([
         {"question": "X?", "answer": "A", "score": 0.3},
     ])
-    openai = MagicMock()
-    openai.chat.completions.create = AsyncMock()
+    openai = _mock_openai_client_returning_text(
+        "Я отвечаю про массаж и SPA — задайте вопрос по теме."
+    )
     result = await chat_rag(
         user_text="любимый цвет?",
         system_prompt="...",
@@ -237,21 +244,22 @@ async def test_chat_rag_returns_giveup_when_score_below_threshold():
         openai_client=openai,
         min_score=0.5,
     )
-    assert result == LLM_GIVEUP_MESSAGE
-    openai.chat.completions.create.assert_not_awaited()  # сэкономили LLM call
+    assert "массаж" in result.lower()
+    openai.chat.completions.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_chat_rag_returns_giveup_when_no_faq_found():
-    from maxbot.llm import chat_rag, LLM_GIVEUP_MESSAGE
+async def test_chat_rag_no_faq_calls_llm_with_empty_context():
+    """search_faq вернул пустой список → LLM вызывается с context-stub,
+    решает по правилам system_prompt'а."""
+    from maxbot.llm import chat_rag
     mcp = _mcp_with_search_faq_response([])
-    openai = MagicMock()
-    openai.chat.completions.create = AsyncMock()
+    openai = _mock_openai_client_returning_text("ответ от LLM без FAQ")
     result = await chat_rag(
         user_text="?", system_prompt="...", mcp_client=mcp, openai_client=openai,
     )
-    assert result == LLM_GIVEUP_MESSAGE
-    openai.chat.completions.create.assert_not_awaited()
+    assert result == "ответ от LLM без FAQ"
+    openai.chat.completions.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio

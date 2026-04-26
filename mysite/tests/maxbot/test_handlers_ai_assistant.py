@@ -263,6 +263,36 @@ def _clear_cache():
 
 
 @pytest.mark.asyncio
+async def test_get_ai_answer_intent_match_skips_cache_and_chat_rag(_clear_cache):
+    """Phatic greeting → instant canned response, ни chat_rag, ни cache не зовутся."""
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.intents import GREETING_RESPONSE
+    from maxbot.response_cache import get_cached_answer
+
+    sender = MagicMock(user_id=40001, full_name="X")
+    with patch("maxbot.handlers.ai_assistant.chat_rag",
+               AsyncMock(return_value="не должен быть вызван")) as mock_rag:
+        result = await _get_ai_answer("Привет!", sender)
+
+    assert result == GREETING_RESPONSE
+    mock_rag.assert_not_awaited()
+    # Canned не попадает в response cache (intent-роутер сам instant)
+    assert await get_cached_answer("Привет!") is None
+
+
+@pytest.mark.asyncio
+async def test_get_ai_answer_intent_thanks_returns_canned(_clear_cache):
+    from maxbot.handlers.ai_assistant import _get_ai_answer
+    from maxbot.intents import THANKS_RESPONSE
+
+    sender = MagicMock(user_id=40002, full_name="X")
+    with patch("maxbot.handlers.ai_assistant.chat_rag", AsyncMock()) as mock_rag:
+        result = await _get_ai_answer("спасибо", sender)
+    assert result == THANKS_RESPONSE
+    mock_rag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_get_ai_answer_returns_cached_without_calling_chat_rag(_clear_cache):
     """Кэш-хит → не зовём chat_rag, не платим ~6.7s OpenAI/MCP."""
     from maxbot.handlers.ai_assistant import _get_ai_answer
