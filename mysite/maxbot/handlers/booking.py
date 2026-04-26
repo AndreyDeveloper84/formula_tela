@@ -24,6 +24,7 @@ from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards, texts
+from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user, greet_text
 from maxbot.states import BookingStates
 from services_app.models import BookingRequest, BotUser, Service
@@ -128,10 +129,11 @@ async def on_confirm_yes(callback: MessageCallback, context: MemoryContext) -> N
     if cached_id is not None:
         logger.info("on_confirm_yes: idempotent hit user=%s service=%s booking=%s",
                     user.user_id, data["service_id"], cached_id)
-        await callback.bot.send_message(
-            chat_id=chat_id,
+        bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+        await send_with_main_menu(
+            bot=callback.bot, chat_id=chat_id,
             text=texts.BOOKING_DONE.format(request_id=cached_id),
-            attachments=[keyboards.main_menu_keyboard()],
+            bot_user=bot_user,
         )
         await context.clear()
         return
@@ -161,10 +163,10 @@ async def on_confirm_yes(callback: MessageCallback, context: MemoryContext) -> N
     await sync_to_async(_notify_bot_booking)(booking)
     await context.clear()
 
-    await callback.bot.send_message(
-        chat_id=chat_id,
+    await send_with_main_menu(
+        bot=callback.bot, chat_id=chat_id,
         text=texts.BOOKING_DONE.format(request_id=booking.id),
-        attachments=[keyboards.main_menu_keyboard()],
+        bot_user=bot_user,
     )
 
 
@@ -175,10 +177,11 @@ async def on_confirm_no(callback: MessageCallback, context: MemoryContext) -> No
     await context.clear()
     if chat_id is None:
         return
-    await callback.bot.send_message(
-        chat_id=chat_id,
-        text=texts.BOOKING_CANCELLED,
-        attachments=[keyboards.main_menu_keyboard()],
+    user = callback.callback.user
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    await send_with_main_menu(
+        bot=callback.bot, chat_id=chat_id,
+        text=texts.BOOKING_CANCELLED, bot_user=bot_user,
     )
 
 
