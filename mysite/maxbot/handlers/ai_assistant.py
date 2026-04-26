@@ -24,6 +24,7 @@ import logging
 from asgiref.sync import sync_to_async
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
+from maxapi.enums.sender_action import SenderAction
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards, texts
@@ -70,8 +71,12 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     if not user_text:
         return
 
-    # Сразу даём фидбек — LLM может занять 5-10 сек через прокси
-    await event.bot.send_message(chat_id=chat_id, text=texts.AI_THINKING)
+    # Нативный typing-индикатор пока LLM думает (~5-10s через прокси).
+    # Best-effort: сетевой сбой не должен блокировать ответ клиенту.
+    try:
+        await event.bot.send_action(chat_id=chat_id, action=SenderAction.TYPING_ON)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("send_action TYPING_ON failed: %s", exc)
 
     # Чистим state — диалог one-shot (state ставился на awaiting_question
     # кнопкой, а тут уже ответили)
