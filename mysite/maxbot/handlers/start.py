@@ -21,6 +21,7 @@ from maxapi.types import (
 
 from maxbot import keyboards
 from maxbot.personalization import get_or_create_bot_user, greet_text
+from maxbot.welcome import get_welcome_attachment
 
 
 router = Router()
@@ -78,12 +79,21 @@ async def _send_greeting(
     full_name: str,
     context: MemoryContext,
 ) -> None:
-    """Общий код: get_or_create + clear FSM + send приветствие с главным меню."""
+    """Общий код: get_or_create + clear FSM + send приветствие с главным меню.
+
+    Для НОВЫХ user'ов прикладываем welcome-картинку (best-effort: если upload
+    упал или файла нет — приветствие пойдёт без неё). Returning users видят
+    только текст + меню, чтобы не приедалось при каждом /start.
+    """
     bot_user, created = await get_or_create_bot_user(user_id, full_name)
     await context.clear()
     text = greet_text(bot_user, is_new=created)
-    await bot.send_message(
-        chat_id=chat_id,
-        text=text,
-        attachments=[keyboards.main_menu_keyboard()],
-    )
+
+    attachments = []
+    if created:
+        welcome = await get_welcome_attachment(bot)
+        if welcome is not None:
+            attachments.append(welcome)
+    attachments.append(keyboards.main_menu_keyboard())
+
+    await bot.send_message(chat_id=chat_id, text=text, attachments=attachments)

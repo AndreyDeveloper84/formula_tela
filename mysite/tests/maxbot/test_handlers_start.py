@@ -1,6 +1,6 @@
 """T-07 RED: handler /start + главное меню (BotStarted, /start command, кнопка Назад)."""
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from asgiref.sync import sync_to_async
 from model_bakery import baker
 
@@ -80,21 +80,72 @@ async def test_bot_started_creates_new_bot_user_on_first_call():
 
 @pytest.mark.asyncio
 async def test_bot_started_sends_main_menu_keyboard():
+    """Главное меню всегда последний attachment (после image если есть)."""
     from maxbot.handlers.start import on_bot_started
     from maxbot.keyboards import PAYLOAD_MENU_BOOK
 
     event = _make_bot_started(user_id=5002, chat_id=999)
     ctx = MemoryContext(chat_id=999, user_id=5002)
-    await on_bot_started(event, ctx)
+    # Welcome недоступен → 1 attachment (только клавиатура)
+    with patch("maxbot.handlers.start.get_welcome_attachment",
+               AsyncMock(return_value=None)):
+        await on_bot_started(event, ctx)
 
     event.bot.send_message.assert_awaited_once()
     call = event.bot.send_message.await_args
     assert call.kwargs["chat_id"] == 999
-    # Проверяем что в attachments есть главное меню (содержит PAYLOAD_MENU_BOOK)
     attachments = call.kwargs["attachments"]
-    assert len(attachments) == 1
-    payloads = [b.payload for row in attachments[0].payload.buttons for b in row]
+    keyboard = attachments[-1]
+    payloads = [b.payload for row in keyboard.payload.buttons for b in row]
     assert PAYLOAD_MENU_BOOK in payloads
+
+
+@pytest.mark.asyncio
+async def test_bot_started_includes_welcome_image_for_new_user():
+    """New user + welcome доступен → 2 attachments (image + keyboard)."""
+    from maxapi.enums.attachment import AttachmentType
+    from maxapi.enums.upload_type import UploadType
+    from maxapi.types.attachments.attachment import Attachment
+    from maxapi.types.attachments.upload import AttachmentPayload, AttachmentUpload
+    from maxbot.handlers.start import on_bot_started
+
+    welcome_att = Attachment(
+        type=AttachmentType.IMAGE,
+        payload=AttachmentUpload(
+            type=UploadType.IMAGE,
+            payload=AttachmentPayload(token="WELCOME"),
+        ),
+    )
+    event = _make_bot_started(user_id=5101, chat_id=111)
+    ctx = MemoryContext(chat_id=111, user_id=5101)
+    with patch("maxbot.handlers.start.get_welcome_attachment",
+               AsyncMock(return_value=welcome_att)):
+        await on_bot_started(event, ctx)
+
+    attachments = event.bot.send_message.await_args.kwargs["attachments"]
+    assert len(attachments) == 2
+    assert attachments[0] is welcome_att  # картинка первой
+    # Меню вторым
+    from maxbot.keyboards import PAYLOAD_MENU_BOOK
+    payloads = [b.payload for row in attachments[1].payload.buttons for b in row]
+    assert PAYLOAD_MENU_BOOK in payloads
+
+
+@pytest.mark.asyncio
+async def test_bot_started_no_welcome_for_returning_user():
+    """Returning user → welcome НЕ запрашивается, отправляется только клавиатура."""
+    from maxbot.handlers.start import on_bot_started
+
+    await amake("services_app.BotUser", max_user_id=5102, client_name="Олег")
+    event = _make_bot_started(user_id=5102, chat_id=222, first_name="Олег")
+    ctx = MemoryContext(chat_id=222, user_id=5102)
+    with patch("maxbot.handlers.start.get_welcome_attachment",
+               AsyncMock(return_value=None)) as mock_welcome:
+        await on_bot_started(event, ctx)
+
+    mock_welcome.assert_not_awaited()  # для returning user даже не пробуем
+    attachments = event.bot.send_message.await_args.kwargs["attachments"]
+    assert len(attachments) == 1  # только клавиатура
 
 
 @pytest.mark.asyncio
