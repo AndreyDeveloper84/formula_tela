@@ -52,6 +52,44 @@ async def test_first_call_only_sends_no_edit():
 
 
 @pytest.mark.asyncio
+async def test_send_called_before_edit_for_smooth_ux():
+    """REGRESSION: send_message должен идти ДО edit_message — клиент сразу
+    видит новый ответ внизу, edit отрабатывает «в фон» вне фокуса.
+
+    Раньше edit → send → между ними был gap 300-500ms без меню = «моргание».
+    """
+    from maxbot.menu_state import (
+        CTX_LAST_MENU_MID, CTX_LAST_MENU_TEXT, send_with_main_menu,
+    )
+
+    bot_user = await amake("services_app.BotUser", max_user_id=70010, context={
+        CTX_LAST_MENU_MID: "mid.OLD",
+        CTX_LAST_MENU_TEXT: "Старый",
+    })
+
+    call_order: list[str] = []
+    bot = MagicMock()
+
+    async def _send(**kwargs):
+        call_order.append("send")
+        return _fake_sent_message("mid.NEW")
+
+    async def _edit(**kwargs):
+        call_order.append("edit")
+
+    bot.send_message = _send
+    bot.edit_message = _edit
+
+    await send_with_main_menu(bot=bot, chat_id=100, text="X", bot_user=bot_user)
+
+    # send должен начаться раньше edit (хотя оба могут завершиться параллельно)
+    assert call_order[0] == "send", (
+        f"Expected send first, got {call_order!r}. UX-критично: "
+        "send-first = клиент видит ответ моментально, edit убирает старое меню в фон."
+    )
+
+
+@pytest.mark.asyncio
 async def test_subsequent_call_edits_prev_then_sends():
     """Если context уже содержит prev_id — edit_message убирает меню с него."""
     from maxbot.menu_state import (
