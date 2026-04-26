@@ -305,3 +305,42 @@ async def test_chat_max_iterations_returns_giveup_message():
     )
     assert result == LLM_GIVEUP_MESSAGE
     assert openai.chat.completions.create.await_count == 3
+
+
+# ─── is_giveup детектор (баг 2026-04-26: LLM произносит фразу из system prompt
+# "Не знаю, передам менеджеру" — точная константа LLM_GIVEUP_MESSAGE отличается,
+# в результате handler не создавал BotInquiry и заявка терялась) ──────────────
+
+
+def test_is_giveup_detects_canonical_constant():
+    """Точное совпадение с LLM_GIVEUP_MESSAGE → True."""
+    from maxbot.llm import is_giveup
+    assert is_giveup("Не получилось разобраться. Передаю вопрос менеджеру.") is True
+
+
+def test_is_giveup_detects_system_prompt_form():
+    """Текст из system_prompt'а «Не знаю, передам менеджеру» → True (главный фикс)."""
+    from maxbot.llm import is_giveup
+    assert is_giveup("Не знаю, передам менеджеру.") is True
+    assert is_giveup("Не знаю, передам менеджеру") is True
+
+
+def test_is_giveup_robust_to_punctuation_and_case():
+    from maxbot.llm import is_giveup
+    assert is_giveup("не знаю, передам менеджеру") is True
+    assert is_giveup("НЕ ЗНАЮ, ПЕРЕДАМ МЕНЕДЖЕРУ!") is True
+    assert is_giveup("Не знаю, передам менеджеру…") is True
+
+
+def test_is_giveup_false_on_real_answer():
+    """Нормальные ответы не должны триггерить giveup."""
+    from maxbot.llm import is_giveup
+    assert is_giveup("Стоимость массажа спины — от 2500 рублей.") is False
+    assert is_giveup("Записаться можно через кнопку «Записаться» в меню.") is False
+    assert is_giveup("") is False
+
+
+def test_is_giveup_handles_none():
+    """Защита от None — не падать, считать false."""
+    from maxbot.llm import is_giveup
+    assert is_giveup(None) is False

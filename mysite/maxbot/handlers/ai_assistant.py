@@ -28,7 +28,7 @@ from maxapi.enums.sender_action import SenderAction
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards, texts
-from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag
+from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag, is_giveup
 from maxbot.mcp_client import MaxbotMCPClient
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.response_cache import get_cached_answer, set_cached_answer
@@ -86,7 +86,7 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     sender = event.message.sender
     answer = await _get_ai_answer(user_text, sender)
 
-    if answer == LLM_GIVEUP_MESSAGE:
+    if is_giveup(answer):
         # LLM не справился → BotInquiry + главное меню
         await _create_bot_inquiry(
             user_id=sender.user_id, full_name=sender.full_name,
@@ -139,7 +139,7 @@ async def _get_ai_answer(user_text: str, sender) -> str:
         elapsed = time.perf_counter() - started
         logger.info("ai_assistant: %.2fs user_id=%s text=%r answer_len=%d",
                     elapsed, sender.user_id, user_text[:60], len(answer))
-        if answer != LLM_GIVEUP_MESSAGE:
+        if not is_giveup(answer):
             await set_cached_answer(user_text, answer)
         return answer
     except Exception:  # noqa: BLE001

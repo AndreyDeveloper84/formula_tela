@@ -148,6 +148,28 @@ async def test_free_text_creates_bot_inquiry_on_giveup():
 
 
 @pytest.mark.asyncio
+async def test_free_text_creates_bot_inquiry_on_user_prompt_giveup_form():
+    """REGRESSION 2026-04-26: LLM может произнести фразу из system_prompt
+    «Не знаю, передам менеджеру» (вариант) вместо канонического GIVEUP.
+    Handler должен детектить через is_giveup() и создать BotInquiry."""
+    from maxbot.handlers.ai_assistant import on_free_text
+    from services_app.models import BotInquiry
+
+    event = _make_text_message(user_id=20100, chat_id=999, text="смысл жизни?")
+    ctx = MemoryContext(chat_id=999, user_id=20100)
+
+    # LLM произнёс ВАРИАНТ giveup, не точную константу
+    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
+               AsyncMock(return_value="Не знаю, передам менеджеру.")), \
+         patch("maxbot.handlers.ai_assistant.send_notification_telegram"):
+        await on_free_text(event, ctx)
+
+    inquiries = await sync_to_async(list)(BotInquiry.objects.filter(chat_id=999))
+    assert len(inquiries) == 1, "BotInquiry должен создаваться даже если LLM сказал вариант giveup"
+    assert inquiries[0].question == "смысл жизни?"
+
+
+@pytest.mark.asyncio
 async def test_free_text_sends_telegram_alert_on_giveup():
     """При создании BotInquiry — Telegram-алерт менеджеру (через notifications/)."""
     from maxbot.handlers.ai_assistant import on_free_text

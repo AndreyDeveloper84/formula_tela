@@ -29,8 +29,33 @@ DEFAULT_MODEL = "gpt-4o-mini"
 # Защита от бесконечного цикла tool-use
 MAX_TOOL_ITERATIONS = 5
 
-# Сообщение клиенту когда модель не справилась за лимит
+# Сообщение клиенту когда модель не справилась за лимит / RAG-score < threshold.
+# Каноническая форма — её мы возвращаем сами. Но LLM также может произнести
+# вариант фразы из system_prompt («Не знаю, передам менеджеру») — `is_giveup`
+# детектит обе формы, чтобы handler не пропустил giveup и обязательно создал
+# BotInquiry.
 LLM_GIVEUP_MESSAGE = "Не получилось разобраться. Передаю вопрос менеджеру."
+
+# Маркеры giveup-фраз — нормализованные substring'и (см. is_giveup ниже).
+# Если LLM произнёс что-то начинающееся с одной из этих фраз — считаем giveup.
+_GIVEUP_MARKERS = (
+    "не получилось разобраться",
+    "не знаю, передам менеджеру",
+    "не знаю передам менеджеру",  # без запятой — на случай если LLM пропустит
+)
+
+
+def is_giveup(answer: str | None) -> bool:
+    """Детектор giveup-ответа: каноническая константа ИЛИ фраза из system_prompt.
+
+    Нормализуем (lowercase + collapse whitespace) и проверяем substring,
+    чтобы поймать вариации с разной пунктуацией / регистром / обёрткой
+    типа «К сожалению, не знаю. Передам менеджеру — он перезвонит».
+    """
+    if not answer:
+        return False
+    normalized = " ".join(answer.lower().split())
+    return any(marker in normalized for marker in _GIVEUP_MARKERS)
 
 # RAG порог: если max similarity ниже — не зовём LLM, сразу giveup.
 # Экономит ~2.3s LLM call'а в случаях когда вопрос явно не из FAQ.

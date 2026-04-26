@@ -16,7 +16,7 @@ import logging
 import time
 
 from maxbot import texts
-from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag
+from maxbot.llm import chat_rag, is_giveup
 from maxbot.mcp_client import MaxbotMCPClient
 from maxbot.popular_questions import POPULAR_QUESTIONS
 from maxbot.response_cache import get_cached_answer, set_cached_answer
@@ -57,7 +57,7 @@ async def warmup_response_cache(
             logger.warning("warmup failed on %r: %s", q, exc)
             continue
 
-        if answer == LLM_GIVEUP_MESSAGE:
+        if is_giveup(answer):
             failed += 1
             logger.debug("warmup giveup (not cached): %r", q)
             continue
