@@ -181,13 +181,15 @@ async def chat_rag(
 ) -> str:
     """RAG-as-context: search_faq → context в system → 1 LLM call (без tools).
 
-    Быстрее чем chat_with_tools на ~30% (3 OpenAI calls → 2). Если top-1
-    результат имеет score < min_score — возвращаем LLM_GIVEUP_MESSAGE
-    БЕЗ вызова LLM (экономия ещё ~2s + не платим OpenAI за гарантированный
-    bot inquiry).
+    Быстрее chat_with_tools на ~30% (3 OpenAI calls → 2). На low-score
+    (top-1 < min_score) НЕ возвращаем early giveup, а зовём LLM с пустым
+    FAQ-context — пусть LLM по правилам system_prompt'а решит: вежливо
+    редиректнуть на off-topic ИЛИ честно сказать «передам менеджеру».
+    Раньше early-giveup обижал клиентов на «привет/спасибо» (теперь это
+    intent-router'ом перехватывается ДО chat_rag).
 
-    Используется в основном flow ai_assistant.py. chat_with_tools остаётся
-    для будущих сложных tools (Фаза 2.3 — booking через YClients).
+    На технические fail (search_faq exception) — всё ещё giveup, иначе
+    LLM может галлюцинировать без FAQ-context.
     """
     await mcp_client.ensure_started()
 
@@ -212,23 +214,30 @@ async def chat_rag(
         logger.exception("chat_rag: search_faq failed")
         return LLM_GIVEUP_MESSAGE
 
-    if not faq_items:
-        logger.info("chat_rag: no FAQ items found, giveup")
-        return LLM_GIVEUP_MESSAGE
-
-    top_score = max(item.get("score", 0) for item in faq_items)
+    # Low-score / empty FAQ — НЕ giveup, а пустой context для LLM.
+    # Он по правилам 2-3 system_prompt'а: либо вежливо редиректит на услуги
+    # (off-topic), либо честно говорит «передам менеджеру» (правило 4).
+    top_score = max((item.get("score", 0) for item in faq_items), default=0.0)
     if top_score < min_score:
-        logger.info("chat_rag: top score %.3f < min %.3f, giveup", top_score, min_score)
-        return LLM_GIVEUP_MESSAGE
+        logger.info("chat_rag: top score %.3f < min %.3f, LLM решит без FAQ-context",
+                    top_score, min_score)
+        faq_items = []  # пустой контекст — LLM не покажется галлюцинировать про FAQ
 
-    # 2. Формируем context из найденных FAQ
-    context_lines = ["Найденные FAQ для контекста (используй чтобы ответить):"]
-    for i, item in enumerate(faq_items, 1):
-        context_lines.append(
-            f"\n{i}. Q: {item.get('question', '')}\n   A: {item.get('answer', '')}"
-            f"\n   (similarity: {item.get('score', 0):.2f})"
+    # 2. Формируем context из найденных FAQ (или пустой)
+    if faq_items:
+        context_lines = ["Найденные FAQ для контекста (используй чтобы ответить):"]
+        for i, item in enumerate(faq_items, 1):
+            context_lines.append(
+                f"\n{i}. Q: {item.get('question', '')}\n   A: {item.get('answer', '')}"
+                f"\n   (similarity: {item.get('score', 0):.2f})"
+            )
+        context = "\n".join(context_lines)
+    else:
+        context = (
+            "Релевантных FAQ не найдено — возможно вопрос не про салон. "
+            "Если это так, вежливо верни клиента к услугам (правило 2-3 выше). "
+            "Если вопрос явно про салон, но ответа нет — следуй правилу 4."
         )
-    context = "\n".join(context_lines)
 
     # 3. Один LLM call без tools
     client = openai_client or get_async_openai_client()

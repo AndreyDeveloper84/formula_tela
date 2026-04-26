@@ -28,6 +28,7 @@ from maxapi.enums.sender_action import SenderAction
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards, texts
+from maxbot.intents import detect_intent
 from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag, is_giveup
 from maxbot.mcp_client import MaxbotMCPClient
 from maxbot.personalization import get_or_create_bot_user
@@ -121,6 +122,15 @@ async def _get_ai_answer(user_text: str, sender) -> str:
     """
     import time
     started = time.perf_counter()
+
+    # 0. Intent-router (regex, ~1ms): phatic greeting/thanks/small-talk → canned
+    # без OpenAI/MCP. БотInquiry тоже не создаётся — это не вопрос менеджеру.
+    intent_response = detect_intent(user_text)
+    if intent_response is not None:
+        elapsed = time.perf_counter() - started
+        logger.info("ai_assistant: INTENT MATCH %.3fs user_id=%s text=%r",
+                    elapsed, sender.user_id, user_text[:60])
+        return intent_response
 
     cached = await get_cached_answer(user_text)
     if cached is not None:
