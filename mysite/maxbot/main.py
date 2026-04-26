@@ -56,14 +56,25 @@ async def run() -> None:
     # Eager MCP start — preload subprocess + chromadb singleton, чтобы первый
     # AI-запрос не платил cold-start ~1.4s spawn + ~2.4s init chromadb.
     # При ошибке — лог и продолжаем (AI-handler сам ensure_started lazy).
+    mcp_ready = False
     try:
         from maxbot.mcp_client import MaxbotMCPClient
         await MaxbotMCPClient.instance().ensure_started()
         # Прогрев chromadb singleton — первый search_faq при старте, без ответа клиенту
         await MaxbotMCPClient.instance().call_tool("search_faq", {"query": "warmup", "k": 1})
         logger.info("MCP eager start OK — chromadb singleton прогрет")
+        mcp_ready = True
     except Exception as exc:  # noqa: BLE001
         logger.warning("MCP eager start failed (lazy fallback): %s", exc)
+
+    # Прогрев response cache — фоновая задача, не блокирует webhook listener.
+    # Первый клиент после рестарта по «как записаться?» получает мгновенный
+    # ответ если warmup успел (~30-60s на 10 вопросов через прокси).
+    if mcp_ready:
+        from maxbot.warmup import warmup_response_cache
+        asyncio.create_task(
+            warmup_response_cache(mcp_client=MaxbotMCPClient.instance())
+        )
 
     if cfg.mode == "polling":
         logger.info("Mode: long-polling")
