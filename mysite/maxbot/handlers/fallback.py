@@ -11,7 +11,9 @@ from maxapi import Router
 from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCreated
 
-from maxbot import keyboards, texts
+from maxbot import texts
+from maxbot.menu_state import send_with_main_menu
+from maxbot.personalization import get_or_create_bot_user
 
 
 logger = logging.getLogger("maxbot.fallback")
@@ -24,9 +26,10 @@ async def on_fallback(event: MessageCreated, context: MemoryContext) -> None:
     if event.message.sender is None:
         return  # системные сообщения
 
+    sender = event.message.sender
     chat_id = event.message.recipient.chat_id
-    await event.bot.send_message(
-        chat_id=chat_id,
-        text=texts.FALLBACK_UNKNOWN_INPUT,
-        attachments=[keyboards.main_menu_keyboard()],
+    bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
+    await send_with_main_menu(
+        bot=event.bot, chat_id=chat_id,
+        text=texts.FALLBACK_UNKNOWN_INPUT, bot_user=bot_user,
     )

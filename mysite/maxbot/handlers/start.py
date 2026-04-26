@@ -20,6 +20,7 @@ from maxapi.types import (
 )
 
 from maxbot import keyboards
+from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user, greet_text
 from maxbot.welcome import get_welcome_attachment
 
@@ -89,11 +90,13 @@ async def _send_greeting(
     await context.clear()
     text = greet_text(bot_user, is_new=created)
 
-    attachments = []
+    extra = []
     if created:
         welcome = await get_welcome_attachment(bot)
         if welcome is not None:
-            attachments.append(welcome)
-    attachments.append(keyboards.main_menu_keyboard())
+            extra.append(welcome)
 
-    await bot.send_message(chat_id=chat_id, text=text, attachments=attachments)
+    await send_with_main_menu(
+        bot=bot, chat_id=chat_id, text=text, bot_user=bot_user,
+        extra_attachments=extra or None,
+    )

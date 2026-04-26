@@ -31,6 +31,7 @@ from maxbot import keyboards, texts
 from maxbot.intents import detect_intent
 from maxbot.llm import LLM_GIVEUP_MESSAGE, chat_rag, is_giveup
 from maxbot.mcp_client import MaxbotMCPClient
+from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.response_cache import get_cached_answer, set_cached_answer
 from maxbot.states import AskStates
@@ -87,23 +88,23 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     sender = event.message.sender
     answer = await _get_ai_answer(user_text, sender)
 
+    # bot_user нужен для menu_state (плавающее меню — Вариант B)
+    bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
+
     if is_giveup(answer):
         # LLM не справился → BotInquiry + главное меню
         await _create_bot_inquiry(
             user_id=sender.user_id, full_name=sender.full_name,
             chat_id=chat_id, question=user_text,
         )
-        await event.bot.send_message(
-            chat_id=chat_id,
-            text=texts.AI_FORWARDED_TO_MANAGER,
-            attachments=[keyboards.main_menu_keyboard()],
+        await send_with_main_menu(
+            bot=event.bot, chat_id=chat_id,
+            text=texts.AI_FORWARDED_TO_MANAGER, bot_user=bot_user,
         )
         return
 
-    await event.bot.send_message(
-        chat_id=chat_id,
-        text=answer,
-        attachments=[keyboards.main_menu_keyboard()],
+    await send_with_main_menu(
+        bot=event.bot, chat_id=chat_id, text=answer, bot_user=bot_user,
     )
 
 
