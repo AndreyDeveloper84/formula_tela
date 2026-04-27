@@ -1,6 +1,8 @@
+import uuid
+from decimal import Decimal
+
 from django.db import models
 from django.db.models import Q
-from decimal import Decimal
 
 from .managers import (
     BotInquiryQuerySet,
@@ -725,6 +727,19 @@ class Master(models.Model):
     work_experience = models.TextField(blank=True, verbose_name="Опыт работы", help_text="HTML разрешён")
     approach = models.TextField(blank=True, verbose_name="Подход к работе", help_text="HTML разрешён")
     reviews_text = models.TextField(blank=True, verbose_name="Отзывы и статистика", help_text="HTML разрешён")
+
+    # Phase 2.3 — маппинг на YClients staff для нативного booking через AI Concierge.
+    # Заполняется менеджером через /admin/services_app/master/. Берётся из
+    # YClients (Настройки → Сотрудники → ID). Без него native booking невозможен.
+    yclients_staff_id = models.CharField(
+        "ID сотрудника в YClients",
+        max_length=20,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Маппинг для AI-помощника на нативную запись через YClients API. "
+                  "Возьмите ID из YClients (Настройки → Сотрудники).",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
@@ -1482,3 +1497,110 @@ class CertificateRedemption(models.Model):
 
     def __str__(self):
         return f"{self.certificate.code}: -{self.amount} \u20bd ({self.created_at:%d.%m.%Y})"
+
+
+# \u2500\u2500 Phase 2.3 AI Concierge \u2014 Conversation + Message \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+
+class Conversation(models.Model):
+    """\u0414\u0438\u0430\u043b\u043e\u0433 \u043a\u043b\u0438\u0435\u043d\u0442-AI \u0432 MAX-\u0431\u043e\u0442\u0435 \u2014 single sit-down (\u0437\u0430\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u043f\u0440\u0438 /start).
+
+    \u0418\u0441\u0442\u043e\u0440\u0438\u044f \u043d\u0443\u0436\u043d\u0430 \u0434\u043b\u044f:
+    - Multi-turn \u0432 LLM (\u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 ~10 messages \u0432 context'\u0435)
+    - Admin-\u0438\u043d\u0441\u043f\u0435\u043a\u0446\u0438\u044f \u043a\u043e\u043d\u0444\u043b\u0438\u043a\u0442\u043e\u0432 \u00ab\u0431\u043e\u0442 \u0441\u043a\u0430\u0437\u0430\u043b X\u00bb
+    - \u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430: \u043a\u0430\u043a\u0438\u0435 \u0438\u043d\u0442\u0435\u043d\u0442\u044b \u0437\u0430\u0432\u0435\u0440\u0448\u0430\u044e\u0442\u0441\u044f booking'\u043e\u043c, \u0447\u0430\u0441\u0442\u044b\u0435 off-topic, etc.
+
+    \u041e\u0434\u0438\u043d BotUser \u2192 \u043c\u043d\u043e\u0433\u043e Conversation. \u0410\u043a\u0442\u0438\u0432\u043d\u0430\u044f (is_active=True) \u043e\u0434\u043d\u0430;
+    \u043f\u0440\u0438 /start \u0438\u043b\u0438 bot_started \u0441\u0442\u0430\u0440\u0430\u044f \u0437\u0430\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u0441\u044f, \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u043d\u043e\u0432\u0430\u044f.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bot_user = models.ForeignKey(
+        "BotUser",
+        on_delete=models.CASCADE,
+        related_name="conversations",
+        verbose_name="\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u0431\u043e\u0442\u0430",
+    )
+    is_active = models.BooleanField(
+        "\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0439",
+        default=True,
+        help_text="False \u043a\u043e\u0433\u0434\u0430 \u0434\u0438\u0430\u043b\u043e\u0433 \u0437\u0430\u043a\u0440\u044b\u0442 (\u043d\u043e\u0432\u044b\u0439 /start, \u044f\u0432\u043d\u044b\u0439 cancel, "
+                  "\u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 cleanup \u0447\u0435\u0440\u0435\u0437 7+ \u0434\u043d\u0435\u0439 \u0431\u0435\u0437 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0438).",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="\u0423\u0434\u0430\u043b\u0451\u043d")
+    last_message_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="\u0421\u043e\u0437\u0434\u0430\u043d")
+
+    class Meta:
+        verbose_name = "\u0414\u0438\u0430\u043b\u043e\u0433 AI (\u0431\u043e\u0442)"
+        verbose_name_plural = "\u0414\u0438\u0430\u043b\u043e\u0433\u0438 AI (\u0431\u043e\u0442)"
+        ordering = ["-last_message_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["bot_user", "-last_message_at"]),
+            models.Index(fields=["is_active", "-last_message_at"]),
+        ]
+
+    def __str__(self):
+        short = str(self.id)[:8]
+        return f"Conversation {short} (bot_user={self.bot_user_id})"
+
+
+class Message(models.Model):
+    """\u041e\u0434\u043d\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0432 \u0434\u0438\u0430\u043b\u043e\u0433\u0435 AI Concierge \u2014 user / assistant / tool / system.
+
+    \u0414\u043b\u044f assistant-\u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439 \u0441 tool-call:
+    - action_type = \u00abshow_masters\u00bb / \u00abshow_slots\u00bb / \u00abconfirm_booking\u00bb / ...
+    - action_data = JSON c \u043f\u043e\u043b\u0435\u0437\u043d\u043e\u0439 \u043d\u0430\u0433\u0440\u0443\u0437\u043a\u043e\u0439 \u0434\u043b\u044f \u0440\u0435\u043d\u0434\u0435\u0440\u0430 UI
+
+    \u0414\u043b\u044f tool-result \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439:
+    - tool_call = raw OpenAI tool_call object (audit/debug)
+    - tool_call_id = \u0441\u0432\u044f\u0437\u044c \u0441 originating tool_call
+
+    Telemetry (assistant only): tokens_in/out + latency_ms \u2014 observability.
+    """
+
+    class Role(models.TextChoices):
+        USER = "user", "User"
+        ASSISTANT = "assistant", "Assistant"
+        TOOL = "tool", "Tool"
+        SYSTEM = "system", "System"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="messages",
+        verbose_name="\u0414\u0438\u0430\u043b\u043e\u0433",
+    )
+    role = models.CharField("\u0420\u043e\u043b\u044c", max_length=16, choices=Role.choices)
+    content = models.TextField("\u0421\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435", blank=True, default="")
+
+    # Action attached to assistant message \u2014 \u0434\u043b\u044f \u0440\u0435\u043d\u0434\u0435\u0440\u0430 UI \u043a\u0430\u0440\u0442\u043e\u0447\u043a\u0438.
+    # action_type \u043a\u0430\u043a raw string (\u043d\u0435 enum) \u2014 \u0440\u0430\u0441\u0448\u0438\u0440\u044f\u0435\u0442\u0441\u044f \u0431\u0435\u0437 \u043c\u0438\u0433\u0440\u0430\u0446\u0438\u0439.
+    action_type = models.CharField("\u0422\u0438\u043f action", max_length=32, blank=True, default="")
+    action_data = models.JSONField("\u0414\u0430\u043d\u043d\u044b\u0435 action", null=True, blank=True)
+
+    # Raw OpenAI tool_call object \u2014 kept for audit/debug.
+    tool_call = models.JSONField("Tool call (raw)", null=True, blank=True)
+    tool_call_id = models.CharField("ID tool_call", max_length=64, blank=True, default="")
+
+    # Telemetry \u2014 populated for assistant messages.
+    tokens_in = models.IntegerField("\u0422\u043e\u043a\u0435\u043d\u044b \u0432\u0445\u043e\u0434", default=0)
+    tokens_out = models.IntegerField("\u0422\u043e\u043a\u0435\u043d\u044b \u0432\u044b\u0445\u043e\u0434", default=0)
+    latency_ms = models.IntegerField("Latency, \u043c\u0441", null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="\u0421\u043e\u0437\u0434\u0430\u043d\u043e")
+
+    class Meta:
+        verbose_name = "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 AI (\u0431\u043e\u0442)"
+        verbose_name_plural = "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f AI (\u0431\u043e\u0442)"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["conversation", "created_at"]),
+        ]
+
+    def __str__(self):
+        preview = self.content[:50] + ("\u2026" if len(self.content) > 50 else "")
+        return f"{self.role}: {preview}"

@@ -22,6 +22,8 @@ from .models import (
     BotUser,
     HelpArticle,
     BotInquiry,
+    Conversation,
+    Message,
     ServiceBlock,
     ServiceMedia,
     Order,
@@ -338,6 +340,11 @@ class MasterAdmin(admin.ModelAdmin):
          ("SEO", {
              "fields": ("slug",),
              "description": "URL /masters/<slug>/. Автозаполняется из ФИО при вводе.",
+         }),
+         ("YClients интеграция", {
+             "fields": ("yclients_staff_id",),
+             "description": "ID сотрудника в YClients для AI-помощника. "
+                            "Возьмите в YClients (Настройки → Сотрудники → конкретный мастер).",
          }),
          ("Фото", {
              "fields": ("photo", "photo_mobile"),
@@ -757,5 +764,84 @@ class GiftCertificateAdmin(admin.ModelAdmin):
         if obj.certificate_type == "nominal":
             return f"{obj.nominal:,.0f} \u20bd"
         return str(obj.service or "\u2014")
+
+
+# \u2500\u2500 Phase 2.3 AI Concierge \u2014 Conversation + Message \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+
+class MessageInline(admin.TabularInline):
+    """Inline \u0434\u043b\u044f Message \u0432\u043d\u0443\u0442\u0440\u0438 Conversation \u2014 \u0432\u0435\u0441\u044c \u0434\u0438\u0430\u043b\u043e\u0433 \u043e\u0434\u043d\u0438\u043c \u0441\u043f\u0438\u0441\u043a\u043e\u043c."""
+    model = Message
+    extra = 0
+    can_delete = False
+    fields = ("created_at", "role", "content_short", "action_type",
+              "tokens_in", "tokens_out", "latency_ms")
+    readonly_fields = ("created_at", "role", "content_short", "action_type",
+                       "tokens_in", "tokens_out", "latency_ms")
+    ordering = ("created_at",)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def content_short(self, obj):
+        if not obj.content:
+            return ""
+        return obj.content[:120] + ("\u2026" if len(obj.content) > 120 else "")
+    content_short.short_description = "\u0422\u0435\u043a\u0441\u0442"
+
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ("short_id", "bot_user_name", "is_active", "msg_count",
+                    "last_message_at", "created_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("bot_user__client_name", "bot_user__display_name",
+                     "bot_user__max_user_id", "id")
+    readonly_fields = ("id", "bot_user", "is_active", "deleted_at",
+                       "last_message_at", "created_at")
+    fields = ("id", "bot_user", "is_active", "deleted_at",
+              "last_message_at", "created_at")
+    inlines = [MessageInline]
+
+    def has_add_permission(self, request):
+        return False
+
+    def short_id(self, obj):
+        return str(obj.id)[:8]
+    short_id.short_description = "ID"
+
+    def bot_user_name(self, obj):
+        return (obj.bot_user.client_name or obj.bot_user.display_name
+                or f"#{obj.bot_user.max_user_id}")
+    bot_user_name.short_description = "\u041a\u043b\u0438\u0435\u043d\u0442"
+
+    def msg_count(self, obj):
+        return obj.messages.count()
+    msg_count.short_description = "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439"
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    """Standalone admin \u2014 full-text \u043f\u043e\u0438\u0441\u043a \u043f\u043e \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u043c\u0443 AI-\u043e\u0442\u0432\u0435\u0442\u043e\u0432."""
+    list_display = ("created_at", "conversation_short", "role", "action_type",
+                    "content_preview", "latency_ms")
+    list_filter = ("role", "action_type", "created_at")
+    search_fields = ("content", "conversation__bot_user__client_name",
+                     "conversation__bot_user__display_name")
+    readonly_fields = ("id", "conversation", "role", "content", "action_type",
+                       "action_data", "tool_call", "tool_call_id",
+                       "tokens_in", "tokens_out", "latency_ms", "created_at")
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def conversation_short(self, obj):
+        return str(obj.conversation_id)[:8]
+    conversation_short.short_description = "\u0414\u0438\u0430\u043b\u043e\u0433"
+
+    def content_preview(self, obj):
+        return obj.content[:80] + ("\u2026" if len(obj.content) > 80 else "")
+    content_preview.short_description = "\u0422\u0435\u043a\u0441\u0442"
 
 
