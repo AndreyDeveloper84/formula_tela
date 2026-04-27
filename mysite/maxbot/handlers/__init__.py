@@ -6,6 +6,7 @@ main.py импортит get_routers() и регистрирует через dp
 from __future__ import annotations
 
 from .ai_assistant import router as ai_assistant_router
+from .ai_callbacks import router as ai_callbacks_router
 from .booking import router as booking_router
 from .contacts import router as contacts_router
 from .fallback import router as fallback_router
@@ -33,6 +34,9 @@ def get_routers():
         booking_router,
         contacts_router,
         faq_router,
+        # ai_callbacks ПЕРЕД ai_assistant — специфичные cb:ai:* callbacks
+        # должны матчиться раньше общего message_created handler'а.
+        ai_callbacks_router,
         ai_assistant_router,
         fallback_router,
     ]

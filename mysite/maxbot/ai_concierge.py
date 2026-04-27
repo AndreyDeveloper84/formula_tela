@@ -1,36 +1,48 @@
-"""AIConcierge — оркестратор chat-pipeline (заменяет chat_rag для AI-помощника).
+"""AIConcierge — главный chat-pipeline (заменит chat_rag в ai_assistant.py).
 
-См. docs/plans/maxbot-phase2-native-booking.md §T06.
-Базируется на Ayla/djangoproject/ai/application/services/chat_service.py.
+Phase 2.3 §T06. Адаптация Ayla/djangoproject/ai/application/services/chat_service.py.
 
-Pipeline:
-1. _resolve_conversation(bot_user) → Conversation (existing active OR new)
-2. save Message(role=user)
-3. _build_master_context() → Top-N мастеров + их услуги
-4. _load_recent_messages(conv, limit=10) → история для LLM-context
-5. render_system_prompt(bot_user, context) → system message
-6. call OpenAI с TOOL_DEFINITIONS
-7. if tool_call → dispatch_tool_call() → ToolResult
-8. save Message(role=assistant, action_type, action_data, tokens, latency)
-9. return ChatResponseDTO (conversation_id, action_type, action_data, content)
+Pipeline на каждый user-message:
+1. _resolve_conversation(bot_user) → existing active OR create new
+2. save Message(role=user) + получить msg_id (для exclude_id в истории)
+3. build_master_context() → MasterContext (Top-N мастеров для anti-hallucination)
+4. _load_recent_history(conv, exclude_id=user_msg.id, limit=10)
+5. render_system_prompt(today, client_name, bookings_count, master_context)
+6. _compose_messages(system, history, user_text) → [{role, content}, ...]
+7. openai_client.chat.completions.create(tools=TOOL_DEFINITIONS) async
+8. measure latency_ms
+9. parse completion: content + (optional tool_call → dispatch_tool_call → action)
+10. save Message(role=assistant, content, action_type, action_data, tool_call,
+    tokens_in/out, latency_ms)
+11. update conversation.last_message_at
+12. return ChatResponseDTO
 
-Telemetry: Message.tokens_in/out + latency_ms сохраняются для observability.
-
-TODO Phase 2.3 T06:
-- Реализовать send_message() pipeline по схеме выше
-- _resolve_conversation: получить is_active=True conversation для bot_user, или создать
-- _save_message(conv, role, content, **kwargs) async ORM
-- _load_recent_messages(conv, limit) async ORM с порядком created_at ASC
-- _compose(system, history, user_text) → list[dict] для openai
-- _call_openai(messages, tools=TOOL_DEFINITIONS) → ChatCompletion
-- ChatResponseDTO dataclass
-- Integration-тесты test_ai_concierge.py на 5 интентов
+Не делает рендер UI (T07) и не пишет BookingRequest (T09) — только Conversation
+и Messages в БД + DTO для caller'а (handler в ai_assistant.py).
 """
 from __future__ import annotations
 
+import json
+import logging
+import time
 from dataclasses import dataclass
+from datetime import date as date_cls
 from typing import Any
 from uuid import UUID
+
+from asgiref.sync import sync_to_async
+from django.utils import timezone
+
+from maxbot.ai_context import MasterContext, build_master_context as _default_build_master_context
+from maxbot.ai_prompts import render_system_prompt
+from maxbot.ai_tool_handlers import dispatch_tool_call
+from maxbot.ai_tools import TOOL_DEFINITIONS
+from services_app.models import BotUser, Conversation, Message
+
+
+logger = logging.getLogger("maxbot.ai_concierge")
+
+DEFAULT_HISTORY_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -41,3 +53,222 @@ class ChatResponseDTO:
     content: str
     action_type: str | None
     action_data: dict[str, Any] | None
+
+
+# ─── ORM helpers (sync_to_async wrappers) ────────────────────────────────
+
+
+@sync_to_async
+def _resolve_conversation(bot_user: BotUser) -> Conversation:
+    """Existing active OR create new. Один активный на bot_user."""
+    existing = (
+        Conversation.objects
+        .filter(bot_user=bot_user, is_active=True)
+        .order_by("-created_at")
+        .first()
+    )
+    if existing is not None:
+        return existing
+    return Conversation.objects.create(bot_user=bot_user, is_active=True)
+
+
+@sync_to_async
+def _save_message(
+    conversation: Conversation,
+    *,
+    role: str,
+    content: str,
+    action_type: str = "",
+    action_data: dict | None = None,
+    tool_call: dict | None = None,
+    tool_call_id: str = "",
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    latency_ms: int | None = None,
+) -> Message:
+    msg = Message.objects.create(
+        conversation=conversation,
+        role=role,
+        content=content,
+        action_type=action_type,
+        action_data=action_data,
+        tool_call=tool_call,
+        tool_call_id=tool_call_id,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        latency_ms=latency_ms,
+    )
+    # Conversation.last_message_at — обновляем для admin-listing'а
+    conversation.last_message_at = msg.created_at
+    conversation.save(update_fields=["last_message_at"])
+    return msg
+
+
+@sync_to_async
+def _load_recent_history(
+    conversation: Conversation,
+    *,
+    exclude_id: UUID | None = None,
+    limit: int = DEFAULT_HISTORY_LIMIT,
+) -> list[Message]:
+    """Last N messages в хронологическом порядке (ASC) для LLM context.
+
+    Берём last N (DESC), потом reverse — корректно сохраняет хронологию даже
+    когда сообщений > N (старые вытесняются).
+    """
+    qs = Message.objects.filter(conversation=conversation)
+    if exclude_id is not None:
+        qs = qs.exclude(id=exclude_id)
+    recent = list(qs.order_by("-created_at")[:limit])
+    recent.reverse()
+    return recent
+
+
+# ─── LLM helpers ──────────────────────────────────────────────────────────
+
+
+def _compose_messages(
+    *,
+    system_prompt: str,
+    history: list[Message],
+    user_text: str,
+) -> list[dict[str, Any]]:
+    """OpenAI-format messages: system + history + new user."""
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    for h in history:
+        # tool/system messages в истории — пропускаем (на текущей итерации
+        # не передаём tool_call_id'ы обратно, многоступенчатый tool-use не
+        # делаем; T06.5 если понадобится)
+        if h.role not in ("user", "assistant"):
+            continue
+        messages.append({"role": h.role, "content": h.content or ""})
+    messages.append({"role": "user", "content": user_text})
+    return messages
+
+
+def _parse_completion(completion, master_context: MasterContext):
+    """Returns (content, tool_call_raw, action_type, action_data)."""
+    msg = completion.choices[0].message
+    tool_calls = getattr(msg, "tool_calls", None)
+    content = msg.content or ""
+
+    if not tool_calls:
+        return content, None, None, None
+
+    # Берём первый tool_call (наш flow одношаговый — LLM либо отвечает
+    # текстом, либо одним tool-call'ом, не цепочкой)
+    tc = tool_calls[0]
+    result = dispatch_tool_call(tc, master_context)
+
+    # Сериализуем raw tool_call для аудита (str-arguments)
+    raw = {
+        "id": getattr(tc, "id", ""),
+        "name": getattr(tc.function, "name", ""),
+        "arguments": getattr(tc.function, "arguments", ""),
+    }
+    return content, raw, result.action_type, result.action_data
+
+
+# ─── Main entry point ─────────────────────────────────────────────────────
+
+
+async def send_message(
+    *,
+    bot_user: BotUser,
+    message_text: str,
+    openai_client=None,
+    context_builder=None,
+    history_limit: int = DEFAULT_HISTORY_LIMIT,
+) -> ChatResponseDTO:
+    """Один turn AI Concierge: user message → assistant response с opt action.
+
+    DI:
+    - openai_client: AsyncOpenAI — default из get_async_openai_client()
+    - context_builder: callable() → MasterContext — default ai_context.build_master_context
+
+    Caller (handler ai_assistant.py / T10) ловит exception от openai_client
+    и graceful'но реагирует (LLM_GIVEUP_MESSAGE → BotInquiry, как сейчас).
+    """
+    # 1. Resolve conversation
+    conversation = await _resolve_conversation(bot_user)
+
+    # 2. Save user message (получим id для exclude из history)
+    user_msg = await _save_message(
+        conversation,
+        role=Message.Role.USER,
+        content=message_text,
+    )
+
+    # 3. Build context (Top-N мастеров с реальными ID)
+    builder = context_builder or _default_build_master_context
+    master_context = await sync_to_async(builder)()
+
+    # 4. Load recent history (не включая только что сохранённое user message)
+    history = await _load_recent_history(
+        conversation, exclude_id=user_msg.id, limit=history_limit,
+    )
+
+    # 5. Render system prompt
+    bookings_count = (bot_user.context or {}).get("bookings_count", 0)
+    system_prompt = render_system_prompt(
+        today=timezone.localdate(),
+        client_name=bot_user.client_name or bot_user.display_name or "",
+        bookings_count=int(bookings_count) if isinstance(bookings_count, int) else 0,
+        master_context=master_context,
+    )
+
+    # 6. Compose for OpenAI
+    llm_messages = _compose_messages(
+        system_prompt=system_prompt,
+        history=history,
+        user_text=message_text,
+    )
+
+    # 7. Call OpenAI с tools
+    if openai_client is None:
+        from maxbot.llm import get_async_openai_client
+        openai_client = get_async_openai_client()
+
+    started = time.monotonic()
+    completion = await openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=llm_messages,
+        tools=TOOL_DEFINITIONS,
+    )
+    latency_ms = int((time.monotonic() - started) * 1000)
+
+    # 8. Parse: content + opt action (через dispatch_tool_call)
+    content, tool_call_raw, action_type, action_data = _parse_completion(
+        completion, master_context,
+    )
+
+    # 9. Telemetry
+    usage = getattr(completion, "usage", None)
+    tokens_in = getattr(usage, "prompt_tokens", 0) if usage else 0
+    tokens_out = getattr(usage, "completion_tokens", 0) if usage else 0
+
+    # 10. Save assistant message (с action и raw tool_call для audit)
+    await _save_message(
+        conversation,
+        role=Message.Role.ASSISTANT,
+        content=content,
+        action_type=action_type or "",
+        action_data=action_data,
+        tool_call=tool_call_raw,
+        tool_call_id=(tool_call_raw or {}).get("id", "") if tool_call_raw else "",
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        latency_ms=latency_ms,
+    )
+
+    logger.info(
+        "ai_concierge: conv=%s action=%s tokens=%d/%d latency=%dms",
+        conversation.id, action_type or "text", tokens_in, tokens_out, latency_ms,
+    )
+
+    return ChatResponseDTO(
+        conversation_id=conversation.id,
+        content=content,
+        action_type=action_type,
+        action_data=action_data,
+    )

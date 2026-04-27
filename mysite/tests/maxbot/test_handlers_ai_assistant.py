@@ -1,5 +1,6 @@
-"""T-06c: handler ai_assistant.py — кнопка + free-text + BotInquiry fallback."""
+"""T-06c + T10: handler ai_assistant.py — кнопка + free-text → AI Concierge."""
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from asgiref.sync import sync_to_async
@@ -10,6 +11,16 @@ from maxapi.context.context import MemoryContext
 pytestmark = pytest.mark.django_db(transaction=True)
 
 amake = sync_to_async(baker.make, thread_sensitive=True)
+
+
+def _ai_dto(content: str = "ответ", action_type=None, action_data=None,
+            conv_id=None):
+    """Mock ChatResponseDTO от ai_concierge.send_message."""
+    from maxbot.ai_concierge import ChatResponseDTO
+    return ChatResponseDTO(
+        conversation_id=conv_id or uuid4(), content=content,
+        action_type=action_type, action_data=action_data,
+    )
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -48,6 +59,7 @@ def _make_text_message(*, chat_id=100, user_id=200, text="Как записат�
     event.bot = MagicMock()
     event.bot.send_message = AsyncMock()
     event.bot.send_action = AsyncMock()
+    event.bot.edit_message = AsyncMock()
     return event
 
 
@@ -76,133 +88,238 @@ async def test_ask_button_skips_when_message_deleted():
     event.bot.send_message.assert_not_awaited()
 
 
-# ─── on_free_text — основной AI flow ───────────────────────────────────────
+# ─── on_free_text — text-only response (no action) ────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_free_text_returns_llm_answer():
-    """LLM вернул нормальный ответ → клиент получает один send_message + меню.
-
-    После замены AI_THINKING на send_action(TYPING_ON) — финальный ответ
-    единственное сообщение в чате (не два).
-    """
+async def test_free_text_text_only_response_sends_with_main_menu():
+    """LLM вернул plain text → send_with_main_menu(text), без extra_attachments."""
     from maxapi.enums.sender_action import SenderAction
     from maxbot.handlers.ai_assistant import on_free_text
-    event = _make_text_message(user_id=20003, text="Как записаться?")
+
+    event = _make_text_message(user_id=20003, text="Привет, как дела")
     ctx = MemoryContext(chat_id=100, user_id=20003)
 
-    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value="Запись через бот, кнопка «Записаться».")):
+    dto = _ai_dto(content="Здравствуйте! Чем помочь?")
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
         await on_free_text(event, ctx)
 
-    # Typing indicator — нативный, не сообщение
     event.bot.send_action.assert_awaited_once_with(
         chat_id=100, action=SenderAction.TYPING_ON,
     )
-    # Финальный ответ — единственный send_message
+    # Один send_message с текстом ответа + main_menu в attachments
     assert event.bot.send_message.await_count == 1
-    final_call = event.bot.send_message.await_args.kwargs
-    assert "Запись через бот" in final_call["text"]
-    assert "attachments" in final_call
+    call = event.bot.send_message.await_args.kwargs
+    assert "Здравствуйте" in call["text"]
+    assert call["attachments"]  # main_menu должен быть
+
+
+# ─── on_free_text — action rendering ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_free_text_show_masters_action_renders_card():
+    """LLM tool_call show_masters → render_action → send_message с card+menu."""
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    event = _make_text_message(user_id=20004, text="хочу к мастеру массажа")
+    ctx = MemoryContext(chat_id=100, user_id=20004)
+
+    dto = _ai_dto(
+        content="",  # action в основном
+        action_type="show_masters",
+        action_data={
+            "explanation": "Подходят:",
+            "masters": [
+                {"master": {"id": 42, "name": "Анна",
+                            "specialization": "массаж", "services_preview": []},
+                 "match_score": 90, "match_reasons": []},
+            ],
+        },
+    )
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
+        await on_free_text(event, ctx)
+
+    assert event.bot.send_message.await_count == 1
+    call = event.bot.send_message.await_args.kwargs
+    # Текст содержит имена мастеров
+    assert "Анна" in call["text"]
+    # В attachments есть и card-keyboard, и main_menu (>=2)
+    assert len(call["attachments"]) >= 2
+
+
+@pytest.mark.asyncio
+async def test_free_text_confirm_booking_action_renders_yes_no():
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    event = _make_text_message(user_id=20005)
+    ctx = MemoryContext(chat_id=100, user_id=20005)
+
+    dto = _ai_dto(
+        content="",
+        action_type="confirm_booking",
+        action_data={
+            "master_id": 1, "service_id": 1,
+            "datetime": "2026-04-30T14:00:00+03:00",
+            "master_name": "Анна", "service_name": "Массаж спины",
+        },
+    )
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
+        await on_free_text(event, ctx)
+
+    call = event.bot.send_message.await_args.kwargs
+    assert "Анна" in call["text"]
+    # Confirm/cancel buttons присутствуют (через render_action)
+    payloads = []
+    for att in call["attachments"]:
+        if att.type == "inline_keyboard":
+            for row in att.payload.buttons:
+                for btn in row:
+                    if hasattr(btn, "payload") and btn.payload:
+                        payloads.append(btn.payload)
+    assert any("cb:ai:confirm:" in p for p in payloads)
+
+
+# ─── giveup detection (without action) ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_free_text_text_giveup_creates_bot_inquiry():
+    """DTO с giveup-текстом и без action → BotInquiry + Telegram alert."""
+    from maxbot.handlers.ai_assistant import on_free_text
+    from maxbot.llm import LLM_GIVEUP_MESSAGE
+    from services_app.models import BotInquiry
+
+    event = _make_text_message(user_id=20006, chat_id=777,
+                               text="Какой ваш любимый цвет?")
+    ctx = MemoryContext(chat_id=777, user_id=20006)
+
+    dto = _ai_dto(content=LLM_GIVEUP_MESSAGE, action_type=None)
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)), \
+         patch("maxbot.handlers.ai_assistant.send_notification_telegram") as mock_tg:
+        await on_free_text(event, ctx)
+
+    inquiries = await sync_to_async(list)(BotInquiry.objects.all())
+    assert len(inquiries) == 1
+    assert inquiries[0].question == "Какой ваш любимый цвет?"
+    mock_tg.assert_called_once()
+    # Финальное сообщение клиенту — про менеджера
+    final = event.bot.send_message.await_args.kwargs["text"]
+    assert "менеджер" in final.lower()
+
+
+@pytest.mark.asyncio
+async def test_free_text_action_with_giveup_form_does_not_create_inquiry():
+    """Если есть action_type (например ask_clarification) — НЕ giveup, не создаём BotInquiry.
+
+    Текст может содержать «не знаю» в content для UX, но action — это не сдача.
+    """
+    from maxbot.handlers.ai_assistant import on_free_text
+    from services_app.models import BotInquiry
+
+    event = _make_text_message(user_id=20007, text="что-то странное")
+    ctx = MemoryContext(chat_id=100, user_id=20007)
+
+    dto = _ai_dto(
+        content="",
+        action_type="ask_clarification",
+        action_data={"question": "Уточните?", "options": ["A", "B"]},
+    )
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
+        await on_free_text(event, ctx)
+
+    inquiries = await sync_to_async(list)(BotInquiry.objects.all())
+    assert len(inquiries) == 0
+
+
+# ─── intent-router fast path ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_free_text_greeting_intent_skips_ai_concierge():
+    """«Привет» → canned response, ai_concierge.send_message НЕ вызывается."""
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    event = _make_text_message(user_id=20008, text="Привет!")
+    ctx = MemoryContext(chat_id=100, user_id=20008)
+
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock()) as mock_send:
+        await on_free_text(event, ctx)
+
+    mock_send.assert_not_awaited()
+    # Ответ ушёл — canned greeting
+    final = event.bot.send_message.await_args.kwargs["text"]
+    assert "Здравствуйте" in final or "Формула тела" in final
+
+
+# ─── exception in AI Concierge ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_free_text_ai_concierge_exception_falls_back_to_inquiry():
+    """OpenAI down / AI Concierge raises → клиент получает «передам менеджеру»."""
+    from maxbot.handlers.ai_assistant import on_free_text
+    from services_app.models import BotInquiry
+
+    event = _make_text_message(user_id=20009, chat_id=888, text="вопрос")
+    ctx = MemoryContext(chat_id=888, user_id=20009)
+
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(side_effect=RuntimeError("OpenAI 503"))), \
+         patch("maxbot.handlers.ai_assistant.send_notification_telegram"):
+        await on_free_text(event, ctx)
+
+    inquiries = await sync_to_async(list)(BotInquiry.objects.all())
+    assert len(inquiries) == 1
+    final = event.bot.send_message.await_args.kwargs["text"]
+    assert "менеджер" in final.lower()
+
+
+# ─── State management ────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_free_text_clears_state_after_answer():
     from maxbot.handlers.ai_assistant import on_free_text
     from maxbot.states import AskStates
-    event = _make_text_message(user_id=20004)
-    ctx = MemoryContext(chat_id=100, user_id=20004)
+
+    event = _make_text_message(user_id=20010)
+    ctx = MemoryContext(chat_id=100, user_id=20010)
     await ctx.set_state(AskStates.awaiting_question)
 
-    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value="ok")):
+    dto = _ai_dto(content="ok")
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
         await on_free_text(event, ctx)
 
     assert await ctx.get_state() is None
 
 
-@pytest.mark.asyncio
-async def test_free_text_creates_bot_inquiry_on_giveup():
-    """LLM вернул LLM_GIVEUP_MESSAGE → создаём BotInquiry."""
-    from maxbot.handlers.ai_assistant import on_free_text
-    from maxbot.llm import LLM_GIVEUP_MESSAGE
-    from services_app.models import BotInquiry
-
-    event = _make_text_message(user_id=20005, chat_id=777, text="Какой ваш любимый цвет?")
-    ctx = MemoryContext(chat_id=777, user_id=20005)
-
-    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)), \
-         patch("maxbot.handlers.ai_assistant.send_notification_telegram") as _:
-        await on_free_text(event, ctx)
-
-    inquiries = await sync_to_async(list)(BotInquiry.objects.all())
-    assert len(inquiries) == 1
-    assert inquiries[0].chat_id == 777
-    assert inquiries[0].question == "Какой ваш любимый цвет?"
-    assert inquiries[0].sent_to_max is False  # не отправлен ещё (T-09 push back)
-    # Сообщение клиенту — единственный send_message с упоминанием менеджера
-    assert event.bot.send_message.await_count == 1
-    final_text = event.bot.send_message.await_args.kwargs["text"]
-    assert "менеджер" in final_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_free_text_creates_bot_inquiry_on_user_prompt_giveup_form():
-    """REGRESSION 2026-04-26: LLM может произнести фразу из system_prompt
-    «Не знаю, передам менеджеру» (вариант) вместо канонического GIVEUP.
-    Handler должен детектить через is_giveup() и создать BotInquiry."""
-    from maxbot.handlers.ai_assistant import on_free_text
-    from services_app.models import BotInquiry
-
-    event = _make_text_message(user_id=20100, chat_id=999, text="смысл жизни?")
-    ctx = MemoryContext(chat_id=999, user_id=20100)
-
-    # LLM произнёс ВАРИАНТ giveup, не точную константу
-    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value="Не знаю, передам менеджеру.")), \
-         patch("maxbot.handlers.ai_assistant.send_notification_telegram"):
-        await on_free_text(event, ctx)
-
-    inquiries = await sync_to_async(list)(BotInquiry.objects.filter(chat_id=999))
-    assert len(inquiries) == 1, "BotInquiry должен создаваться даже если LLM сказал вариант giveup"
-    assert inquiries[0].question == "смысл жизни?"
-
-
-@pytest.mark.asyncio
-async def test_free_text_sends_telegram_alert_on_giveup():
-    """При создании BotInquiry — Telegram-алерт менеджеру (через notifications/)."""
-    from maxbot.handlers.ai_assistant import on_free_text
-    from maxbot.llm import LLM_GIVEUP_MESSAGE
-
-    event = _make_text_message(user_id=20009, chat_id=888, text="Что-то странное")
-    ctx = MemoryContext(chat_id=888, user_id=20009)
-    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)), \
-         patch("maxbot.handlers.ai_assistant.send_notification_telegram") as mock_tg:
-        await on_free_text(event, ctx)
-    mock_tg.assert_called_once()
-    msg = mock_tg.call_args.args[0]
-    assert "Что-то странное" in msg
-    assert "менеджер" in msg.lower() or "вопрос" in msg.lower()
+# ─── Skip empty / no sender ───────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_free_text_skips_message_without_sender():
     from maxbot.handlers.ai_assistant import on_free_text
-    event = _make_text_message(user_id=20006)
+    event = _make_text_message(user_id=20011)
     event.message.sender = None
-    ctx = MemoryContext(chat_id=100, user_id=20006)
+    ctx = MemoryContext(chat_id=100, user_id=20011)
     await on_free_text(event, ctx)
     event.bot.send_message.assert_not_awaited()
-    event.bot.send_action.assert_not_awaited()  # typing-индикатор не должен светиться
+    event.bot.send_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_free_text_skips_empty_message():
     from maxbot.handlers.ai_assistant import on_free_text
-    event = _make_text_message(user_id=20007, text="   ")
-    ctx = MemoryContext(chat_id=100, user_id=20007)
+    event = _make_text_message(user_id=20012, text="   ")
+    ctx = MemoryContext(chat_id=100, user_id=20012)
     await on_free_text(event, ctx)
     event.bot.send_message.assert_not_awaited()
     event.bot.send_action.assert_not_awaited()
@@ -210,38 +327,22 @@ async def test_free_text_skips_empty_message():
 
 @pytest.mark.asyncio
 async def test_free_text_typing_indicator_survives_send_action_failure():
-    """Если send_action упал (сетевой сбой) — AI flow должен продолжиться.
-
-    Typing-индикатор это best-effort UX, его падение не должно блокировать
-    ответ клиенту.
-    """
+    """Если send_action упал — AI flow всё равно продолжается."""
     from maxbot.handlers.ai_assistant import on_free_text
-    event = _make_text_message(user_id=20010, text="Сколько стоит?")
+    event = _make_text_message(user_id=20013, text="Сколько стоит?")
     event.bot.send_action = AsyncMock(side_effect=RuntimeError("network blip"))
-    ctx = MemoryContext(chat_id=100, user_id=20010)
+    ctx = MemoryContext(chat_id=100, user_id=20013)
 
-    with patch("maxbot.handlers.ai_assistant._get_ai_answer",
-               AsyncMock(return_value="3000 руб.")):
+    dto = _ai_dto(content="3000 руб.")
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
         await on_free_text(event, ctx)
 
-    # Финальный ответ всё равно ушёл
     event.bot.send_message.assert_awaited_once()
     assert "3000" in event.bot.send_message.await_args.kwargs["text"]
 
 
-@pytest.mark.asyncio
-async def test_free_text_handles_chat_rag_exception():
-    """Если внутри LLM/MCP exception — _get_ai_answer возвращает GIVEUP."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.llm import LLM_GIVEUP_MESSAGE
-    sender = MagicMock(user_id=20008, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(side_effect=RuntimeError("LLM down"))):
-        result = await _get_ai_answer("?", sender)
-    assert result == LLM_GIVEUP_MESSAGE
-
-
-# ─── Главное меню теперь содержит кнопку «Задать вопрос» ───────────────────
+# ─── Главное меню всё ещё содержит кнопку «Задать вопрос» ─────────────────
 
 
 def test_main_menu_includes_ask_button():
@@ -249,127 +350,3 @@ def test_main_menu_includes_ask_button():
     kb = main_menu_keyboard()
     payloads = [b.payload for row in kb.payload.buttons for b in row]
     assert PAYLOAD_MENU_ASK in payloads
-
-
-# ─── Response cache — _get_ai_answer integration ──────────────────────────
-
-
-@pytest.fixture
-def _clear_cache():
-    from django.core.cache import cache
-    cache.clear()
-    yield
-    cache.clear()
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_intent_match_skips_cache_and_chat_rag(_clear_cache):
-    """Phatic greeting → instant canned response, ни chat_rag, ни cache не зовутся."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.intents import GREETING_RESPONSE
-    from maxbot.response_cache import get_cached_answer
-
-    sender = MagicMock(user_id=40001, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(return_value="не должен быть вызван")) as mock_rag:
-        result = await _get_ai_answer("Привет!", sender)
-
-    assert result == GREETING_RESPONSE
-    mock_rag.assert_not_awaited()
-    # Canned не попадает в response cache (intent-роутер сам instant)
-    assert await get_cached_answer("Привет!") is None
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_intent_thanks_returns_canned(_clear_cache):
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.intents import THANKS_RESPONSE
-
-    sender = MagicMock(user_id=40002, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_rag", AsyncMock()) as mock_rag:
-        result = await _get_ai_answer("спасибо", sender)
-    assert result == THANKS_RESPONSE
-    mock_rag.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_returns_cached_without_calling_chat_rag(_clear_cache):
-    """Кэш-хит → не зовём chat_rag, не платим ~6.7s OpenAI/MCP."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.response_cache import set_cached_answer
-
-    await set_cached_answer("Как записаться?", "Кэш-ответ")
-    sender = MagicMock(user_id=30001, full_name="X")
-
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(return_value="не должен быть вызван")) as mock_rag:
-        result = await _get_ai_answer("Как записаться?", sender)
-
-    assert result == "Кэш-ответ"
-    mock_rag.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_caches_successful_answer(_clear_cache):
-    """После успешного ответа — следующий вызов того же вопроса кэш-хит."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.response_cache import get_cached_answer
-
-    sender = MagicMock(user_id=30002, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(return_value="свежий ответ от LLM")):
-        result = await _get_ai_answer("Сколько стоит массаж спины?", sender)
-
-    assert result == "свежий ответ от LLM"
-    # Проверяем что ответ положили в кэш
-    assert await get_cached_answer("Сколько стоит массаж спины?") == "свежий ответ от LLM"
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_does_not_cache_giveup(_clear_cache):
-    """LLM_GIVEUP_MESSAGE не кэшируем — пусть retry имеет шанс."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.llm import LLM_GIVEUP_MESSAGE
-    from maxbot.response_cache import get_cached_answer
-
-    sender = MagicMock(user_id=30003, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(return_value=LLM_GIVEUP_MESSAGE)):
-        result = await _get_ai_answer("Что-то странное", sender)
-
-    assert result == LLM_GIVEUP_MESSAGE
-    assert await get_cached_answer("Что-то странное") is None
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_does_not_cache_on_exception(_clear_cache):
-    """Exception → GIVEUP, не кэшируется."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.llm import LLM_GIVEUP_MESSAGE
-    from maxbot.response_cache import get_cached_answer
-
-    sender = MagicMock(user_id=30004, full_name="X")
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(side_effect=RuntimeError("OpenAI down"))):
-        result = await _get_ai_answer("Какой режим работы?", sender)
-
-    assert result == LLM_GIVEUP_MESSAGE
-    assert await get_cached_answer("Какой режим работы?") is None
-
-
-@pytest.mark.asyncio
-async def test_get_ai_answer_cache_hits_normalized_variants(_clear_cache):
-    """Кэш по «как записаться?» хитит при «КАК ЗАПИСАТЬСЯ.», «как  записаться»."""
-    from maxbot.handlers.ai_assistant import _get_ai_answer
-    from maxbot.response_cache import set_cached_answer
-
-    await set_cached_answer("как записаться", "Через бота или по телефону.")
-    sender = MagicMock(user_id=30005, full_name="X")
-
-    with patch("maxbot.handlers.ai_assistant.chat_rag",
-               AsyncMock(return_value="не должен быть вызван")) as mock_rag:
-        for variant in ["Как записаться?", "КАК ЗАПИСАТЬСЯ.", "как  записаться  "]:
-            result = await _get_ai_answer(variant, sender)
-            assert result == "Через бота или по телефону.", f"variant={variant!r}"
-
-    mock_rag.assert_not_awaited()
