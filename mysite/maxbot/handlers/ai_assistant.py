@@ -93,26 +93,55 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
         )
         return
 
-    # 4. AI Concierge — основной flow с Conversation + tool-use
+    # 4-7. Прогон через AI Concierge + рендер + отправка
+    await run_ai_turn(
+        bot=event.bot, chat_id=chat_id,
+        bot_user=bot_user, user_text=user_text,
+        original_user_text=user_text,
+    )
+
+
+# ─── Public helper — переиспользуется в ai_callbacks.py ────────────────────
+
+
+async def run_ai_turn(
+    *,
+    bot,
+    chat_id: int,
+    bot_user,
+    user_text: str,
+    original_user_text: str | None = None,
+) -> None:
+    """Один turn AI Concierge: AI Concierge → render → send_with_main_menu.
+
+    Используется и в on_free_text (свободный ввод), и в callback'ах
+    cb:ai:pick_master/pick_slot/answer — там pseudo-user-text формируется
+    из выбора клиента и передаётся в AI как продолжение диалога.
+
+    original_user_text — что записать в BotInquiry если AI упал. Для
+    callback'ов это краткое описание выбора, для free-text — то же что
+    user_text.
+    """
+    inquiry_question = original_user_text or user_text
+
     try:
         dto = await ai_concierge.send_message(
             bot_user=bot_user, message_text=user_text,
         )
     except Exception:  # noqa: BLE001
-        # OpenAI down / MCP fail / network → giveup путь (BotInquiry + Telegram)
-        logger.exception("ai_assistant: AI Concierge crashed user_id=%s text=%r",
-                         sender.user_id, user_text[:80])
+        logger.exception("ai_assistant: AI Concierge crashed text=%r",
+                         user_text[:80])
         await _create_bot_inquiry(
-            user_id=sender.user_id, full_name=sender.full_name,
-            chat_id=chat_id, question=user_text,
+            user_id=bot_user.max_user_id,
+            full_name=bot_user.display_name or "",
+            chat_id=chat_id, question=inquiry_question,
         )
         await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
+            bot=bot, chat_id=chat_id,
             text=texts.AI_FORWARDED_TO_MANAGER, bot_user=bot_user,
         )
         return
 
-    # 5. Action vs text-only ответ
     if dto.action_type:
         text, action_attachments = ai_ui.render_action(
             conversation_id=str(dto.conversation_id),
@@ -123,22 +152,20 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
         text = dto.content
         action_attachments = []
 
-    # 6. Giveup detection — ТОЛЬКО для text-only ответов без action.
-    # Если LLM эмиттил ask_clarification — это НЕ giveup, диалог продолжается.
     if dto.action_type is None and is_giveup(text):
         await _create_bot_inquiry(
-            user_id=sender.user_id, full_name=sender.full_name,
-            chat_id=chat_id, question=user_text,
+            user_id=bot_user.max_user_id,
+            full_name=bot_user.display_name or "",
+            chat_id=chat_id, question=inquiry_question,
         )
         await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
+            bot=bot, chat_id=chat_id,
             text=texts.AI_FORWARDED_TO_MANAGER, bot_user=bot_user,
         )
         return
 
-    # 7. Финальная отправка с card-attachments + main_menu
     await send_with_main_menu(
-        bot=event.bot, chat_id=chat_id, text=text, bot_user=bot_user,
+        bot=bot, chat_id=chat_id, text=text, bot_user=bot_user,
         extra_attachments=action_attachments or None,
     )
 
