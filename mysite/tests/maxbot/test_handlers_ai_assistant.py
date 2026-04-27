@@ -120,14 +120,19 @@ async def test_free_text_text_only_response_sends_with_main_menu():
 
 @pytest.mark.asyncio
 async def test_free_text_show_masters_action_renders_card():
-    """LLM tool_call show_masters → render_action → send_message с card+menu."""
+    """LLM tool_call show_masters → render_action → send БЕЗ main_menu.
+
+    MAX API ограничение: только 1 inline_keyboard на сообщение, поэтому
+    карточка с кнопками pick_master отправляется без main_menu (оно
+    остаётся «плавать» на предыдущем сообщении).
+    """
     from maxbot.handlers.ai_assistant import on_free_text
 
     event = _make_text_message(user_id=20004, text="хочу к мастеру массажа")
     ctx = MemoryContext(chat_id=100, user_id=20004)
 
     dto = _ai_dto(
-        content="",  # action в основном
+        content="",
         action_type="show_masters",
         action_data={
             "explanation": "Подходят:",
@@ -144,10 +149,54 @@ async def test_free_text_show_masters_action_renders_card():
 
     assert event.bot.send_message.await_count == 1
     call = event.bot.send_message.await_args.kwargs
-    # Текст содержит имена мастеров
     assert "Анна" in call["text"]
-    # В attachments есть и card-keyboard, и main_menu (>=2)
-    assert len(call["attachments"]) >= 2
+    # Ровно ОДИН inline_keyboard в attachments — карточка pick_master,
+    # main_menu НЕ добавлено (MAX limit)
+    inline_keyboards = [
+        a for a in call["attachments"]
+        if getattr(a, "type", None) == "inline_keyboard"
+    ]
+    assert len(inline_keyboards) == 1
+    # Кнопка pick_master в attachments
+    payloads = []
+    for row in inline_keyboards[0].payload.buttons:
+        for btn in row:
+            if hasattr(btn, "payload") and btn.payload:
+                payloads.append(btn.payload)
+    assert any("cb:ai:pick_master:" in p for p in payloads)
+
+
+@pytest.mark.asyncio
+async def test_free_text_show_my_bookings_empty_includes_main_menu():
+    """Action без своих кнопок (show_my_bookings empty) → main_menu приклеивается."""
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    event = _make_text_message(user_id=20020, text="мои записи")
+    ctx = MemoryContext(chat_id=100, user_id=20020)
+
+    dto = _ai_dto(
+        content="",
+        action_type="show_my_bookings",
+        action_data={"filter": "upcoming", "bookings": []},
+    )
+    with patch("maxbot.handlers.ai_assistant.ai_concierge.send_message",
+               AsyncMock(return_value=dto)):
+        await on_free_text(event, ctx)
+
+    call = event.bot.send_message.await_args.kwargs
+    # Action без кнопок → main_menu добавляется (через send_with_main_menu)
+    inline_keyboards = [
+        a for a in call["attachments"]
+        if getattr(a, "type", None) == "inline_keyboard"
+    ]
+    assert len(inline_keyboards) == 1  # main_menu
+    payloads = []
+    for row in inline_keyboards[0].payload.buttons:
+        for btn in row:
+            if hasattr(btn, "payload") and btn.payload:
+                payloads.append(btn.payload)
+    # main_menu контент — есть cb:menu:* кнопки
+    assert any("cb:menu:" in p for p in payloads)
 
 
 @pytest.mark.asyncio

@@ -164,10 +164,23 @@ async def run_ai_turn(
         )
         return
 
-    await send_with_main_menu(
-        bot=bot, chat_id=chat_id, text=text, bot_user=bot_user,
-        extra_attachments=action_attachments or None,
+    # MAX API ограничение: только ОДИН inline_keyboard на сообщение.
+    # Если у action есть свои кнопки (карточка с CallbackButton'ами) — отправляем
+    # БЕЗ main_menu (оно «плавает» на предыдущем сообщении). Если action без
+    # кнопок (show_my_bookings empty, ask_clarification без options) — приклеиваем
+    # main_menu для удобства навигации.
+    has_card_keyboard = any(
+        getattr(att, "type", None) == "inline_keyboard"
+        for att in action_attachments
     )
+    if has_card_keyboard:
+        await bot.send_message(
+            chat_id=chat_id, text=text, attachments=action_attachments,
+        )
+    else:
+        await send_with_main_menu(
+            bot=bot, chat_id=chat_id, text=text, bot_user=bot_user,
+        )
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
