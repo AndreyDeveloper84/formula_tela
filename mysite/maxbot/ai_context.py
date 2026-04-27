@@ -86,12 +86,19 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
 
 
 def _render_summary(candidates: list[MasterCandidate]) -> str:
-    """Компактный markdown-список мастеров для system_prompt'а.
+    """Компактный markdown-список мастеров + услуг с РЕАЛЬНЫМИ ID для system_prompt'а.
 
-    Цель: < 500 токенов даже для 20 мастеров. Формат:
-        - id=42 Анна Иванова (массаж классический): массаж спины, лимфодренаж, ...
-    LLM получает список доступных int IDs, на которые он может ссылаться
-    в tool-call'ах.
+    Цель: <500 токенов даже для 20 мастеров. Формат:
+        - master_id=42 Анна Иванова (массаж):
+            * service_id=10 массаж спины
+            * service_id=11 лимфодренаж
+            * +ещё 11
+
+    LLM получает явные `master_id=N` И `service_id=N` — без них он галлюцинирует
+    идентификаторы (incident 2026-04-27: LLM передал service_id=1 которого нет
+    в БД, handler сфолбекнулся на ask_clarification).
+
+    Trade-off: длиннее на ~50 токенов на мастера vs anti-hallucination win.
     """
     if not candidates:
         return "(нет активных мастеров — записаться можно только через менеджера)"
@@ -99,11 +106,11 @@ def _render_summary(candidates: list[MasterCandidate]) -> str:
     lines: list[str] = []
     for c in candidates:
         spec = f" ({c.specialization})" if c.specialization else ""
-        # Топ-5 услуг для prompt'а — больше всего раздуёт context
+        lines.append(f"- master_id={c.id} {c.name}{spec}:")
+        # Топ-5 услуг с явными service_id — LLM использует их в show_slots/confirm_booking
         top_services = c.services[:5]
-        services_text = ", ".join(name for _, name in top_services)
-        services_part = f": {services_text}" if services_text else ""
+        for sid, name in top_services:
+            lines.append(f"    * service_id={sid} {name}")
         if len(c.services) > 5:
-            services_part += f" +ещё {len(c.services) - 5}"
-        lines.append(f"- id={c.id} {c.name}{spec}{services_part}")
+            lines.append(f"    * +ещё {len(c.services) - 5} услуг")
     return "\n".join(lines)
