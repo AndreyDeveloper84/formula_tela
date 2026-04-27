@@ -54,7 +54,12 @@ def test_build_master_context_includes_services():
     assert "Лимфодренаж" in service_names
 
 
-def test_build_master_context_summary_text_lists_masters():
+def test_build_master_context_summary_text_lists_masters_and_services():
+    """Summary должен содержать И master_id, И service_id — anti-hallucination.
+
+    REGRESSION 2026-04-27: LLM передавал service_id=1 (галлюцинация) когда
+    services передавались по именам без ID. Теперь явный service_id=N.
+    """
     from maxbot.ai_context import build_master_context
     from services_app.models import Master, Service
     svc = baker.make(Service, name="Массаж")
@@ -68,8 +73,11 @@ def test_build_master_context_summary_text_lists_masters():
     text = ctx.summary_text
     assert "Анна Иванова" in text
     assert "Денис Петров" in text
-    # Содержит ID мастеров — критично для anti-hallucination в LLM prompt'е
-    assert f"id={m1.id}" in text or f"#{m1.id}" in text
+    # Master IDs явно
+    assert f"master_id={m1.id}" in text
+    assert f"master_id={m2.id}" in text
+    # Service ID явно — критично для show_slots/confirm_booking
+    assert f"service_id={svc.id}" in text
 
 
 def test_build_master_context_candidate_service_ids_set():
