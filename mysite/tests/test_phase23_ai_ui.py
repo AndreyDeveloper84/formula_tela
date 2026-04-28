@@ -145,6 +145,29 @@ def test_render_show_slots_without_slots_says_no_availability():
     assert "нет" in text.lower() or "свобод" in text.lower() or "занят" in text.lower()
 
 
+def test_render_show_slots_empty_includes_fallback_buttons():
+    """Phase 0: на пустых slots — НЕ тупиковый ответ, а кнопки для альтернатив."""
+    from maxbot.ai_ui import render_action
+    conv_id = _conv_id()
+    text, atts = render_action(
+        conversation_id=conv_id, action_type="show_slots",
+        action_data={
+            "master_id": 42, "service_id": 100, "date": "2026-04-30",
+            "master_name": "Анна", "service_name": "Массаж", "slots": [],
+        },
+    )
+    payloads = _kb_payloads(atts)
+    button_texts = _kb_texts(atts)
+    # 3 fallback кнопки: завтра, через 3 дня, другой мастер
+    assert any("cb:ai:suggest_date:" in p and ":+1" in p for p in payloads)
+    assert any("cb:ai:suggest_date:" in p and ":+3" in p for p in payloads)
+    assert any("cb:ai:suggest_master:" in p for p in payloads)
+    # Текст кнопок дружелюбный
+    assert any("завтра" in t.lower() for t in button_texts)
+    assert any("3 дня" in t for t in button_texts) or any("через" in t.lower() for t in button_texts)
+    assert any("мастер" in t.lower() for t in button_texts)
+
+
 def test_render_show_slots_when_slots_field_missing():
     """Если ai_concierge ещё не enrich'ил slots — graceful placeholder."""
     from maxbot.ai_ui import render_action
