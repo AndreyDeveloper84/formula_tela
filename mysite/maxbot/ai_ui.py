@@ -61,6 +61,20 @@ def _payload_answer(conv_id: str, option_idx: int) -> str:
     return f"cb:ai:answer:{conv_id}:{option_idx}"
 
 
+def _payload_suggest_date(conv_id: str, offset: str) -> str:
+    """Phase 0: fallback при пустых slots → suggest альтернативной даты.
+
+    offset — relative ("+1", "+3", etc) — pseudo-msg «покажи слоты через N дней»
+    LLM сам распарсит relative date через today из system_prompt'а.
+    """
+    return f"cb:ai:suggest_date:{conv_id}:{offset}"
+
+
+def _payload_suggest_master(conv_id: str) -> str:
+    """Phase 0: fallback при пустых slots → подобрать другого мастера."""
+    return f"cb:ai:suggest_master:{conv_id}"
+
+
 # ─── render_action — главный диспетчер ───────────────────────────────────
 
 
@@ -156,14 +170,29 @@ def render_show_slots(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
             [],
         )
 
-    # Slots empty — нет свободных
+    # Slots empty — нет свободных. Phase 0: НЕ тупик, а fallback-кнопки.
     if not slots:
-        return (
+        text = (
             f"{master_name} — {service_name}, {date_str}.\n"
-            "К сожалению, свободных слотов на эту дату нет. "
-            "Попробуйте другой день?",
-            [],
+            "К сожалению, свободных слотов на эту дату нет.\n"
+            "Хотите попробовать другой день или мастера?"
         )
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            CallbackButton(
+                text="📅 На завтра",
+                payload=_payload_suggest_date(conv_id, "+1"),
+            ),
+            CallbackButton(
+                text="📆 Через 3 дня",
+                payload=_payload_suggest_date(conv_id, "+3"),
+            ),
+        )
+        builder.row(CallbackButton(
+            text="👥 Другой мастер",
+            payload=_payload_suggest_master(conv_id),
+        ))
+        return (text, [builder.as_markup()])
 
     lines = [
         f"{master_name} — {service_name}",

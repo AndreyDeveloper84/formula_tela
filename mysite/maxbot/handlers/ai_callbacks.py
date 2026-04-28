@@ -238,6 +238,67 @@ async def on_cancel(callback: MessageCallback, context: MemoryContext) -> None:
     )
 
 
+# ─── Suggest alternative date / master (Phase 0 — empty slots fallback) ───
+
+
+_OFFSET_LABELS = {
+    "+1": "завтра",
+    "+3": "через 3 дня",
+    "+7": "через неделю",
+}
+
+
+@router.message_callback(F.callback.payload.startswith("cb:ai:suggest_date:"))
+async def on_suggest_date(callback: MessageCallback, context: MemoryContext) -> None:
+    """Empty slots fallback: клиент выбрал альтернативную дату → AI пересчитает."""
+    payload = callback.callback.payload
+    kind, rest = _parse_payload(payload)
+    if kind != "suggest_date" or len(rest) < 2:
+        return
+    conv_id, offset = rest[0], rest[1]
+
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    user = callback.callback.user
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+
+    label = _OFFSET_LABELS.get(offset, f"через {offset.lstrip('+')} дней")
+    pseudo = f"Покажи свободное время {label}"
+    logger.info("ai_callbacks.suggest_date conv=%s offset=%s", conv_id, offset)
+    await run_ai_turn(
+        bot=callback.bot, chat_id=chat_id,
+        bot_user=bot_user, user_text=pseudo,
+        original_user_text=f"выбор даты {label}",
+    )
+
+
+@router.message_callback(F.callback.payload.startswith("cb:ai:suggest_master:"))
+async def on_suggest_master(callback: MessageCallback, context: MemoryContext) -> None:
+    """Empty slots fallback: подобрать другого мастера."""
+    payload = callback.callback.payload
+    kind, rest = _parse_payload(payload)
+    if kind != "suggest_master" or not rest:
+        return
+    conv_id = rest[0]
+
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    user = callback.callback.user
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+
+    pseudo = "Покажи других мастеров для этой услуги"
+    logger.info("ai_callbacks.suggest_master conv=%s", conv_id)
+    await run_ai_turn(
+        bot=callback.bot, chat_id=chat_id,
+        bot_user=bot_user, user_text=pseudo,
+        original_user_text="выбор другого мастера",
+    )
+
+
 # ─── Edit ──────────────────────────────────────────────────────────────────
 
 
