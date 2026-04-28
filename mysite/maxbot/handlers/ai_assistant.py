@@ -31,13 +31,14 @@ from maxapi.enums.sender_action import SenderAction
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_concierge, ai_ui, keyboards, texts
+from maxbot.ai_action_service import close_active_conversation
 from maxbot.intents import detect_intent
 from maxbot.llm import LLM_GIVEUP_MESSAGE, is_giveup
 from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.states import AskStates
 from notifications import send_notification_telegram
-from services_app.models import BotInquiry
+from services_app.models import BotInquiry, Conversation
 
 
 logger = logging.getLogger("maxbot.ai")
@@ -131,6 +132,7 @@ async def run_ai_turn(
     except Exception:  # noqa: BLE001
         logger.exception("ai_assistant: AI Concierge crashed text=%r",
                          user_text[:80])
+        await close_active_conversation(bot_user, outcome=Conversation.Outcome.ERROR.value)
         await _create_bot_inquiry(
             user_id=bot_user.max_user_id,
             full_name=bot_user.display_name or "",
@@ -153,6 +155,7 @@ async def run_ai_turn(
         action_attachments = []
 
     if dto.action_type is None and is_giveup(text):
+        await close_active_conversation(bot_user, outcome=Conversation.Outcome.REDIRECTED.value)
         await _create_bot_inquiry(
             user_id=bot_user.max_user_id,
             full_name=bot_user.display_name or "",

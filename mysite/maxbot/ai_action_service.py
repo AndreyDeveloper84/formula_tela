@@ -87,9 +87,37 @@ def _save_idempotency(conv_id, booking_request_id: int) -> None:
 
 
 @sync_to_async
-def _close_conversation(conv: Conversation) -> None:
+def _close_conversation(conv: Conversation, outcome: str = "") -> None:
+    """Закрыть conversation + установить outcome для analytics (Phase 1).
+
+    outcome: success / abandoned / redirected / error / "" (если не известно).
+    """
     conv.is_active = False
-    conv.save(update_fields=["is_active"])
+    if outcome:
+        conv.outcome = outcome
+    conv.save(update_fields=["is_active", "outcome"] if outcome else ["is_active"])
+
+
+@sync_to_async
+def _close_active_by_bot_user(bot_user: BotUser, outcome: str) -> None:
+    conv = (
+        Conversation.objects
+        .filter(bot_user=bot_user, is_active=True)
+        .order_by("-created_at")
+        .first()
+    )
+    if conv:
+        conv.is_active = False
+        conv.outcome = outcome
+        conv.save(update_fields=["is_active", "outcome"])
+
+
+async def close_active_conversation(bot_user: BotUser, outcome: str) -> None:
+    """Закрыть активную conversation bot_user с outcome.
+
+    Вызывается из ai_assistant при crash (outcome=error) и is_giveup (outcome=redirected).
+    """
+    await _close_active_by_bot_user(bot_user, outcome)
 
 
 @sync_to_async
@@ -266,8 +294,14 @@ async def execute_confirm_booking(
     )
     await _save_tool_message(conversation, tool_content)
 
-    # 8. Close conversation (новая будет на следующий /start)
-    await _close_conversation(conversation)
+    # 8. Close conversation + outcome (Phase 1):
+    # - yclients_record_id есть → success (запись создана нативно)
+    # - yclients_record_id нет (graceful) → redirected (менеджер запишет вручную)
+    outcome = (
+        Conversation.Outcome.SUCCESS.value if yclients_record_id
+        else Conversation.Outcome.REDIRECTED.value
+    )
+    await _close_conversation(conversation, outcome=outcome)
 
     # 9. Telegram admin
     client_label = bot_user.client_name or bot_user.display_name or f"#{bot_user.max_user_id}"
@@ -307,7 +341,7 @@ async def execute_confirm_booking(
 
 
 async def cancel_conversation(conversation: Conversation) -> str:
-    """User кликнул [❌ Отмена] на confirm_booking. Закрываем conv, возвращаем msg."""
+    """User кликнул [❌ Отмена] на confirm_booking. Закрываем conv + outcome=abandoned."""
     await _save_tool_message(conversation, "user_cancelled_booking")
-    await _close_conversation(conversation)
+    await _close_conversation(conversation, outcome=Conversation.Outcome.ABANDONED.value)
     return "Отменено. Если передумаете — я тут!"

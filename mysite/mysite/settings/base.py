@@ -270,6 +270,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "agents.tasks.run_landing_qc",
         "schedule": crontab(hour=9, minute=0),
     },
+    # Phase 1 conversation lifecycle: закрыть AI-диалоги без активности 7+ дней
+    # как outcome=abandoned. Cheap UPDATE-query, не нагружает БД.
+    "daily-close-stale-conversations-3am-msk": {
+        "task": "services_app.tasks.close_stale_conversations",
+        "schedule": crontab(hour=3, minute=0),
+    },
 }
 
 # === Email (SMTP) ===
