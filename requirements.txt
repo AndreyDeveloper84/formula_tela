@@ -46,10 +46,13 @@ maxapi[webhook]==1.0.0
 mcp>=1.20.0,<2.0
 
 # AI orchestration shared package (Linear DRF-236, DRF-237).
-# 0.2.0+ — содержит full AIConcierge + 5 tools + handlers + MasterContext
-# (production-tested 30+ days, извлечено из maxbot/ai_*.py).
-# Бот пока использует свои локальные maxbot/ai_*.py — миграция на shared
-# package в DRF-243 (Phase B, feature-flag canary deploy).
-# Editable install — repo: https://github.com/AndreyDeveloper84/ayla-ai-core
-# Положить sibling-папкой к mysite (PycharmProjects/ayla-ai-core).
--e ../ayla-ai-core
+# Repo: https://github.com/AndreyDeveloper84/ayla-ai-core (private)
+#
+# NOT INSTALLED HERE — бот пока использует локальные maxbot/ai_*.py;
+# package добавится сюда только в DRF-243 (Phase B миграция). Если добавим
+# раньше — CI/staging ломается, потому что sibling-папка ../ayla-ai-core
+# отсутствует в CI-runner'ах (только локально на dev-машине).
+#
+# DEV-ONLY: для локального тестирования shared package с ботом —
+#   pip install -e ../ayla-ai-core
+# (после клонирования ayla-ai-core в PycharmProjects/ayla-ai-core)
