@@ -276,6 +276,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "services_app.tasks.close_stale_conversations",
         "schedule": crontab(hour=3, minute=0),
     },
+    # Phase 2 Learning Roadmap: LLM meta-analysis последних 20 неудавшихся диалогов
+    # → patterns + prompt_additions → Telegram-отчёт администратору.
+    "weekly-analyze-failed-conversations-monday-6am-msk": {
+        "task": "services_app.tasks.analyze_failed_conversations",
+        "schedule": crontab(hour=6, minute=0, day_of_week="monday"),
+    },
 }
 
 # === Email (SMTP) ===
