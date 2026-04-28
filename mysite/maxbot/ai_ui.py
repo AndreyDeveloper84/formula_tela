@@ -112,6 +112,28 @@ def render_show_masters(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
     explanation = data.get("explanation") or ""
 
     if not masters:
+        all_busy_date = data.get("all_busy_date") or ""
+        if all_busy_date:
+            text = (
+                f"На {all_busy_date} свободных мастеров нет.\n"
+                "Попробовать другой день?"
+            )
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                CallbackButton(
+                    text="📅 Завтра",
+                    payload=_payload_suggest_date(conv_id, "+1"),
+                ),
+                CallbackButton(
+                    text="📆 Через 3 дня",
+                    payload=_payload_suggest_date(conv_id, "+3"),
+                ),
+            )
+            builder.row(CallbackButton(
+                text="📅 Через неделю",
+                payload=_payload_suggest_date(conv_id, "+7"),
+            ))
+            return (text, [builder.as_markup()])
         return ("К сожалению, не нашёл подходящих мастеров под ваш запрос.", [])
 
     lines: list[str] = []

@@ -80,6 +80,7 @@ def handle_show_masters(args: dict[str, Any], context: MasterContext) -> ToolRes
     scores = args.get("match_scores") or []
     reasons = args.get("match_reasons") or []
     explanation = args.get("explanation") or ""
+    date_str = args.get("date") or ""
 
     valid_ids = [_safe_int(rid) for rid in raw_ids]
     valid_ids = [vid for vid in valid_ids if vid is not None and vid in context.candidate_ids]
@@ -104,7 +105,7 @@ def handle_show_masters(args: dict[str, Any], context: MasterContext) -> ToolRes
 
     return ToolResult(
         action_type=ActionType.SHOW_MASTERS,
-        action_data={"masters": masters, "explanation": explanation},
+        action_data={"masters": masters, "explanation": explanation, "date": date_str},
     )
 
 

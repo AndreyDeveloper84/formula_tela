@@ -97,6 +97,42 @@ def test_conversation_str_includes_id_and_bot_user():
     assert str(conv.id)[:8] in s  # short uuid prefix
 
 
+# ─── Phase 1: Conversation.outcome ────────────────────────────────────────
+
+
+def test_conversation_outcome_choices():
+    """4 значимых исхода. Пустая строка — default (open conv), не choice."""
+    from services_app.models import Conversation
+    outcomes = {o.value for o in Conversation.Outcome}
+    assert outcomes == {"success", "abandoned", "redirected", "error"}
+
+
+def test_conversation_outcome_default_empty_for_active():
+    """is_active=True → outcome пуст (open conversation)."""
+    from services_app.models import BotUser, Conversation
+    bu = baker.make(BotUser, max_user_id=80020)
+    conv = Conversation.objects.create(bot_user=bu)
+    assert conv.outcome == ""
+
+
+def test_conversation_outcome_settable_when_closed():
+    from services_app.models import BotUser, Conversation
+    bu = baker.make(BotUser, max_user_id=80021)
+    conv = Conversation.objects.create(bot_user=bu)
+    conv.is_active = False
+    conv.outcome = Conversation.Outcome.SUCCESS
+    conv.save()
+    fetched = Conversation.objects.get(pk=conv.pk)
+    assert fetched.outcome == "success"
+
+
+def test_conversation_outcome_indexed_for_admin_filter():
+    """Поле должно быть db_index=True для быстрой фильтрации в /admin/."""
+    from services_app.models import Conversation
+    field = Conversation._meta.get_field("outcome")
+    assert field.db_index is True
+
+
 # ─── Message модель ─────────────────────────────────────────────────────
 
 

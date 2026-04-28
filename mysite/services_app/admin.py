@@ -792,14 +792,14 @@ class MessageInline(admin.TabularInline):
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
-    list_display = ("short_id", "bot_user_name", "is_active", "msg_count",
+    list_display = ("short_id", "bot_user_name", "is_active", "outcome", "msg_count",
                     "last_message_at", "created_at")
-    list_filter = ("is_active", "created_at")
+    list_filter = ("is_active", "outcome", "created_at")
     search_fields = ("bot_user__client_name", "bot_user__display_name",
                      "bot_user__max_user_id", "id")
-    readonly_fields = ("id", "bot_user", "is_active", "deleted_at",
+    readonly_fields = ("id", "bot_user", "is_active", "outcome", "deleted_at",
                        "last_message_at", "created_at")
-    fields = ("id", "bot_user", "is_active", "deleted_at",
+    fields = ("id", "bot_user", "is_active", "outcome", "deleted_at",
               "last_message_at", "created_at")
     inlines = [MessageInline]
 

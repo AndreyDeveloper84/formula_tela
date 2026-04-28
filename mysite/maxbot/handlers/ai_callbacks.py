@@ -24,7 +24,7 @@ from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback
 
-from maxbot import ai_action_service
+from maxbot import ai_action_service, ai_ui
 from maxbot.handlers.ai_assistant import run_ai_turn
 from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
@@ -108,6 +108,78 @@ async def on_pick_master(callback: MessageCallback, context: MemoryContext) -> N
 # ─── Pick slot ─────────────────────────────────────────────────────────────
 
 
+@sync_to_async
+def _pick_slot_to_confirm(conv_id: str, slot_str: str) -> dict | None:
+    """Детерминированный путь: show_slots → confirm_booking без LLM.
+
+    1. Загружает последний show_slots action_data из DB (master_id, service_id, date).
+    2. Собирает полный ISO datetime: "{date}T{slot}:00".
+    3. Вызывает handle_confirm_booking (sync ORM) — проверка + имена.
+    4. Сохраняет confirm Message в conversation.
+    Возвращает action_data или None при ошибке (→ fallback на LLM).
+    """
+    from datetime import datetime as dt_cls
+
+    from django.utils import timezone as dj_tz
+
+    from maxbot.ai_context import build_master_context
+    from maxbot.ai_tool_handlers import handle_confirm_booking
+    from maxbot.ai_tools import ActionType
+
+    # 1. Последний show_slots
+    show_msg = (
+        Message.objects
+        .filter(conversation_id=conv_id, role=Message.Role.ASSISTANT, action_type="show_slots")
+        .order_by("-created_at")
+        .first()
+    )
+    if not show_msg or not show_msg.action_data:
+        return None
+
+    slots_data = show_msg.action_data
+    date_str = slots_data.get("date") or ""
+    master_id = slots_data.get("master_id")
+    service_id = slots_data.get("service_id")
+    if not (date_str and master_id and service_id):
+        return None
+
+    # 2. Полный ISO datetime (формат YClients: YYYY-MM-DDThh:mm:00)
+    try:
+        if "T" in slot_str:
+            slot_dt = dt_cls.fromisoformat(slot_str)
+            datetime_iso = slot_dt.strftime("%Y-%m-%dT%H:%M:00")
+        else:
+            datetime_iso = f"{date_str}T{slot_str}:00"
+    except (ValueError, TypeError):
+        return None
+
+    # 3. Validate + enrich (имена мастера/услуги, цена, длительность)
+    master_context = build_master_context()
+    result = handle_confirm_booking(
+        {"master_id": master_id, "service_id": service_id, "datetime": datetime_iso},
+        master_context,
+    )
+    if result.action_type != ActionType.CONFIRM_BOOKING:
+        return None
+
+    # 4. Сохранить confirm Message в conversation
+    conv = Conversation.objects.filter(id=conv_id, is_active=True).first()
+    if conv is None:
+        return None
+
+    msg = Message.objects.create(
+        conversation=conv,
+        role=Message.Role.ASSISTANT,
+        action_type=ActionType.CONFIRM_BOOKING,
+        action_data=result.action_data,
+        content="",
+    )
+    conv.last_message_at = msg.created_at
+    conv.save(update_fields=["last_message_at"])
+
+    return result.action_data
+
+
 @router.message_callback(F.callback.payload.startswith("cb:ai:pick_slot:"))
 async def on_pick_slot(callback: MessageCallback, context: MemoryContext) -> None:
     payload = callback.callback.payload
@@ -124,8 +196,24 @@ async def on_pick_slot(callback: MessageCallback, context: MemoryContext) -> Non
     user = callback.callback.user
     bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
 
+    # Детерминированный путь: show_slots data → confirm_booking без LLM
+    confirm_data = await _pick_slot_to_confirm(conv_id, slot_str)
+    if confirm_data is not None:
+        text, attachments = ai_ui.render_action(
+            conversation_id=conv_id,
+            action_type="confirm_booking",
+            action_data=confirm_data,
+        )
+        await send_with_main_menu(
+            bot=callback.bot, chat_id=chat_id,
+            text=text, extra_attachments=attachments, bot_user=bot_user,
+        )
+        logger.info("ai_callbacks.pick_slot conv=%s slot=%s → confirm_booking (direct)", conv_id, slot_str)
+        return
+
+    # Fallback: нет show_slots в истории → LLM
     pseudo = f"Хочу записаться на {slot_str}"
-    logger.info("ai_callbacks.pick_slot conv=%s slot=%s", conv_id, slot_str)
+    logger.info("ai_callbacks.pick_slot conv=%s slot=%s → LLM fallback", conv_id, slot_str)
     await run_ai_turn(
         bot=callback.bot, chat_id=chat_id,
         bot_user=bot_user, user_text=pseudo,

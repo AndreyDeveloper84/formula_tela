@@ -233,3 +233,70 @@ async def test_cancel_conversation_closes_and_returns_message():
         Message.objects.filter(conversation=conv, role=Message.Role.TOOL)
     )
     assert len(tool_msgs) == 1
+
+
+# ─── Phase 1: Conversation.outcome setters ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_confirm_booking_sets_outcome_success_on_yclients_ok(_clear_cache):
+    """YClients-record создан → conversation.outcome=success."""
+    from maxbot.ai_action_service import execute_confirm_booking
+    from services_app.models import BotUser, Conversation, Master, Service
+
+    bu = await sync_to_async(baker.make)(BotUser, max_user_id=80120)
+    master = await sync_to_async(baker.make)(
+        Master, name="X", is_active=True, yclients_staff_id="1",
+    )
+    service = await sync_to_async(baker.make)(Service, is_active=True)
+    from services_app.models import ServiceOption
+    await sync_to_async(baker.make)(
+        ServiceOption, service=service, yclients_service_id="2", is_active=True,
+    )
+    conv = await _make_conv_with_confirm_action(bu, master, service)
+
+    api = MagicMock()
+    api.create_booking = MagicMock(return_value={"record_id": "REC_OK"})
+
+    with patch("maxbot.ai_action_service.send_notification_telegram"):
+        await execute_confirm_booking(conversation=conv, bot_user=bu, yclients_api=api)
+
+    await sync_to_async(conv.refresh_from_db)()
+    assert conv.outcome == Conversation.Outcome.SUCCESS.value
+    assert conv.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_confirm_booking_sets_outcome_redirected_on_no_mapping(_clear_cache):
+    """Master без yclients_staff_id → outcome=redirected (менеджер запишет вручную)."""
+    from maxbot.ai_action_service import execute_confirm_booking
+    from services_app.models import BotUser, Conversation, Master, Service
+
+    bu = await sync_to_async(baker.make)(BotUser, max_user_id=80121)
+    master = await sync_to_async(baker.make)(
+        Master, name="X", is_active=True, yclients_staff_id="",  # Нет mapping
+    )
+    service = await sync_to_async(baker.make)(Service, is_active=True)
+    conv = await _make_conv_with_confirm_action(bu, master, service)
+
+    api = MagicMock()
+
+    with patch("maxbot.ai_action_service.send_notification_telegram"):
+        await execute_confirm_booking(conversation=conv, bot_user=bu, yclients_api=api)
+
+    await sync_to_async(conv.refresh_from_db)()
+    assert conv.outcome == Conversation.Outcome.REDIRECTED.value
+    assert conv.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_cancel_conversation_sets_outcome_abandoned():
+    """Кнопка [❌ Отмена] → outcome=abandoned."""
+    from maxbot.ai_action_service import cancel_conversation
+    from services_app.models import BotUser, Conversation
+
+    bu = await sync_to_async(baker.make)(BotUser, max_user_id=80122)
+    conv = await sync_to_async(Conversation.objects.create)(bot_user=bu, is_active=True)
+    await cancel_conversation(conv)
+    await sync_to_async(conv.refresh_from_db)()
+    assert conv.outcome == Conversation.Outcome.ABANDONED.value

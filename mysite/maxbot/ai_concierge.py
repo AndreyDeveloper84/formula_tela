@@ -246,7 +246,9 @@ async def send_message(
     # реальный fetch здесь чтобы action_data.slots/bookings были готовы для render.
     if action_type and action_data is not None:
         from maxbot import ai_tools, ai_yclients
-        if action_type == ai_tools.ActionType.SHOW_SLOTS:
+        if action_type == ai_tools.ActionType.SHOW_MASTERS:
+            action_data = await ai_yclients.enrich_show_masters(action_data)
+        elif action_type == ai_tools.ActionType.SHOW_SLOTS:
             action_data = await ai_yclients.enrich_show_slots(action_data)
         elif action_type == ai_tools.ActionType.SHOW_MY_BOOKINGS:
             action_data = await ai_yclients.enrich_show_my_bookings(action_data, bot_user)
