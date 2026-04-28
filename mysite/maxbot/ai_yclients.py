@@ -24,6 +24,35 @@ logger = logging.getLogger("maxbot.ai_yclients")
 
 
 @sync_to_async
+def _load_masters_yclients_info(master_ids: list[int]) -> dict[int, tuple[str, str | None]]:
+    """Returns {master_id: (yclients_staff_id, yclients_service_id)} для availability check.
+
+    yclients_service_id берём первый попавшийся из любой услуги мастера —
+    нужен только чтобы спросить YClients «есть ли вообще время».
+    Мастера без yclients_staff_id пропускаем (не можем проверить → оставляем).
+    """
+    result: dict[int, tuple[str, str | None]] = {}
+    masters = (
+        Master.objects
+        .filter(id__in=master_ids, is_active=True)
+        .prefetch_related("services")
+    )
+    for m in masters:
+        if not m.yclients_staff_id:
+            continue
+        service_ids = list(m.services.values_list("id", flat=True))
+        yc_svc_id = (
+            ServiceOption.objects
+            .filter(service_id__in=service_ids, yclients_service_id__isnull=False)
+            .exclude(yclients_service_id="")
+            .values_list("yclients_service_id", flat=True)
+            .first()
+        )
+        result[m.id] = (str(m.yclients_staff_id), str(yc_svc_id) if yc_svc_id else None)
+    return result
+
+
+@sync_to_async
 def _load_master_and_service(master_id: int, service_id: int):
     """Возвращает (master, service, yclients_service_id из ServiceOption или None)."""
     master = Master.objects.filter(id=master_id, is_active=True).first()
@@ -165,4 +194,81 @@ async def enrich_show_my_bookings(
         "enrich_show_my_bookings: %d bookings filter=%s phone=%s",
         len(bookings), filter_value, phone[:4] + "...",
     )
+    return action_data
+
+
+async def enrich_show_masters(action_data: dict[str, Any], *, yclients_api=None) -> dict[str, Any]:
+    """Фильтрует мастеров по доступности в YClients на запрошенную дату.
+
+    Если date не передана или YClients не настроен — возвращает как есть.
+    Если на дату нет ни одного доступного мастера — оставляет masters=[] и
+    устанавливает all_busy_date чтобы render показал кнопки «другой день».
+    """
+    date_str = action_data.get("date") or ""
+    masters = action_data.get("masters") or []
+
+    if not date_str or not masters:
+        return action_data
+
+    master_ids = [
+        item.get("master", {}).get("id")
+        for item in masters
+        if item.get("master", {}).get("id") is not None
+    ]
+    if not master_ids:
+        return action_data
+
+    yclients_info = await _load_masters_yclients_info(master_ids)
+    # master_id → (staff_id, service_id). Мастера без mapping проверить нельзя → оставляем.
+    unmappable_ids = {mid for mid in master_ids if mid not in yclients_info}
+
+    if yclients_api is None:
+        from services_app.yclients_api import get_yclients_api
+        yclients_api = get_yclients_api()
+
+    busy_ids: set[int] = set()
+    for master_id, (staff_id, yc_svc_id) in yclients_info.items():
+        if not yc_svc_id:
+            # Нет маппинга услуги — не можем проверить, оставляем
+            continue
+        try:
+            times = await sync_to_async(yclients_api.get_available_times)(
+                staff_id=int(staff_id),
+                date=date_str,
+                service_ids=[int(yc_svc_id)],
+            )
+            if not times:
+                busy_ids.add(master_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "enrich_show_masters: YClients check failed master=%s date=%s: %s",
+                master_id, date_str, exc,
+            )
+
+    if not busy_ids:
+        # Все доступны или не удалось проверить — ничего не меняем
+        return action_data
+
+    available_masters = [
+        item for item in masters
+        if item.get("master", {}).get("id") not in busy_ids
+        or item.get("master", {}).get("id") in unmappable_ids
+    ]
+
+    if not available_masters:
+        # Все заняты → пустой список + сигнал для рендера
+        action_data["masters"] = []
+        action_data["all_busy_date"] = date_str
+        logger.info(
+            "enrich_show_masters: all %d masters busy on %s → show date fallback",
+            len(masters), date_str,
+        )
+    else:
+        removed = len(masters) - len(available_masters)
+        action_data["masters"] = available_masters
+        logger.info(
+            "enrich_show_masters: filtered %d busy master(s) on %s, %d remain",
+            removed, date_str, len(available_masters),
+        )
+
     return action_data
