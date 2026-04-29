@@ -24,6 +24,13 @@ from services_app.models import Master, Service
 
 
 DEFAULT_LIMIT = 20
+APPROACH_PREVIEW_CHARS = 200  # Обрезаем approach в context — длинные HTML-блобы снижают LLM perf
+
+
+def _strip_html(text: str) -> str:
+    """Простая очистка HTML тегов для prompt-context (approach содержит HTML)."""
+    import re
+    return re.sub(r"<[^>]+>", " ", text)
 
 
 @dataclass(frozen=True)
@@ -35,6 +42,10 @@ class MasterCandidate:
     specialization: str
     # (service_id, name, category_name, requires_health_check)
     services: list[tuple[int, str, str, bool]]
+    # Phase 2.4 T06: данные для LLM-side фильтрации по criteria клиента
+    # ("опытный" / "мягкий" / "сильный").
+    experience: str = ""
+    approach: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +99,8 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
                 )
                 for s in services
             ],
+            experience=(master.experience or "").strip(),
+            approach=_strip_html(master.approach or "").strip(),
         ))
 
     return MasterContext(
@@ -121,6 +134,19 @@ def _render_summary(candidates: list[MasterCandidate]) -> str:
     for c in candidates:
         spec = f" ({c.specialization})" if c.specialization else ""
         lines.append(f"- master_id={c.id} {c.name}{spec}:")
+
+        # Phase 2.4 T06: данные для LLM-side фильтрации по criteria
+        meta_parts = []
+        if c.experience:
+            meta_parts.append(f"опыт: {c.experience}")
+        if c.approach:
+            preview = c.approach[:APPROACH_PREVIEW_CHARS]
+            if len(c.approach) > APPROACH_PREVIEW_CHARS:
+                preview += "…"
+            meta_parts.append(f"подход: {preview}")
+        if meta_parts:
+            lines.append(f"    {' | '.join(meta_parts)}")
+
         if not c.services:
             lines.append("    (нет активных услуг)")
             continue
