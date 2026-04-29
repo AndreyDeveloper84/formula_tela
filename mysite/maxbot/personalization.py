@@ -75,3 +75,33 @@ def append_to_context(bot_user_id: int, key: str, value) -> None:
         if value not in lst:
             lst.append(value)
             user.save(update_fields=["context", "last_seen"])
+
+
+@sync_to_async
+def get_client_history(bot_user) -> dict:
+    """Phase 2.4 T05 — история клиента для consultative AI Concierge.
+
+    Возвращает {
+        "bookings_count": int — успешных записей через бот,
+        "last_visits": list[dict] — последние 3 визита (date, master, service),
+    }.
+
+    Использует BookingRequest.is_processed=True как сигнал успешной записи
+    (для bot_max source — это значит yclients_record_id создан).
+    """
+    from services_app.models import BookingRequest
+
+    qs = BookingRequest.objects.filter(
+        bot_user=bot_user, is_processed=True,
+    ).order_by("-created_at")
+    bookings_count = qs.count()
+
+    last_visits = []
+    for br in qs[:3]:
+        last_visits.append({
+            "date": br.created_at.strftime("%d.%m.%Y") if br.created_at else "",
+            "master": br.master_name or "—",
+            "service": br.service_name or "—",
+        })
+
+    return {"bookings_count": bookings_count, "last_visits": last_visits}

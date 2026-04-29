@@ -24,6 +24,13 @@ from services_app.models import Master, Service
 
 
 DEFAULT_LIMIT = 20
+APPROACH_PREVIEW_CHARS = 200  # Обрезаем approach в context — длинные HTML-блобы снижают LLM perf
+
+
+def _strip_html(text: str) -> str:
+    """Простая очистка HTML тегов для prompt-context (approach содержит HTML)."""
+    import re
+    return re.sub(r"<[^>]+>", " ", text)
 
 
 @dataclass(frozen=True)
@@ -33,7 +40,12 @@ class MasterCandidate:
     id: int
     name: str
     specialization: str
-    services: list[tuple[int, str, str]]  # (service_id, name, category_name)
+    # (service_id, name, category_name, requires_health_check)
+    services: list[tuple[int, str, str, bool]]
+    # Phase 2.4 T06: данные для LLM-side фильтрации по criteria клиента
+    # ("опытный" / "мягкий" / "сильный").
+    experience: str = ""
+    approach: str = ""
 
 
 @dataclass(frozen=True)
@@ -79,9 +91,16 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
             name=master.name,
             specialization=(master.specialization or "").strip(),
             services=[
-                (s.id, s.name, s.category.name if s.category else "Прочее")
+                (
+                    s.id,
+                    s.name,
+                    s.category.name if s.category else "Прочее",
+                    bool(getattr(s, "requires_health_check", False)),
+                )
                 for s in services
             ],
+            experience=(master.experience or "").strip(),
+            approach=_strip_html(master.approach or "").strip(),
         ))
 
     return MasterContext(
@@ -115,16 +134,34 @@ def _render_summary(candidates: list[MasterCandidate]) -> str:
     for c in candidates:
         spec = f" ({c.specialization})" if c.specialization else ""
         lines.append(f"- master_id={c.id} {c.name}{spec}:")
+
+        # Phase 2.4 T06: данные для LLM-side фильтрации по criteria
+        meta_parts = []
+        if c.experience:
+            meta_parts.append(f"опыт: {c.experience}")
+        if c.approach:
+            preview = c.approach[:APPROACH_PREVIEW_CHARS]
+            if len(c.approach) > APPROACH_PREVIEW_CHARS:
+                preview += "…"
+            meta_parts.append(f"подход: {preview}")
+        if meta_parts:
+            lines.append(f"    {' | '.join(meta_parts)}")
+
         if not c.services:
             lines.append("    (нет активных услуг)")
             continue
 
-        # Группируем услуги по категории, сохраняя порядок появления
-        by_cat: dict[str, list[tuple[int, str]]] = {}
-        for sid, sname, cat in c.services:
-            by_cat.setdefault(cat, []).append((sid, sname))
+        # Группируем услуги по категории, сохраняя порядок появления.
+        # Опасные услуги маркируем ⚠health чтобы LLM знал — нужен health-check
+        # перед confirm_booking (T03).
+        by_cat: dict[str, list[tuple[int, str, bool]]] = {}
+        for sid, sname, cat, needs_health in c.services:
+            by_cat.setdefault(cat, []).append((sid, sname, needs_health))
 
         for cat_name, items in by_cat.items():
-            inline = "; ".join(f"service_id={sid} {name}" for sid, name in items)
-            lines.append(f"    [{cat_name}] {inline}")
+            parts = []
+            for sid, name, needs_health in items:
+                marker = " ⚠health" if needs_health else ""
+                parts.append(f"service_id={sid} {name}{marker}")
+            lines.append(f"    [{cat_name}] {'; '.join(parts)}")
     return "\n".join(lines)

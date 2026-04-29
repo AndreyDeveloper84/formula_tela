@@ -177,6 +177,27 @@ class Service(models.Model):
                   '["relax", "antistress"] — для расслабляющих услуг.',
     )
 
+    # Phase 2.4 T03 — контр-показания и health screening.
+    # requires_health_check=True для услуг где противопоказания критичны
+    # (антицеллюлитный, баночный, обёртывания, лимфодренаж, лазер).
+    # AI Concierge перед confirm_booking задаст вопрос про беременность/
+    # давление/недавние операции. Если клиент сообщил проблему → запись
+    # переадресуется менеджеру (BotInquiry), а не отправляется в YClients.
+    contraindications = models.TextField(
+        "Противопоказания",
+        blank=True, default="",
+        help_text="Текст противопоказаний — показывается клиенту в карточке "
+                  "услуги перед записью. Пример: «беременность, повышенное "
+                  "давление, недавние операции».",
+    )
+    requires_health_check = models.BooleanField(
+        "Требует проверки здоровья",
+        default=False,
+        help_text="Если True — AI-бот спросит клиента о беременности / "
+                  "давлении / операциях ПЕРЕД записью. При наличии "
+                  "противопоказания запись переадресуется менеджеру.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создана")
     updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлена")
 

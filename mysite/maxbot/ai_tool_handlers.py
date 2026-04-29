@@ -261,6 +261,8 @@ def handle_recommend_services(args: dict[str, Any]) -> ToolResult:
             "category": svc.category.name if svc.category else "",
             "goals": list(svc.goals or []),
             "slug": svc.slug or "",
+            "requires_health_check": bool(svc.requires_health_check),
+            "contraindications": svc.contraindications or "",
         })
 
     if not services_data:
