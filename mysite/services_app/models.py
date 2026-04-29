@@ -1210,6 +1210,7 @@ class BotInquiry(models.Model):
 BOOKING_SOURCE_CHOICES = [
     ("wizard", "Форма-мастер"),
     ("bot_max", "MAX-бот"),
+    ("yclients_admin", "YClients админка"),
     ("other", "Другое"),
 ]
 

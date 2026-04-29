@@ -87,74 +87,13 @@ def _save_idempotency(conv_id, booking_request_id: int) -> None:
     cache.set(_idempotency_key(conv_id), booking_request_id, IDEMPOTENCY_TTL_SECONDS)
 
 
-@sync_to_async
-def _create_reminders_sync(
-    *, bot_user, booking, master_name: str, service_name: str,
-    yclients_record_id: str, slot_iso: str,
-) -> None:
-    """Создать 2 BookingReminder (T-24h и T-2h). Idempotent через unique_together.
-
-    visit_at парсится из slot_iso. Если slot_iso без tz — считаем Europe/Moscow.
-    T-24h scheduled_at = за день до визита в 19:00 (Moscow time).
-    T-2h scheduled_at = visit_at - 2h.
-    Reminder с scheduled_at в прошлом не создаётся.
-    """
-    from datetime import timedelta
-    try:
-        from zoneinfo import ZoneInfo
-        MSK = ZoneInfo("Europe/Moscow")
-    except Exception:  # noqa: BLE001
-        from datetime import timezone as _tz, timedelta as _td
-        MSK = _tz(_td(hours=3))
-
-    try:
-        visit_at = dt_cls.fromisoformat(slot_iso)
-    except (ValueError, TypeError):
-        logger.warning(
-            "_create_reminders: bad slot_iso=%r for booking=%s — skipped",
-            slot_iso, booking.id,
-        )
-        return
-    if visit_at.tzinfo is None:
-        visit_at = visit_at.replace(tzinfo=MSK)
-
-    visit_local = visit_at.astimezone(MSK)
-    day_before_19 = (visit_local - timedelta(days=1)).replace(
-        hour=19, minute=0, second=0, microsecond=0,
-    )
-    two_hours_before = visit_at - timedelta(hours=2)
-    now = timezone.now()
-
-    to_create = []
-    if day_before_19 > now:
-        to_create.append(BookingReminder(
-            bot_user=bot_user, booking_request=booking,
-            yclients_record_id=yclients_record_id, chat_id=bot_user.chat_id,
-            visit_at=visit_at, kind=BookingReminder.Kind.DAY_BEFORE,
-            scheduled_at=day_before_19,
-            master_name=master_name, service_name=service_name,
-        ))
-    if two_hours_before > now:
-        to_create.append(BookingReminder(
-            bot_user=bot_user, booking_request=booking,
-            yclients_record_id=yclients_record_id, chat_id=bot_user.chat_id,
-            visit_at=visit_at, kind=BookingReminder.Kind.TWO_HOURS,
-            scheduled_at=two_hours_before,
-            master_name=master_name, service_name=service_name,
-        ))
-    if to_create:
-        BookingReminder.objects.bulk_create(to_create, ignore_conflicts=True)
-        logger.info(
-            "_create_reminders: created %d reminders for booking=%s yc=%s",
-            len(to_create), booking.id, yclients_record_id,
-        )
-
-
 async def _create_reminders(*, bot_user, booking, master_name: str,
                             service_name: str, yclients_record_id: str,
                             slot_iso: str) -> None:
-    await _create_reminders_sync(
-        bot_user=bot_user, booking=booking,
+    """Создать T-24h + T-2h reminders. Делегирует в reminders_factory."""
+    from maxbot.reminders_factory import create_reminders_for_booking
+    await sync_to_async(create_reminders_for_booking)(
+        bot_user=bot_user, booking_request=booking,
         master_name=master_name, service_name=service_name,
         yclients_record_id=yclients_record_id, slot_iso=slot_iso,
     )
