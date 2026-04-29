@@ -196,8 +196,38 @@ def _handle_record_create(data: dict) -> dict:
     }
 
 
+def _format_dt(dt) -> str:
+    try:
+        return dt.strftime("%d.%m в %H:%M")
+    except Exception:  # noqa: BLE001
+        return str(dt)
+
+
+def _get_reminder_snapshot(yc_id: str) -> dict | None:
+    """Снимок данных из любого существующего reminder'а (для уведомлений
+    при update/delete — нужны bot_user.chat_id + service_name + visit_at)."""
+    r = (
+        BookingReminder.objects
+        .filter(yclients_record_id=yc_id)
+        .select_related("bot_user")
+        .first()
+    )
+    if r is None:
+        return None
+    return {
+        "chat_id": r.bot_user.chat_id if r.bot_user else r.chat_id,
+        "client_name": (r.bot_user.client_name or r.bot_user.display_name or "")
+                       if r.bot_user else "",
+        "master_name": r.master_name,
+        "service_name": r.service_name,
+        "visit_at": r.visit_at,
+    }
+
+
 def _handle_record_update(data: dict) -> dict:
-    """Обновление записи в YClients — если изменился datetime, пересоздать reminders."""
+    """Обновление записи в YClients — если изменился datetime, пересоздать
+    reminders + уведомить клиента «было / стало»."""
+    from datetime import datetime as dt_cls
     from maxbot.reminders_factory import reschedule_reminders_for_record
 
     yc_id = str(data.get("id") or "")
@@ -208,30 +238,89 @@ def _handle_record_update(data: dict) -> dict:
     if not new_slot_iso:
         return {"status": "skipped", "reason": "no_datetime"}
 
-    # Проверим есть ли у нас reminders на эту запись
-    existing = BookingReminder.objects.filter(yclients_record_id=yc_id)
-    if not existing.exists():
+    # Берём snapshot ДО reschedule (там старая visit_at)
+    snapshot = _get_reminder_snapshot(yc_id)
+    if snapshot is None:
         # Не было синка — создаём как новую (на случай если create event пропустили)
         return _handle_record_create(data)
 
+    old_visit_at = snapshot["visit_at"]
     count = reschedule_reminders_for_record(
         yclients_record_id=yc_id, new_slot_iso=new_slot_iso,
     )
+
+    # Уведомление клиенту о переносе
+    chat_id = snapshot["chat_id"]
+    if chat_id:
+        try:
+            new_visit_at = dt_cls.fromisoformat(new_slot_iso)
+        except (ValueError, TypeError):
+            new_visit_at = None
+        # Если дата не поменялась (секунды отбрасываем) — это update других
+        # полей (мастер/услуга), не дёргаем клиента сообщением. Threshold 5 мин
+        # достаточно — реальный перенос всегда на десятки минут+.
+        date_changed = False
+        if new_visit_at is not None and old_visit_at is not None:
+            new_aware = (
+                new_visit_at.replace(tzinfo=old_visit_at.tzinfo)
+                if new_visit_at.tzinfo is None
+                else new_visit_at
+            )
+            delta_sec = abs((new_aware - old_visit_at).total_seconds())
+            date_changed = delta_sec > 300
+        if date_changed:
+            client = snapshot.get("client_name") or ""
+            salute = f"{client}, " if client else ""
+            text = (
+                f"🔄 {salute}ваша запись перенесена\n"
+                f"Было: {_format_dt(old_visit_at)}\n"
+                f"Стало: {_format_dt(new_visit_at)}\n"
+                f"💆 Мастер: {snapshot['master_name'] or '—'}\n"
+                f"📋 Услуга: {snapshot['service_name'] or '—'}\n\n"
+                f"Если новая дата не подходит — напишите, мы поможем подобрать "
+                f"другое время."
+            )
+            send_max_message(chat_id=chat_id, text=text)
+
     logger.info("yclients_webhook.update: yc=%s rescheduled=%d", yc_id, count)
     return {"status": "updated", "yclients_record_id": yc_id, "rescheduled": count}
 
 
 def _handle_record_delete(data: dict) -> dict:
-    """Запись отменена в YClients — помечаем reminders CANCELLED."""
+    """Запись отменена в YClients — помечаем reminders CANCELLED + уведомляем."""
     from maxbot.reminders_factory import cancel_reminders_for_record
 
     yc_id = str(data.get("id") or "")
     if not yc_id:
         return {"status": "skipped", "reason": "no_record_id"}
 
+    # Snapshot ДО cancel — нужен chat_id и текст для сообщения
+    snapshot = _get_reminder_snapshot(yc_id)
     count = cancel_reminders_for_record(yc_id)
-    logger.info("yclients_webhook.delete: yc=%s cancelled=%d", yc_id, count)
-    return {"status": "deleted", "yclients_record_id": yc_id, "cancelled": count}
+
+    notified = False
+    if snapshot and snapshot.get("chat_id"):
+        client = snapshot.get("client_name") or ""
+        salute = f"{client}, " if client else ""
+        text = (
+            f"❌ {salute}ваша запись отменена\n"
+            f"📅 {_format_dt(snapshot['visit_at'])}\n"
+            f"💆 Мастер: {snapshot['master_name'] or '—'}\n"
+            f"📋 Услуга: {snapshot['service_name'] or '—'}\n\n"
+            f"Если отмена ошибочная — напишите, мы поможем перезаписаться. "
+            f"Будем рады видеть вас снова!"
+        )
+        send_max_message(chat_id=snapshot["chat_id"], text=text)
+        notified = True
+
+    logger.info(
+        "yclients_webhook.delete: yc=%s cancelled=%d notified=%s",
+        yc_id, count, notified,
+    )
+    return {
+        "status": "deleted", "yclients_record_id": yc_id,
+        "cancelled": count, "notified": notified,
+    }
 
 
 @csrf_exempt
