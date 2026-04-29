@@ -229,6 +229,35 @@ def test_get_records_error_returns_empty():
         assert api.get_records("2026-03-01", "2026-03-31") == []
 
 
+def test_get_records_with_client_phone_normalizes_and_passes():
+    api = _make_api()
+    raw = {"success": True, "data": [{"id": 1}]}
+    with patch.object(api, "_request", return_value=raw) as mock_req:
+        api.get_records(client_phone="+7 (999) 123-45-67")
+    _, kwargs = mock_req.call_args
+    params = kwargs["params"]
+    assert params["client_phone"] == "79991234567"
+    assert "start_date" in params and "end_date" in params
+
+
+def test_get_records_default_date_range_when_only_phone():
+    api = _make_api()
+    with patch.object(api, "_request", return_value={"data": []}) as mock_req:
+        api.get_records(client_phone="79991234567")
+    _, kwargs = mock_req.call_args
+    params = kwargs["params"]
+    from datetime import date as _date
+    assert params["start_date"] < _date.today().isoformat()
+    assert params["end_date"] > _date.today().isoformat()
+
+
+def test_get_records_phone_with_leading_8_normalizes_to_7():
+    api = _make_api()
+    with patch.object(api, "_request", return_value={"data": []}) as mock_req:
+        api.get_records(client_phone="89991234567")
+    assert mock_req.call_args.kwargs["params"]["client_phone"] == "79991234567"
+
+
 # ─── authenticate ────────────────────────────────────────────────────────────
 
 def test_authenticate_success_returns_user_token():

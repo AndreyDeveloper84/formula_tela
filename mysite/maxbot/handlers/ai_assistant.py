@@ -58,6 +58,22 @@ async def on_ask_button(callback: MessageCallback, context: MemoryContext) -> No
     await callback.bot.send_message(chat_id=chat_id, text=texts.AI_ASK_PROMPT)
 
 
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_MY_BOOKINGS)
+async def on_my_bookings_button(callback: MessageCallback, context: MemoryContext) -> None:
+    """Клик «📋 Мои записи» → AI Concierge с pseudo-text «покажи мои записи»."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await context.clear()
+    user = callback.callback.user
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    await run_ai_turn(
+        bot=callback.bot, chat_id=chat_id, bot_user=bot_user,
+        user_text="Покажи мои записи (предстоящие и прошедшие)",
+        original_user_text="cb:menu:my_bookings",
+    )
+
+
 # ─── Free-text → AI Concierge ──────────────────────────────────────────────
 
 

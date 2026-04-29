@@ -21,6 +21,7 @@ PAYLOAD_MENU_CONTACTS = "cb:menu:contacts"
 PAYLOAD_MENU_FAQ = "cb:menu:faq"
 PAYLOAD_BACK = "cb:back"
 PAYLOAD_MENU_ASK = "cb:menu:ask"  # Кнопка «❓ Задать вопрос» (T-06c)
+PAYLOAD_MENU_MY_BOOKINGS = "cb:menu:my_bookings"  # Кнопка «📋 Мои записи»
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -35,11 +36,14 @@ MAX_KEYBOARD_ROWS = 29
 
 
 def main_menu_keyboard():
-    """Главное меню — 5 кнопок в 3 ряда (T-06c +1 кнопка для AI)."""
+    """Главное меню — 6 кнопок в 4 ряда."""
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="📅 Записаться", payload=PAYLOAD_MENU_BOOK),
         CallbackButton(text="ℹ️ Услуги", payload=PAYLOAD_MENU_SERVICES),
+    )
+    builder.row(
+        CallbackButton(text="📋 Мои записи", payload=PAYLOAD_MENU_MY_BOOKINGS),
     )
     builder.row(
         CallbackButton(text="📞 Контакты", payload=PAYLOAD_MENU_CONTACTS),

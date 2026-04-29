@@ -129,6 +129,58 @@ async def test_enrich_slots_truncates_to_12():
 
 
 @pytest.mark.asyncio
+async def test_enrich_slots_filters_by_time_preference_morning():
+    """time_preference=morning → только слоты до 12:00."""
+    from maxbot.ai_yclients import enrich_show_slots
+    from services_app.models import Master, Service, ServiceOption
+
+    master = await sync_to_async(baker.make)(
+        Master, is_active=True, yclients_staff_id="111",
+    )
+    service = await sync_to_async(baker.make)(Service, is_active=True)
+    await sync_to_async(baker.make)(
+        ServiceOption, service=service, yclients_service_id="222", is_active=True,
+    )
+    api = MagicMock()
+    api.get_available_times = MagicMock(
+        return_value=["09:00", "10:30", "13:00", "18:30", "20:00"]
+    )
+
+    data = {
+        "master_id": master.id, "service_id": service.id, "date": "2026-04-30",
+        "time_preference": "morning",
+    }
+    result = await enrich_show_slots(data, yclients_api=api)
+    assert result["slots"] == ["09:00", "10:30"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_slots_filters_by_time_preference_evening():
+    """time_preference=evening → только слоты 17:00-22:00."""
+    from maxbot.ai_yclients import enrich_show_slots
+    from services_app.models import Master, Service, ServiceOption
+
+    master = await sync_to_async(baker.make)(
+        Master, is_active=True, yclients_staff_id="111",
+    )
+    service = await sync_to_async(baker.make)(Service, is_active=True)
+    await sync_to_async(baker.make)(
+        ServiceOption, service=service, yclients_service_id="222", is_active=True,
+    )
+    api = MagicMock()
+    api.get_available_times = MagicMock(
+        return_value=["09:00", "10:30", "14:00", "17:00", "18:30", "20:00"]
+    )
+
+    data = {
+        "master_id": master.id, "service_id": service.id, "date": "2026-04-30",
+        "time_preference": "evening",
+    }
+    result = await enrich_show_slots(data, yclients_api=api)
+    assert result["slots"] == ["17:00", "18:30", "20:00"]
+
+
+@pytest.mark.asyncio
 async def test_enrich_slots_invalid_master_id_returns_empty():
     from maxbot.ai_yclients import enrich_show_slots
 

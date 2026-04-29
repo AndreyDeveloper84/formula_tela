@@ -33,10 +33,10 @@ def _texts(markup):
 
 # ─── main_menu_keyboard ─────────────────────────────────────────────────────
 
-def test_main_menu_has_five_buttons():
-    """Главное меню: 5 кнопок (4 базовых + 'Задать вопрос' AI с T-06c)."""
+def test_main_menu_has_six_buttons():
+    """Главное меню: 6 кнопок (5 базовых + 'Мои записи' N1)."""
     kb = keyboards.main_menu_keyboard()
-    assert len(_flatten(kb)) == 5
+    assert len(_flatten(kb)) == 6
 
 
 def test_main_menu_payloads():
@@ -44,7 +44,7 @@ def test_main_menu_payloads():
     payloads = set(_payloads(kb))
     assert payloads == {
         "cb:menu:book", "cb:menu:services", "cb:menu:contacts",
-        "cb:menu:faq", "cb:menu:ask",
+        "cb:menu:faq", "cb:menu:ask", "cb:menu:my_bookings",
     }
 
 

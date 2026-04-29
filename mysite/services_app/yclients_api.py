@@ -1,7 +1,7 @@
 import requests
 import logging
 from functools import lru_cache
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from django.conf import settings
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -771,32 +771,42 @@ YClients API ожидает service_ids[] (массив), а не service_id
 
     def get_records(
         self,
-        start_date: str,
-        end_date: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        client_phone: str | None = None,
         count: int = 200,
         page: int = 1,
     ) -> list:
-        """
-        Получить записи (визиты) за период.
+        """Получить записи (визиты) — по периоду и/или телефону клиента.
 
-        Args:
-            start_date: Дата начала "YYYY-MM-DD"
-            end_date:   Дата конца  "YYYY-MM-DD"
-            count:      Количество записей за запрос (макс. 200)
-            page:       Номер страницы
-
-        Returns:
-            Список записей. Каждая запись содержит:
-              id, date, datetime, staff (dict), services (list),
-              client (dict), status (dict), sum, deleted, visit_attendance
+        Если start_date/end_date не указаны — дефолт ±90 дней от сегодня.
+        Если указан client_phone — нормализуется (только цифры, +7 → 7)
+        и передаётся в YClients как фильтр.
         """
-        endpoint = f"/records/{self.company_id}"
-        params = {
+        from datetime import date as _date, timedelta
+
+        if start_date is None or end_date is None:
+            today = _date.today()
+            if start_date is None:
+                start_date = (today - timedelta(days=90)).isoformat()
+            if end_date is None:
+                end_date = (today + timedelta(days=90)).isoformat()
+
+        params: dict[str, Any] = {
             "start_date": start_date,
             "end_date": end_date,
             "count": count,
             "page": page,
         }
+
+        if client_phone:
+            digits = "".join(ch for ch in client_phone if ch.isdigit())
+            if digits.startswith("8") and len(digits) == 11:
+                digits = "7" + digits[1:]
+            if digits:
+                params["client_phone"] = digits
+
+        endpoint = f"/records/{self.company_id}"
         try:
             response = self._request("GET", endpoint, params=params)
             return response.get("data", [])

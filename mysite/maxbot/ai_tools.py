@@ -85,6 +85,15 @@ SHOW_SLOTS = {
                     "format": "date",
                     "description": "Целевая дата YYYY-MM-DD",
                 },
+                "time_preference": {
+                    "type": "string",
+                    "enum": ["morning", "afternoon", "evening"],
+                    "description": (
+                        "Опциональный фильтр времени дня. "
+                        "morning = до 12:00, afternoon = 12:00-17:00, evening = 17:00-22:00. "
+                        "Передавай если клиент сказал «утро»/«день»/«вечер» или «пораньше»/«попозже»."
+                    ),
+                },
             },
             "required": ["master_id", "service_id", "date"],
         },
