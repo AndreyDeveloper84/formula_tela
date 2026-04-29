@@ -155,10 +155,28 @@ class ServiceMediaInline(admin.StackedInline):
     )
 
 
+class ServiceGoalFilter(admin.SimpleListFilter):
+    """Фильтр по тегу из Service.goals (JSONField list)."""
+    title = "Цель / результат"
+    parameter_name = "goal"
+
+    def lookups(self, request, model_admin):
+        from .models import SERVICE_GOAL_CHOICES
+        return SERVICE_GOAL_CHOICES + [("__empty__", "(не заполнено)")]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if not value:
+            return queryset
+        if value == "__empty__":
+            return queryset.filter(goals=[])
+        return queryset.filter(goals__contains=[value])
+
+
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "short", "category", "slug", "image_preview", "order", "is_active", "is_popular")
-    list_filter = ("category", "is_active", "is_popular")
+    list_filter = ("category", "is_active", "is_popular", ServiceGoalFilter)
     list_editable = ("order", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
@@ -177,6 +195,15 @@ class ServiceAdmin(admin.ModelAdmin):
         }),
         ("Контент", {
             "fields": ("description", "image", "image_mobile"),
+        }),
+        ("Цели / результаты (для AI-бота)", {
+            "fields": ("goals",),
+            "description": (
+                "JSON-список тегов из SERVICE_GOAL_CHOICES (см. models.py). "
+                "Бот использует goals чтобы рекомендовать услуги под запрос клиента. "
+                'Пример: ["relax", "antistress"]. Заполняется через mgmt-команду '
+                "<code>tag_services_goals</code> или вручную."
+            ),
         }),
         ("Перелинковка", {
             "fields": ("related_services",),

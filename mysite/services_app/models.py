@@ -165,6 +165,18 @@ class Service(models.Model):
         verbose_name="Порядок сортировки"
     )
 
+    # Phase 2.4 T01 — цели/результаты услуги для consultative AI Concierge.
+    # Список slug'ов из SERVICE_GOAL_CHOICES (см. ниже). LLM использует goals
+    # чтобы рекомендовать услуги под запрос клиента («хочу расслабиться»,
+    # «болит спина»).
+    goals = models.JSONField(
+        "Цели / результаты",
+        default=list, blank=True,
+        help_text="Список тегов из SERVICE_GOAL_CHOICES. Используется AI-ботом "
+                  "для подбора услуг под запрос клиента. Пример: "
+                  '["relax", "antistress"] — для расслабляющих услуг.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name="Создана")
     updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name="Обновлена")
 
@@ -187,7 +199,31 @@ class Service(models.Model):
                 Service, self.name, pk=self.pk, max_length=200
             )
         super().save(*args, **kwargs)
-    
+
+    def has_goal(self, goal: str) -> bool:
+        """True если услуга помечена тегом goal. Кейс-чувствительно."""
+        return goal in (self.goals or [])
+
+
+# T01 — справочник целей/результатов услуг для AI Concierge consultative flow.
+# Slug стабилен (используется в Service.goals и LLM tool).
+# Label видит менеджер в админке + LLM использует для подбора.
+SERVICE_GOAL_CHOICES = [
+    ("relax", "Расслабление, снятие стресса"),
+    ("antistress", "Антистресс, эмоциональная разгрузка"),
+    ("back_pain", "Боль в спине / шее / суставах"),
+    ("posture", "Осанка, мышечный дисбаланс"),
+    ("recovery", "Восстановление после нагрузок / тренировок"),
+    ("tone", "Тонус, бодрость, энергия"),
+    ("weight_loss", "Снижение веса, коррекция фигуры"),
+    ("cellulite", "Антицеллюлитный эффект"),
+    ("lymph", "Лимфодренаж, отёчность"),
+    ("beauty_face", "Уход за лицом, омоложение"),
+    ("hair_removal", "Удаление волос (эпиляция)"),
+    ("pregnancy_safe", "Безопасно при беременности"),
+]
+SERVICE_GOAL_VALUES = frozenset(slug for slug, _ in SERVICE_GOAL_CHOICES)
+
 
 UNIT_CHOICES = [
     ("session", "процедуры"),  # пакет процедур

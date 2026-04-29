@@ -36,6 +36,39 @@ class ServiceQuerySet(models.QuerySet):
         # Service.Meta.ordering закомментирован — сортируем явно.
         return self.order_by("order", "name")
 
+    def with_goal(self, goal: str):
+        """Услуги помеченные тегом goal в Service.goals.
+
+        На PostgreSQL использует JSONField `__contains`. На SQLite (тесты)
+        Django не поддерживает contains для list-JSONField — фоллбэчим на
+        текстовый поиск '"goal"' (включая кавычки чтобы не матчить
+        substring другого тега). Production = Postgres → fast path.
+        """
+        from django.db import connection
+        if connection.vendor == "postgresql":
+            return self.filter(goals__contains=[goal])
+        # SQLite: ищем подстроку '"goal"' в сериализованном JSON
+        return self.filter(goals__icontains=f'"{goal}"')
+
+    def with_any_goal(self, goals: list[str]):
+        """Услуги помеченные ХОТЯ БЫ одним из перечисленных goals.
+
+        Полезно для recommend_services когда клиент описал несколько целей
+        ("болит спина И устал" → ['back_pain', 'recovery']).
+        """
+        if not goals:
+            return self.none()
+        from django.db.models import Q
+        from django.db import connection
+        q = Q()
+        if connection.vendor == "postgresql":
+            for g in goals:
+                q |= Q(goals__contains=[g])
+        else:
+            for g in goals:
+                q |= Q(goals__icontains=f'"{g}"')
+        return self.filter(q)
+
 
 class ServiceOptionQuerySet(models.QuerySet):
     def active(self):
