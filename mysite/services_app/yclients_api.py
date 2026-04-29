@@ -769,19 +769,61 @@ YClients API ожидает service_ids[] (массив), а не service_id
             logger.error(f"❌ Ошибка создания записи: {e}")
             raise
 
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
+        """Только цифры, ведущая 8 → 7 для российских номеров."""
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if digits.startswith("8") and len(digits) == 11:
+            digits = "7" + digits[1:]
+        return digits
+
+    def find_client_by_phone(self, phone: str) -> Optional[dict]:
+        """Найти клиента компании по телефону. Возвращает первый match или None.
+
+        Endpoint: POST /company/{company_id}/clients/search — возвращает
+        точные совпадения по телефону. Альтернатива GET /clients/ работает
+        медленнее и не всегда фильтрует.
+        """
+        normalized = self._normalize_phone(phone)
+        if not normalized:
+            return None
+
+        endpoint = f"/company/{self.company_id}/clients/search"
+        body = {
+            "fields": ["id", "name", "phone", "email"],
+            "filters": [{"type": "quick_search", "state": {"value": normalized}}],
+            "page": 0,
+            "page_size": 5,
+        }
+        try:
+            response = self._request("POST", endpoint, json=body)
+            data = response.get("data") or []
+            for item in data:
+                # quick_search может вернуть и не-точные match'ы; проверяем
+                item_phone = self._normalize_phone(str(item.get("phone") or ""))
+                if item_phone and item_phone.endswith(normalized[-10:]):
+                    return item
+            return data[0] if data else None
+        except YClientsAPIError as e:
+            logger.error("find_client_by_phone error: %s", e)
+            return None
+
     def get_records(
         self,
         start_date: str | None = None,
         end_date: str | None = None,
         client_phone: str | None = None,
+        client_id: int | None = None,
         count: int = 200,
         page: int = 1,
     ) -> list:
-        """Получить записи (визиты) — по периоду и/или телефону клиента.
+        """Получить записи (визиты) — по периоду и фильтру клиента.
 
         Если start_date/end_date не указаны — дефолт ±90 дней от сегодня.
-        Если указан client_phone — нормализуется (только цифры, +7 → 7)
-        и передаётся в YClients как фильтр.
+        Если client_id указан — фильтрует по нему (YClients поддерживает).
+        Если client_phone указан без client_id — сначала ищем client_id
+        через find_client_by_phone (YClients endpoint /records/ НЕ имеет
+        параметра phone — раньше silently возвращал ВСЕ записи салона).
         """
         from datetime import date as _date, timedelta
 
@@ -792,19 +834,23 @@ YClients API ожидает service_ids[] (массив), а не service_id
             if end_date is None:
                 end_date = (today + timedelta(days=90)).isoformat()
 
+        if client_id is None and client_phone:
+            client = self.find_client_by_phone(client_phone)
+            if client is None:
+                logger.info("get_records: phone %s not found in YClients", client_phone[:4])
+                return []
+            client_id = client.get("id")
+            if not client_id:
+                return []
+
         params: dict[str, Any] = {
             "start_date": start_date,
             "end_date": end_date,
             "count": count,
             "page": page,
         }
-
-        if client_phone:
-            digits = "".join(ch for ch in client_phone if ch.isdigit())
-            if digits.startswith("8") and len(digits) == 11:
-                digits = "7" + digits[1:]
-            if digits:
-                params["client_phone"] = digits
+        if client_id is not None:
+            params["client_id"] = int(client_id)
 
         endpoint = f"/records/{self.company_id}"
         try:

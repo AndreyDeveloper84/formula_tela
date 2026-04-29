@@ -15,7 +15,7 @@ def _ctx_with_masters(masters: list, services: list | None = None):
     candidates = [
         MasterCandidate(
             id=m.id, name=m.name, specialization=m.specialization or "",
-            services=[(s.id, s.name) for s in (services or [])],
+            services=[(s.id, s.name, "Тест") for s in (services or [])],
         )
         for m in masters
     ]
