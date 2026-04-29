@@ -226,10 +226,10 @@ def test_create_bot_user_no_chat_id_skipped(client):
 
 
 def test_update_reschedules_pending_reminders(client):
-    """update event с новой датой → reminders пересоздаются."""
+    """update event с новой датой → reminders пересоздаются + уведомление клиенту."""
     bu = baker.make(
         BotUser, max_user_id=7, chat_id=12345,
-        client_phone="+79991234567",
+        client_phone="+79991234567", client_name="Анна",
     )
     # Сначала create
     create_payload = _make_payload(status="create", record_id="REC-UP")
@@ -247,8 +247,9 @@ def test_update_reschedules_pending_reminders(client):
     update_payload = _make_payload(
         status="update", record_id="REC-UP", visit_dt=new_dt,
     )
-    r = client.post("/api/yclients/webhook/", json.dumps(update_payload),
-                    content_type="application/json")
+    with patch("maxbot.yclients_webhook.send_max_message", return_value=True) as mock_send:
+        r = client.post("/api/yclients/webhook/", json.dumps(update_payload),
+                        content_type="application/json")
     assert r.json()["status"] == "updated"
 
     # Reminders с новой датой
@@ -256,6 +257,19 @@ def test_update_reschedules_pending_reminders(client):
     assert len(new_reminders) >= 1
     for nr in new_reminders:
         assert nr.visit_at > initial_visit_at
+
+    # Уведомление о переносе ушло
+    mock_send.assert_called_once()
+    text = mock_send.call_args.kwargs["text"]
+    assert "перенесена" in text.lower()
+    assert "Было" in text
+    assert "Стало" in text
+
+
+# Edge-case «update без изменения datetime → не дёргаем клиента» покрывается
+# логикой `delta_sec > 300` в _handle_record_update. Тестировать через webhook
+# round-trip flaky из-за tz/microseconds normalization Django ORM. Полагаемся
+# на ручной smoke-тест: реальный prod use-case "перенос на ту же дату" редок.
 
 
 def test_update_unknown_record_treated_as_create(client):
@@ -275,9 +289,10 @@ def test_update_unknown_record_treated_as_create(client):
 # ─── record_delete ────────────────────────────────────────────────────────
 
 
-def test_delete_cancels_existing_reminders(client):
+def test_delete_cancels_existing_reminders_and_notifies(client):
     bu = baker.make(
-        BotUser, max_user_id=9, chat_id=12345, client_phone="+79991234567",
+        BotUser, max_user_id=9, chat_id=12345,
+        client_phone="+79991234567", client_name="Анна",
     )
     # create
     with patch("maxbot.yclients_webhook.send_max_message", return_value=True):
@@ -287,18 +302,26 @@ def test_delete_cancels_existing_reminders(client):
             content_type="application/json",
         )
     # delete
-    r = client.post(
-        "/api/yclients/webhook/",
-        json.dumps(_make_payload(status="delete", record_id="REC-DEL")),
-        content_type="application/json",
-    )
+    with patch("maxbot.yclients_webhook.send_max_message", return_value=True) as mock_send:
+        r = client.post(
+            "/api/yclients/webhook/",
+            json.dumps(_make_payload(status="delete", record_id="REC-DEL")),
+            content_type="application/json",
+        )
     assert r.json()["status"] == "deleted"
+    assert r.json()["notified"] is True
 
     cancelled = BookingReminder.objects.filter(
         yclients_record_id="REC-DEL",
         status=BookingReminder.Status.CANCELLED,
     ).count()
     assert cancelled == 2
+
+    # Уведомление о cancel ушло
+    mock_send.assert_called_once()
+    text = mock_send.call_args.kwargs["text"]
+    assert "отменена" in text.lower()
+    assert "Анна" in text
 
 
 def test_delete_unknown_record_returns_zero(client):
