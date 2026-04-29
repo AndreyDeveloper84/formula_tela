@@ -276,6 +276,9 @@ def test_find_client_by_phone_returns_first_match():
     args, kwargs = mock_req.call_args
     assert args[0] == "POST"
     assert "/clients/search" in args[1]
+    # _request принимает data=, не json= — регресс-страховка
+    assert "data" in kwargs and isinstance(kwargs["data"], dict)
+    assert "json" not in kwargs
 
 
 def test_find_client_by_phone_empty_returns_none():

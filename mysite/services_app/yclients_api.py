@@ -796,7 +796,7 @@ YClients API ожидает service_ids[] (массив), а не service_id
             "page_size": 5,
         }
         try:
-            response = self._request("POST", endpoint, json=body)
+            response = self._request("POST", endpoint, data=body)
             data = response.get("data") or []
             for item in data:
                 # quick_search может вернуть и не-точные match'ы; проверяем
