@@ -14,11 +14,12 @@ def test_master_candidate_fields():
     from maxbot.ai_context import MasterCandidate
     c = MasterCandidate(
         id=1, name="Анна", specialization="массаж",
-        services=[(10, "массаж спины"), (11, "лимфодренаж")],
+        services=[(10, "массаж спины", "Ручные массажи"), (11, "лимфодренаж", "Аппаратные массажи")],
     )
     assert c.id == 1
     assert c.name == "Анна"
     assert len(c.services) == 2
+    assert c.services[0][2] == "Ручные массажи"
 
 
 # ─── build_master_context ─────────────────────────────────────────────────

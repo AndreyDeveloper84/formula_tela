@@ -229,33 +229,59 @@ def test_get_records_error_returns_empty():
         assert api.get_records("2026-03-01", "2026-03-31") == []
 
 
-def test_get_records_with_client_phone_normalizes_and_passes():
+def test_get_records_with_client_phone_resolves_to_client_id():
+    """Phone → find_client_by_phone → client_id → params['client_id']."""
     api = _make_api()
-    raw = {"success": True, "data": [{"id": 1}]}
-    with patch.object(api, "_request", return_value=raw) as mock_req:
-        api.get_records(client_phone="+7 (999) 123-45-67")
-    _, kwargs = mock_req.call_args
-    params = kwargs["params"]
-    assert params["client_phone"] == "79991234567"
+    with patch.object(api, "find_client_by_phone", return_value={"id": 42, "phone": "79991234567"}):
+        with patch.object(api, "_request", return_value={"data": [{"id": 1}]}) as mock_req:
+            api.get_records(client_phone="+7 (999) 123-45-67")
+    params = mock_req.call_args.kwargs["params"]
+    assert params["client_id"] == 42
+    assert "client_phone" not in params  # не передаём в YClients
     assert "start_date" in params and "end_date" in params
 
 
-def test_get_records_default_date_range_when_only_phone():
+def test_get_records_phone_not_found_returns_empty():
+    """Если клиента с таким phone в YClients нет — пустой list, не all."""
+    api = _make_api()
+    with patch.object(api, "find_client_by_phone", return_value=None):
+        result = api.get_records(client_phone="79990000000")
+    assert result == []
+
+
+def test_get_records_default_date_range_when_client_id():
     api = _make_api()
     with patch.object(api, "_request", return_value={"data": []}) as mock_req:
-        api.get_records(client_phone="79991234567")
-    _, kwargs = mock_req.call_args
-    params = kwargs["params"]
+        api.get_records(client_id=42)
+    params = mock_req.call_args.kwargs["params"]
     from datetime import date as _date
     assert params["start_date"] < _date.today().isoformat()
     assert params["end_date"] > _date.today().isoformat()
+    assert params["client_id"] == 42
 
 
-def test_get_records_phone_with_leading_8_normalizes_to_7():
+def test_normalize_phone_leading_8_to_7():
+    from services_app.yclients_api import YClientsAPI
+    assert YClientsAPI._normalize_phone("89991234567") == "79991234567"
+    assert YClientsAPI._normalize_phone("+7 (999) 123-45-67") == "79991234567"
+    assert YClientsAPI._normalize_phone("") == ""
+
+
+def test_find_client_by_phone_returns_first_match():
     api = _make_api()
-    with patch.object(api, "_request", return_value={"data": []}) as mock_req:
-        api.get_records(client_phone="89991234567")
-    assert mock_req.call_args.kwargs["params"]["client_phone"] == "79991234567"
+    raw = {"success": True, "data": [{"id": 42, "phone": "79991234567", "name": "Анна"}]}
+    with patch.object(api, "_request", return_value=raw) as mock_req:
+        client = api.find_client_by_phone("+79991234567")
+    assert client["id"] == 42
+    args, kwargs = mock_req.call_args
+    assert args[0] == "POST"
+    assert "/clients/search" in args[1]
+
+
+def test_find_client_by_phone_empty_returns_none():
+    api = _make_api()
+    with patch.object(api, "_request", return_value={"data": []}):
+        assert api.find_client_by_phone("79990000000") is None
 
 
 # ─── authenticate ────────────────────────────────────────────────────────────

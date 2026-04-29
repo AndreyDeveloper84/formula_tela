@@ -33,7 +33,7 @@ class MasterCandidate:
     id: int
     name: str
     specialization: str
-    services: list[tuple[int, str]]  # (service_id, name) для cross-validation
+    services: list[tuple[int, str, str]]  # (service_id, name, category_name)
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,11 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
         .prefetch_related(
             Prefetch(
                 "services",
-                queryset=Service.objects.filter(is_active=True).order_by("name"),
+                queryset=(
+                    Service.objects.filter(is_active=True)
+                    .select_related("category")
+                    .order_by("category__name", "name")
+                ),
             )
         )
         .order_by("order", "name")[:limit]
@@ -74,7 +78,10 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
             id=master.id,
             name=master.name,
             specialization=(master.specialization or "").strip(),
-            services=[(s.id, s.name) for s in services],
+            services=[
+                (s.id, s.name, s.category.name if s.category else "Прочее")
+                for s in services
+            ],
         ))
 
     return MasterContext(
@@ -86,19 +93,20 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
 
 
 def _render_summary(candidates: list[MasterCandidate]) -> str:
-    """Компактный markdown-список мастеров + услуг с РЕАЛЬНЫМИ ID для system_prompt'а.
+    """Markdown-список мастеров с услугами, СГРУППИРОВАННЫМИ по категориям.
 
-    Цель: <500 токенов даже для 20 мастеров. Формат:
+    Группировка по категории критична для anti-hallucination матчинга:
+    клиент пишет «лазер» → LLM видит секцию [Лазерная эпиляция] → выбирает
+    правильные service_id, не путает с RF-лифтингом.
+
+    Формат:
         - master_id=42 Анна Иванова (массаж):
-            * service_id=10 массаж спины
-            * service_id=11 лимфодренаж
-            * +ещё 11
+            [Ручные массажи] service_id=10 Спина; service_id=11 Лимфодренаж
+            [Лазерная эпиляция (жен)] service_id=72 Голени; service_id=74 Бикини
 
-    LLM получает явные `master_id=N` И `service_id=N` — без них он галлюцинирует
-    идентификаторы (incident 2026-04-27: LLM передал service_id=1 которого нет
-    в БД, handler сфолбекнулся на ask_clarification).
-
-    Trade-off: длиннее на ~50 токенов на мастера vs anti-hallucination win.
+    Без услуг → строка-пометка. LLM использует service_id из этого списка
+    в show_slots/confirm_booking. Cross-validation в handle_show_slots
+    проверяет что master.services содержит выбранный service_id.
     """
     if not candidates:
         return "(нет активных мастеров — записаться можно только через менеджера)"
@@ -107,10 +115,16 @@ def _render_summary(candidates: list[MasterCandidate]) -> str:
     for c in candidates:
         spec = f" ({c.specialization})" if c.specialization else ""
         lines.append(f"- master_id={c.id} {c.name}{spec}:")
-        # Топ-5 услуг с явными service_id — LLM использует их в show_slots/confirm_booking
-        top_services = c.services[:5]
-        for sid, name in top_services:
-            lines.append(f"    * service_id={sid} {name}")
-        if len(c.services) > 5:
-            lines.append(f"    * +ещё {len(c.services) - 5} услуг")
+        if not c.services:
+            lines.append("    (нет активных услуг)")
+            continue
+
+        # Группируем услуги по категории, сохраняя порядок появления
+        by_cat: dict[str, list[tuple[int, str]]] = {}
+        for sid, sname, cat in c.services:
+            by_cat.setdefault(cat, []).append((sid, sname))
+
+        for cat_name, items in by_cat.items():
+            inline = "; ".join(f"service_id={sid} {name}" for sid, name in items)
+            lines.append(f"    [{cat_name}] {inline}")
     return "\n".join(lines)

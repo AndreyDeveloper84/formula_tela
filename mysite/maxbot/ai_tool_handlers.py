@@ -97,7 +97,7 @@ def handle_show_masters(args: dict[str, Any], context: MasterContext) -> ToolRes
                 "id": c.id,
                 "name": c.name,
                 "specialization": c.specialization,
-                "services_preview": [name for _, name in c.services[:5]],
+                "services_preview": [t[1] for t in c.services[:5]],
             },
             "match_score": scores[idx] if idx < len(scores) else None,
             "match_reasons": reasons[idx] if idx < len(reasons) else [],
@@ -135,7 +135,7 @@ def handle_show_slots(args: dict[str, Any], context: MasterContext) -> ToolResul
     master = next((c for c in context.candidates if c.id == master_id), None)
     if master is None:
         return _fallback_clarification("show_slots_master_lost")
-    master_service_ids = {sid for sid, _ in master.services}
+    master_service_ids = {t[0] for t in master.services}
     if service_id not in master_service_ids:
         return _fallback_clarification(
             "show_slots_master_does_not_offer_service",
