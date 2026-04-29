@@ -771,10 +771,12 @@ YClients API ожидает service_ids[] (массив), а не service_id
 
     @staticmethod
     def _normalize_phone(phone: str) -> str:
-        """Только цифры, ведущая 8 → 7 для российских номеров."""
+        """Только цифры; 11 цифр с ведущей 8 → 7; 10 цифр → +7XXX."""
         digits = "".join(ch for ch in phone if ch.isdigit())
-        if digits.startswith("8") and len(digits) == 11:
+        if len(digits) == 11 and digits[0] in "78":
             digits = "7" + digits[1:]
+        elif len(digits) == 10:
+            digits = "7" + digits
         return digits
 
     def find_client_by_phone(self, phone: str) -> Optional[dict]:
@@ -798,12 +800,14 @@ YClients API ожидает service_ids[] (массив), а не service_id
         try:
             response = self._request("POST", endpoint, data=body)
             data = response.get("data") or []
+            # quick_search — fuzzy, может вернуть «соседей» по фамилии. Возвращаем
+            # ТОЛЬКО точное совпадение по последним 10 цифрам (privacy: иначе
+            # клиент мог увидеть чужую историю записей).
             for item in data:
-                # quick_search может вернуть и не-точные match'ы; проверяем
                 item_phone = self._normalize_phone(str(item.get("phone") or ""))
                 if item_phone and item_phone.endswith(normalized[-10:]):
                     return item
-            return data[0] if data else None
+            return None
         except YClientsAPIError as e:
             logger.error("find_client_by_phone error: %s", e)
             return None
