@@ -30,6 +30,11 @@ PAYLOAD_SVC_PREFIX = "cb:svc:"
 PAYLOAD_FAQ_PREFIX = "cb:faq:"
 PAYLOAD_CAT_PREFIX = "cb:cat:"
 
+# N2 — напоминания (BookingReminder.id в payload)
+PAYLOAD_REM_CONFIRM_PREFIX = "cb:rem:confirm:"
+PAYLOAD_REM_RESCHEDULE_PREFIX = "cb:rem:reschedule:"
+PAYLOAD_REM_CANCEL_PREFIX = "cb:rem:cancel:"
+
 # MAX API лимит: 30 рядов в inline keyboard (см. dev.max.ru/docs-api).
 # Резервируем 1 ряд под кнопку «Назад» → 29 кнопок-контента max.
 MAX_KEYBOARD_ROWS = 29
@@ -107,6 +112,28 @@ def back_to_menu_keyboard() -> object:
     """Одна кнопка «← Назад в меню»."""
     builder = InlineKeyboardBuilder()
     builder.row(CallbackButton(text="← Назад в меню", payload=PAYLOAD_BACK))
+    return builder.as_markup()
+
+
+def reminder_24h_keyboard(reminder_id: str) -> object:
+    """3 кнопки для T-24h напоминания: Подтверждаю / Перенести / Отменить."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(
+            text="✅ Подтверждаю",
+            payload=f"{PAYLOAD_REM_CONFIRM_PREFIX}{reminder_id}",
+        ),
+    )
+    builder.row(
+        CallbackButton(
+            text="🔄 Перенести",
+            payload=f"{PAYLOAD_REM_RESCHEDULE_PREFIX}{reminder_id}",
+        ),
+        CallbackButton(
+            text="❌ Отменить",
+            payload=f"{PAYLOAD_REM_CANCEL_PREFIX}{reminder_id}",
+        ),
+    )
     return builder.as_markup()
 
 

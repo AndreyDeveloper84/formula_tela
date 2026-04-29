@@ -92,7 +92,7 @@ async def on_pick_master(callback: MessageCallback, context: MemoryContext) -> N
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
     master_name = await _master_label(int(master_id_str))
 
     # Pseudo-user-message — продолжение диалога в AI Concierge
@@ -194,7 +194,7 @@ async def on_pick_slot(callback: MessageCallback, context: MemoryContext) -> Non
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     # Детерминированный путь: show_slots data → confirm_booking без LLM
     confirm_data = await _pick_slot_to_confirm(conv_id, slot_str)
@@ -247,7 +247,7 @@ async def on_answer(callback: MessageCallback, context: MemoryContext) -> None:
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     options = await _last_clarification_options(conv_id)
     try:
@@ -281,7 +281,7 @@ async def on_confirm(callback: MessageCallback, context: MemoryContext) -> None:
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     conversation = await _load_active_conversation(conv_id)
     if conversation is None:
@@ -318,7 +318,7 @@ async def on_cancel(callback: MessageCallback, context: MemoryContext) -> None:
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     conversation = await _load_active_conversation(conv_id)
     if conversation is None:
@@ -360,7 +360,7 @@ async def on_suggest_date(callback: MessageCallback, context: MemoryContext) -> 
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     label = _OFFSET_LABELS.get(offset, f"через {offset.lstrip('+')} дней")
     pseudo = f"Покажи свободное время {label}"
@@ -386,7 +386,7 @@ async def on_suggest_master(callback: MessageCallback, context: MemoryContext) -
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     pseudo = "Покажи других мастеров для этой услуги"
     logger.info("ai_callbacks.suggest_master conv=%s", conv_id)
@@ -414,7 +414,7 @@ async def on_edit(callback: MessageCallback, context: MemoryContext) -> None:
         return
 
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
 
     pseudo = "Хочу изменить детали записи"
     logger.info("ai_callbacks.edit conv=%s user=%s", conv_id, user.user_id)

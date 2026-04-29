@@ -282,6 +282,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "services_app.tasks.analyze_failed_conversations",
         "schedule": crontab(hour=6, minute=0, day_of_week="monday"),
     },
+    # N2 reminder system — каждые 15 минут отправлять PENDING reminder'ы.
+    "maxbot-send-due-reminders-every-15min": {
+        "task": "maxbot.tasks.send_due_reminders",
+        "schedule": crontab(minute="*/15"),
+    },
+    # N2 escalation — каждый час проверять SENT_NO_REPLY с visit_at <= now+12h.
+    "maxbot-escalate-stale-reminders-hourly": {
+        "task": "maxbot.tasks.escalate_stale_reminders",
+        "schedule": crontab(minute=15),
+    },
 }
 
 # === Email (SMTP) ===

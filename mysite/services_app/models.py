@@ -1048,6 +1048,12 @@ class BotUser(models.Model):
     display_name = models.CharField("Имя из MAX", max_length=200, blank=True, default="")
     client_name = models.CharField("Имя как назвался боту", max_length=150, blank=True, default="")
     client_phone = models.CharField("Телефон", max_length=20, blank=True, default="")
+    chat_id = models.BigIntegerField(
+        "Chat ID в MAX",
+        null=True, blank=True, db_index=True,
+        help_text="Для проактивных сообщений (напоминания о записях). "
+                  "Обновляется на каждом event'е от пользователя.",
+    )
     first_seen = models.DateTimeField("Первый визит", auto_now_add=True)
     last_seen = models.DateTimeField("Последний визит", auto_now=True)
     context = models.JSONField(
@@ -1564,6 +1570,71 @@ class Conversation(models.Model):
     def __str__(self):
         short = str(self.id)[:8]
         return f"Conversation {short} (bot_user={self.bot_user_id})"
+
+
+class BookingReminder(models.Model):
+    """Напоминание о YClients-записи: T-24h + T-2h.
+
+    Создаётся в execute_confirm_booking сразу после успешного yclients_record_id.
+    Обрабатывается Celery beat (send_due_reminders + escalate_stale_reminders).
+    Закрывается клиентом (CONFIRMED/CANCELLED) или эскалацией менеджеру.
+    """
+
+    class Kind(models.TextChoices):
+        DAY_BEFORE = "day_before", "За день (T-24h)"
+        TWO_HOURS = "two_hours", "За 2 часа (T-2h)"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает отправки"
+        SENT_NO_REPLY = "sent_no_reply", "Отправлено, без ответа"
+        SENT = "sent", "Отправлено (T-2h без кнопок)"
+        CONFIRMED = "confirmed", "Клиент подтвердил"
+        RESCHEDULE_REQUESTED = "reschedule", "Клиент просит перенести"
+        CANCELLED = "cancelled", "Клиент отменил"
+        ESCALATED = "escalated", "Менеджер уведомлён"
+        FAILED = "failed", "Ошибка отправки"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bot_user = models.ForeignKey(
+        "BotUser", on_delete=models.CASCADE, related_name="reminders",
+        verbose_name="Пользователь бота",
+    )
+    booking_request = models.ForeignKey(
+        "BookingRequest", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reminders", verbose_name="Заявка",
+    )
+    yclients_record_id = models.CharField(
+        "YClients record ID", max_length=64, db_index=True, blank=True,
+    )
+    chat_id = models.BigIntegerField(
+        "Chat ID (snapshot)",
+        help_text="Snapshot — chat_id может протухнуть в BotUser",
+    )
+    visit_at = models.DateTimeField("Время визита")
+    kind = models.CharField("Вид", max_length=16, choices=Kind.choices)
+    status = models.CharField(
+        "Статус", max_length=16, choices=Status.choices,
+        default=Status.PENDING, db_index=True,
+    )
+    scheduled_at = models.DateTimeField("Запланировано на")
+    sent_at = models.DateTimeField("Отправлено", null=True, blank=True)
+    replied_at = models.DateTimeField("Ответ клиента", null=True, blank=True)
+    master_name = models.CharField("Мастер", max_length=120, blank=True)
+    service_name = models.CharField("Услуга", max_length=200, blank=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Напоминание о записи"
+        verbose_name_plural = "Напоминания о записях"
+        unique_together = [("yclients_record_id", "kind")]
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+            models.Index(fields=["kind", "visit_at"]),
+        ]
+        ordering = ["scheduled_at"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} {self.master_name} {self.visit_at:%d.%m %H:%M}"
 
 
 class Message(models.Model):

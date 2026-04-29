@@ -155,6 +155,32 @@ async def test_enrich_slots_filters_by_time_preference_morning():
 
 
 @pytest.mark.asyncio
+async def test_enrich_slots_filters_hh_mm_ss_format():
+    """time_preference должен корректно парсить 'HH:MM:SS' слоты."""
+    from maxbot.ai_yclients import enrich_show_slots
+    from services_app.models import Master, Service, ServiceOption
+
+    master = await sync_to_async(baker.make)(
+        Master, is_active=True, yclients_staff_id="111",
+    )
+    service = await sync_to_async(baker.make)(Service, is_active=True)
+    await sync_to_async(baker.make)(
+        ServiceOption, service=service, yclients_service_id="222", is_active=True,
+    )
+    api = MagicMock()
+    api.get_available_times = MagicMock(
+        return_value=["09:00:00", "10:30:00", "14:00:00", "18:30:00"]
+    )
+
+    data = {
+        "master_id": master.id, "service_id": service.id, "date": "2026-04-30",
+        "time_preference": "morning",
+    }
+    result = await enrich_show_slots(data, yclients_api=api)
+    assert result["slots"] == ["09:00:00", "10:30:00"]
+
+
+@pytest.mark.asyncio
 async def test_enrich_slots_filters_by_time_preference_evening():
     """time_preference=evening → только слоты 17:00-22:00."""
     from maxbot.ai_yclients import enrich_show_slots
@@ -223,6 +249,29 @@ async def test_enrich_bookings_yclients_failure_returns_empty():
     data = {"filter": "upcoming"}
     result = await enrich_show_my_bookings(data, bu, yclients_api=api)
     assert result["bookings"] == []
+
+
+@pytest.mark.asyncio
+async def test_enrich_bookings_handles_naive_datetime():
+    """YClients может вернуть naive datetime (без tz) — не должно падать TypeError."""
+    from maxbot.ai_yclients import enrich_show_my_bookings
+    from services_app.models import BotUser
+
+    bu = await sync_to_async(baker.make)(
+        BotUser, max_user_id=99004, client_phone="+79991234567",
+    )
+    api = MagicMock()
+    api.get_records = MagicMock(return_value=[
+        {
+            "datetime": "2099-12-31T14:00:00",  # NAIVE (без +03:00)
+            "services": [{"title": "Массаж"}],
+            "staff": {"name": "Анна"},
+        },
+    ])
+
+    data = {"filter": "upcoming"}
+    result = await enrich_show_my_bookings(data, bu, yclients_api=api)
+    assert len(result["bookings"]) == 1  # naive не должен убивать фильтр
 
 
 @pytest.mark.asyncio

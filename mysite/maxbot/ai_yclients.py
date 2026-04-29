@@ -119,10 +119,10 @@ async def enrich_show_slots(action_data: dict[str, Any], *, yclients_api=None) -
             lo, hi = ranges[time_pref]
 
             def _hour_in_range(s: str) -> bool:
-                hh = s[-5:].split(":")[0] if ":" in s else ""
+                # Поддерживаем "HH:MM" и "HH:MM:SS" одинаково — берём первую часть.
                 try:
-                    return lo <= int(hh) < hi
-                except ValueError:
+                    return lo <= int(s.split(":")[0]) < hi
+                except (ValueError, IndexError):
                     return False
 
             slot_strs = [s for s in slot_strs if _hour_in_range(s)]
@@ -192,21 +192,31 @@ async def enrich_show_my_bookings(
             "service_name": services[0].get("title") if services else "—",
         })
 
-    # Filter upcoming/past локально (YClients API не всегда умеет фильтр)
+    # Filter upcoming/past локально (YClients API не всегда умеет фильтр).
+    # YClients может возвращать datetime в naive формате ("2026-04-30T14:00:00")
+    # или с offset ("...+03:00"). Приводим обе стороны к Moscow-aware (Europe/Moscow)
+    # перед сравнением — иначе TypeError "naive vs aware" → пустой список записей.
     if filter_value in ("upcoming", "past"):
         from datetime import datetime as dt_cls
-        now = dt_cls.now().astimezone()
+        try:
+            from zoneinfo import ZoneInfo
+            MSK = ZoneInfo("Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            from datetime import timezone, timedelta
+            MSK = timezone(timedelta(hours=3))
+        now = dt_cls.now(tz=MSK)
         filtered: list[dict[str, Any]] = []
         for b in bookings:
             try:
                 bdt = dt_cls.fromisoformat(b["datetime"])
+                if bdt.tzinfo is None:
+                    bdt = bdt.replace(tzinfo=MSK)
                 if filter_value == "upcoming" and bdt >= now:
                     filtered.append(b)
                 elif filter_value == "past" and bdt < now:
                     filtered.append(b)
             except (ValueError, TypeError):
-                if filter_value == "all":
-                    filtered.append(b)
+                continue
         bookings = filtered
 
     action_data["bookings"] = bookings[:10]

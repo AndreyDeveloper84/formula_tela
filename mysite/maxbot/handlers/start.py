@@ -86,7 +86,7 @@ async def _send_greeting(
     упал или файла нет — приветствие пойдёт без неё). Returning users видят
     только текст + меню, чтобы не приедалось при каждом /start.
     """
-    bot_user, created = await get_or_create_bot_user(user_id, full_name)
+    bot_user, created = await get_or_create_bot_user(user_id, full_name, chat_id=chat_id)
     await context.clear()
     text = greet_text(bot_user, is_new=created)
 

@@ -18,8 +18,18 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-def send_max_message(*, chat_id: int, text: str, timeout: int = 10) -> bool:
-    """Отправить text в MAX-чат через REST API.
+def send_max_message(
+    *,
+    chat_id: int,
+    text: str,
+    attachments=None,
+    timeout: int = 10,
+) -> bool:
+    """Отправить text + опциональные attachments в MAX-чат через REST API.
+
+    attachments — list maxapi Attachment-объектов (например результат
+    InlineKeyboardBuilder.as_markup()) ИЛИ list[dict] в wire-format MAX API.
+    Пустой/None — обычное текстовое сообщение.
 
     Returns True при HTTP 2xx. False — если token не задан или API упал
     (исключение НЕ пробрасывается — caller получит False и решит что делать).
@@ -29,12 +39,29 @@ def send_max_message(*, chat_id: int, text: str, timeout: int = 10) -> bool:
         logger.warning("send_max_message: MAX_BOT_TOKEN не задан")
         return False
 
+    payload: dict = {"text": text}
+    if attachments:
+        serialized = []
+        for a in attachments:
+            if hasattr(a, "model_dump"):
+                serialized.append(a.model_dump(exclude_none=True))
+            elif hasattr(a, "dict"):
+                serialized.append(a.dict(exclude_none=True))
+            elif isinstance(a, dict):
+                serialized.append(a)
+            else:
+                logger.warning(
+                    "send_max_message: skipping unknown attachment type %r", type(a).__name__,
+                )
+        if serialized:
+            payload["attachments"] = serialized
+
     try:
         r = requests.post(
             "https://botapi.max.ru/messages",
             headers={"Authorization": token, "Content-Type": "application/json"},
             params={"chat_id": chat_id},
-            json={"text": text},
+            json=payload,
             timeout=timeout,
         )
         if not r.ok:

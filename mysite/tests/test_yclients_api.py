@@ -267,6 +267,23 @@ def test_normalize_phone_leading_8_to_7():
     assert YClientsAPI._normalize_phone("") == ""
 
 
+def test_normalize_phone_10_digits_adds_7_prefix():
+    """Без leading 7/8 — 10-значный номер получает 7XXX (BotUser legacy data)."""
+    from services_app.yclients_api import YClientsAPI
+    assert YClientsAPI._normalize_phone("9991234567") == "79991234567"
+
+
+def test_find_client_by_phone_no_exact_match_returns_none():
+    """Privacy: quick_search вернул fuzzy-сосед — НЕ возвращаем data[0]."""
+    api = _make_api()
+    raw = {"success": True, "data": [
+        {"id": 1, "phone": "79991234000", "name": "Петров"},
+    ]}
+    with patch.object(api, "_request", return_value=raw):
+        client = api.find_client_by_phone("79991234567")
+    assert client is None
+
+
 def test_find_client_by_phone_returns_first_match():
     api = _make_api()
     raw = {"success": True, "data": [{"id": 42, "phone": "79991234567", "name": "Анна"}]}

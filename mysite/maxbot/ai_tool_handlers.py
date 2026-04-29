@@ -97,7 +97,12 @@ def handle_show_masters(args: dict[str, Any], context: MasterContext) -> ToolRes
                 "id": c.id,
                 "name": c.name,
                 "specialization": c.specialization,
-                "services_preview": [t[1] for t in c.services[:5]],
+                # Preview для UI-карточки — top-5 по имени cross-category,
+                # чтобы клиент увидел разнообразие услуг мастера, а не 5 услуг
+                # из одной категории (c.services сортирован по category__name).
+                "services_preview": [
+                    t[1] for t in sorted(c.services, key=lambda t: t[1])[:5]
+                ],
             },
             "match_score": scores[idx] if idx < len(scores) else None,
             "match_reasons": reasons[idx] if idx < len(reasons) else [],

@@ -19,6 +19,7 @@ from .models import (
     Review,
     BundleRequest,
     BookingRequest,
+    BookingReminder,
     BotUser,
     HelpArticle,
     BotInquiry,
@@ -546,6 +547,29 @@ class BookingRequestAdmin(admin.ModelAdmin):
     autocomplete_fields = ()  # bot_user — раскроем когда добавим search в BotUserAdmin
 
 
+@admin.register(BookingReminder)
+class BookingReminderAdmin(admin.ModelAdmin):
+    list_display = (
+        "visit_at", "kind", "status", "scheduled_at",
+        "master_name", "service_name", "bot_user", "sent_at",
+    )
+    list_filter = ("status", "kind", "visit_at")
+    search_fields = ("master_name", "service_name", "yclients_record_id",
+                     "bot_user__client_name", "bot_user__client_phone")
+    readonly_fields = (
+        "id", "bot_user", "booking_request", "yclients_record_id", "chat_id",
+        "visit_at", "kind", "scheduled_at", "sent_at", "replied_at",
+        "master_name", "service_name", "created_at",
+    )
+    list_editable = ("status",)  # менеджер может вручную поменять status
+    ordering = ("-scheduled_at",)
+    date_hierarchy = "visit_at"
+
+    def has_add_permission(self, request):
+        # Создаются автоматически в execute_confirm_booking, не из админки.
+        return False
+
+
 # ── MAX-бот ───────────────────────────────────────────────────────────
 
 
@@ -553,8 +577,8 @@ class BookingRequestAdmin(admin.ModelAdmin):
 class BotUserAdmin(admin.ModelAdmin):
     list_display = ("max_user_id", "client_name", "display_name", "client_phone", "first_seen", "last_seen")
     search_fields = ("max_user_id", "client_name", "display_name", "client_phone")
-    readonly_fields = ("max_user_id", "display_name", "first_seen", "last_seen", "context")
-    fields = ("max_user_id", "display_name", "client_name", "client_phone", "first_seen", "last_seen", "context")
+    readonly_fields = ("max_user_id", "display_name", "chat_id", "first_seen", "last_seen", "context")
+    fields = ("max_user_id", "display_name", "client_name", "client_phone", "chat_id", "first_seen", "last_seen", "context")
 
     def has_add_permission(self, request):
         # Создаются только из бота, не из админки
