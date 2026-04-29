@@ -107,8 +107,28 @@ async def enrich_show_slots(action_data: dict[str, Any], *, yclients_api=None) -
             date=date_str,
             service_ids=[int(yc_svc_id)],
         )
+        slot_strs = [str(t) for t in (times or [])]
+
+        time_pref = action_data.get("time_preference")
+        if time_pref in ("morning", "afternoon", "evening"):
+            ranges = {
+                "morning": (6, 12),
+                "afternoon": (12, 17),
+                "evening": (17, 22),
+            }
+            lo, hi = ranges[time_pref]
+
+            def _hour_in_range(s: str) -> bool:
+                hh = s[-5:].split(":")[0] if ":" in s else ""
+                try:
+                    return lo <= int(hh) < hi
+                except ValueError:
+                    return False
+
+            slot_strs = [s for s in slot_strs if _hour_in_range(s)]
+
         # Берём top-12 чтобы UI не уходил в стену кнопок (3 кнопки/ряд × 4 ряда)
-        action_data["slots"] = [str(t) for t in (times or [])][:12]
+        action_data["slots"] = slot_strs[:12]
         logger.info(
             "enrich_show_slots: %d slots for master=%s service=%s date=%s",
             len(action_data["slots"]), master_id, service_id, date_str,

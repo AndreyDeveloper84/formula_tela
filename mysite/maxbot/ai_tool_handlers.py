@@ -142,13 +142,18 @@ def handle_show_slots(args: dict[str, Any], context: MasterContext) -> ToolResul
             question=f"Этот мастер не оказывает данную услугу. Подобрать другого?",
         )
 
+    action_data: dict[str, Any] = {
+        "master_id": master_id,
+        "service_id": service_id,
+        "date": target_date.isoformat(),
+    }
+    time_preference = args.get("time_preference")
+    if time_preference in ("morning", "afternoon", "evening"):
+        action_data["time_preference"] = time_preference
+
     return ToolResult(
         action_type=ActionType.SHOW_SLOTS,
-        action_data={
-            "master_id": master_id,
-            "service_id": service_id,
-            "date": target_date.isoformat(),
-        },
+        action_data=action_data,
     )
 
 
