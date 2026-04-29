@@ -208,13 +208,17 @@ async def send_message(
         conversation, exclude_id=user_msg.id, limit=history_limit,
     )
 
-    # 5. Render system prompt
-    bookings_count = (bot_user.context or {}).get("bookings_count", 0)
+    # 5. Render system prompt + client history (T05)
+    from maxbot.personalization import get_client_history
+    history_data = await get_client_history(bot_user)
+    bookings_count = history_data.get("bookings_count", 0)
+    last_visits = history_data.get("last_visits", [])
     system_prompt = render_system_prompt(
         today=timezone.localdate(),
         client_name=bot_user.client_name or bot_user.display_name or "",
-        bookings_count=int(bookings_count) if isinstance(bookings_count, int) else 0,
+        bookings_count=bookings_count,
         master_context=master_context,
+        last_visits=last_visits,
     )
 
     # 6. Compose for OpenAI

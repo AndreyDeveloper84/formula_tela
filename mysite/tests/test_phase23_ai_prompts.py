@@ -143,8 +143,7 @@ def test_prompt_short_enough_for_gpt4o_mini():
         today=date(2026, 4, 27), client_name="X" * 100,
         bookings_count=99, master_context=_ctx("х" * 1000),
     )
-    # Грубая оценка: 1 токен ≈ 4 символа для русского. <3100 токенов ≈ <12400 char.
-    # После off-topic + intent-disambiguation + recommend_services + T03
-    # health-screening правил бюджет вырос до ~11200 chars (~2800 токенов).
-    # Оставляем headroom для T05 returning customer rules.
-    assert len(prompt) < 12400
+    # Грубая оценка: 1 токен ≈ 4 символа для русского. <3500 токенов ≈ <14000 char.
+    # После всех Sprint 1+2 правил (T01-T05) бюджет вырос до ~12500 chars
+    # (~3120 токенов). Headroom для будущих T06/T07 rules.
+    assert len(prompt) < 14000
