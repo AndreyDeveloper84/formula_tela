@@ -292,6 +292,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "maxbot.tasks.escalate_stale_reminders",
         "schedule": crontab(minute=15),
     },
+    # T07 post-visit follow-up — daily 19:00 «как прошёл визит?»
+    "maxbot-post-visit-followups-1900-msk": {
+        "task": "maxbot.tasks.send_post_visit_followups",
+        "schedule": crontab(hour=19, minute=0),
+    },
+    # T07 repeat offer — weekly Monday 12:00 «время повторить?»
+    "maxbot-repeat-offers-monday-1200-msk": {
+        "task": "maxbot.tasks.send_repeat_offers",
+        "schedule": crontab(hour=12, minute=0, day_of_week="monday"),
+    },
 }
 
 # === Email (SMTP) ===
