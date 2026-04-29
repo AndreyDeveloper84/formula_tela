@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 from django.http import HttpResponse, JsonResponse
 
 from agents.views import agents_health, landing_page_view
+from maxbot.yclients_webhook import yclients_webhook
 from payments.views import payment_cancelled_page, payment_success_page
 from website.sitemaps import (
     BundleSitemap,
@@ -89,6 +90,7 @@ urlpatterns = [
     path('healthz/', healthz, name='healthz'),
     path('api/agents/health/', agents_health, name='agents_health'),
     path('api/payments/', include('payments.urls')),
+    path('api/yclients/webhook/', yclients_webhook, name='yclients_webhook'),
     path('payments/success/', payment_success_page, name='payment_success_page'),
     path('payments/cancelled/', payment_cancelled_page, name='payment_cancelled_page'),
     path('robots.txt', robots_txt, name='robots_txt'),
