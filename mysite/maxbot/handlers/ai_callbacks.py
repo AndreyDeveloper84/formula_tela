@@ -204,10 +204,20 @@ async def on_pick_slot(callback: MessageCallback, context: MemoryContext) -> Non
             action_type="confirm_booking",
             action_data=confirm_data,
         )
-        await send_with_main_menu(
-            bot=callback.bot, chat_id=chat_id,
-            text=text, extra_attachments=attachments, bot_user=bot_user,
+        # MAX API: только 1 inline_keyboard на сообщение.
+        # confirm_booking уже содержит keyboard → отправляем без main_menu.
+        has_keyboard = any(
+            getattr(att, "type", None) == "inline_keyboard" for att in attachments
         )
+        if has_keyboard:
+            await callback.bot.send_message(
+                chat_id=chat_id, text=text, attachments=attachments,
+            )
+        else:
+            await send_with_main_menu(
+                bot=callback.bot, chat_id=chat_id,
+                text=text, extra_attachments=attachments, bot_user=bot_user,
+            )
         logger.info("ai_callbacks.pick_slot conv=%s slot=%s → confirm_booking (direct)", conv_id, slot_str)
         return
 
