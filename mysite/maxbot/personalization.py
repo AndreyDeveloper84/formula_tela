@@ -16,23 +16,32 @@ from services_app.models import BotUser
 
 
 @sync_to_async
-def get_or_create_bot_user(max_user_id: int, display_name: str = ""):
+def get_or_create_bot_user(max_user_id: int, display_name: str = "", chat_id: int | None = None):
     """Возвращает (BotUser, created: bool).
 
     Для existing user — атомарный UPDATE одной командой (не save!) — экономит
     1 query на hot path /start. Не перезаписывает client_name (его клиент
     ввёл боту, а display_name приходит от MAX автоматически).
+
+    chat_id — обновляется на каждом event'е (нужен для проактивных
+    напоминаний из Celery). chat_id привязан к диалогу пользователь↔бот,
+    в личном чате стабилен; в групповом может отличаться от max_user_id.
     """
+    defaults = {"display_name": display_name}
+    if chat_id is not None:
+        defaults["chat_id"] = chat_id
     user, created = BotUser.objects.get_or_create(
         max_user_id=max_user_id,
-        defaults={"display_name": display_name},
+        defaults=defaults,
     )
     if not created:
-        # Один UPDATE вместо обращения user.save() — нет re-fetch, нет race на других полях.
         update_kwargs = {"last_seen": timezone.now()}
         if display_name and user.display_name != display_name:
             update_kwargs["display_name"] = display_name
-            user.display_name = display_name  # Sync in-memory копию для caller'а
+            user.display_name = display_name
+        if chat_id is not None and user.chat_id != chat_id:
+            update_kwargs["chat_id"] = chat_id
+            user.chat_id = chat_id
         BotUser.objects.filter(pk=user.pk).update(**update_kwargs)
     return user, created
 

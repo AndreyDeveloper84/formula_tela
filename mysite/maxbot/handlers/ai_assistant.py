@@ -66,7 +66,7 @@ async def on_my_bookings_button(callback: MessageCallback, context: MemoryContex
         return
     await context.clear()
     user = callback.callback.user
-    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name)
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
     await run_ai_turn(
         bot=callback.bot, chat_id=chat_id, bot_user=bot_user,
         user_text="Покажи мои записи (предстоящие и прошедшие)",
@@ -97,7 +97,7 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     await context.clear()
 
     sender = event.message.sender
-    bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
+    bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name, chat_id=chat_id)
 
     # 3. Intent-router (regex, ~1ms): phatic phrases → canned, без OpenAI
     intent_response = detect_intent(user_text)
@@ -208,7 +208,7 @@ async def run_ai_turn(
 async def _create_bot_inquiry(*, user_id: int, full_name: str, chat_id: int,
                               question: str) -> None:
     """Создаём BotInquiry для менеджера + Telegram-алерт."""
-    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name, chat_id=chat_id)
     inquiry = await sync_to_async(BotInquiry.objects.create)(
         bot_user=bot_user,
         chat_id=chat_id,
