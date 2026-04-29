@@ -150,6 +150,60 @@ SHOW_MY_BOOKINGS = {
 }
 
 
+RECOMMEND_SERVICES = {
+    "type": "function",
+    "function": {
+        "name": "recommend_services",
+        "description": (
+            "Подобрать услуги под цель/потребность клиента. Используй когда "
+            "клиент описал ЦЕЛЬ или ПЕЙН ('хочу расслабиться', 'болит спина', "
+            "'устал от тренировок', 'надо привести фигуру в порядок'), но "
+            "ЕЩЁ НЕ выбрал конкретную услугу. Возвращает 2-4 подходящих "
+            "услуги с обоснованием. После этого клиент выберет из списка → "
+            "далее show_masters для выбранной услуги.\n\n"
+            "ДОСТУПНЫЕ goals (slug → описание):\n"
+            "- relax: расслабление, снятие стресса\n"
+            "- antistress: антистресс, эмоциональная разгрузка\n"
+            "- back_pain: боль в спине / шее / суставах\n"
+            "- posture: осанка, мышечный дисбаланс\n"
+            "- recovery: восстановление после нагрузок / тренировок\n"
+            "- tone: тонус, бодрость, энергия\n"
+            "- weight_loss: снижение веса, коррекция фигуры\n"
+            "- cellulite: антицеллюлитный эффект\n"
+            "- lymph: лимфодренаж, отёчность\n"
+            "- beauty_face: уход за лицом, омоложение\n"
+            "- hair_removal: удаление волос (эпиляция)\n"
+            "- pregnancy_safe: безопасно при беременности\n\n"
+            "Передавай 1-3 наиболее релевантных goal'а."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "goals": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "relax", "antistress", "back_pain", "posture",
+                            "recovery", "tone", "weight_loss", "cellulite",
+                            "lymph", "beauty_face", "hair_removal", "pregnancy_safe",
+                        ],
+                    },
+                    "description": "1-3 целевых goal'а из словаря",
+                    "minItems": 1,
+                    "maxItems": 3,
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "Краткое объяснение клиенту почему именно эти услуги (1-2 предложения)",
+                },
+            },
+            "required": ["goals", "explanation"],
+        },
+    },
+}
+
+
 ASK_CLARIFICATION = {
     "type": "function",
     "function": {
@@ -180,6 +234,7 @@ TOOL_DEFINITIONS = [
     SHOW_SLOTS,
     CONFIRM_BOOKING,
     SHOW_MY_BOOKINGS,
+    RECOMMEND_SERVICES,
     ASK_CLARIFICATION,
 ]
 
@@ -191,6 +246,7 @@ class ActionType:
     SHOW_SLOTS = "show_slots"
     CONFIRM_BOOKING = "confirm_booking"
     SHOW_MY_BOOKINGS = "show_my_bookings"
+    RECOMMEND_SERVICES = "recommend_services"
     ASK_CLARIFICATION = "ask_clarification"
 
     ALL_MVP = frozenset({
@@ -198,5 +254,6 @@ class ActionType:
         SHOW_SLOTS,
         CONFIRM_BOOKING,
         SHOW_MY_BOOKINGS,
+        RECOMMEND_SERVICES,
         ASK_CLARIFICATION,
     })

@@ -20,16 +20,17 @@ def test_action_type_all_mvp_complete():
     from maxbot.ai_tools import ActionType
     assert ActionType.ALL_MVP == frozenset({
         "show_masters", "show_slots", "confirm_booking",
-        "show_my_bookings", "ask_clarification",
+        "show_my_bookings", "recommend_services", "ask_clarification",
     })
 
 
 # ─── TOOL_DEFINITIONS список ──────────────────────────────────────────────
 
 
-def test_tool_definitions_has_5_tools():
+def test_tool_definitions_has_6_tools():
+    """Phase 2.4 T02: добавлен recommend_services."""
     from maxbot.ai_tools import TOOL_DEFINITIONS
-    assert len(TOOL_DEFINITIONS) == 5
+    assert len(TOOL_DEFINITIONS) == 6
 
 
 def test_tool_definitions_names_match_action_types():

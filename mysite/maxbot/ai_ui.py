@@ -75,6 +75,11 @@ def _payload_suggest_master(conv_id: str) -> str:
     return f"cb:ai:suggest_master:{conv_id}"
 
 
+def _payload_pick_service(conv_id: str, service_id: int) -> str:
+    """Phase 2.4 T02: клик по карточке услуги в recommend_services."""
+    return f"cb:ai:pick_service:{conv_id}:{service_id}"
+
+
 # ─── render_action — главный диспетчер ───────────────────────────────────
 
 
@@ -98,6 +103,8 @@ def render_action(
         return render_confirm_booking(conv_id, action_data)
     if action_type == "show_my_bookings":
         return render_show_my_bookings(conv_id, action_data)
+    if action_type == "recommend_services":
+        return render_recommend_services(conv_id, action_data)
     if action_type == "ask_clarification":
         return render_ask_clarification(conv_id, action_data)
     # Unknown — graceful default
@@ -330,6 +337,64 @@ def render_show_my_bookings(conv_id: str, data: dict[str, Any]) -> tuple[str, li
         lines.append(f"• {pretty} — {master_name}, {service_name}")
 
     return ("\n".join(lines), [])
+
+
+# ─── recommend_services (Phase 2.4 T02) ───────────────────────────────────
+
+
+def render_recommend_services(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
+    """2-4 услуги из handle_recommend_services — текст + inline-кнопки.
+
+    Текст: explanation от LLM + список услуг (название, длительность, цена).
+    Кнопки: по 1 на услугу, payload cb:ai:pick_service:{conv}:{id}.
+    Клик → run_ai_turn с pseudo-text «выбираю [name]» → бот вызовет show_masters
+    для этой услуги.
+    """
+    explanation = (data.get("explanation") or "").strip()
+    services = data.get("services") or []
+
+    if not services:
+        # Не должно случаться (handler возвращает fallback ask_clarification),
+        # но на всякий случай:
+        return ("Не нашлось подходящих услуг под этот запрос.", [])
+
+    lines = []
+    if explanation:
+        lines.append(explanation)
+        lines.append("")
+
+    for svc in services:
+        name = svc.get("name") or "Услуга"
+        price = svc.get("price_from")
+        duration = svc.get("duration_min")
+        category = svc.get("category") or ""
+        meta_parts = []
+        if duration:
+            meta_parts.append(f"{duration} мин")
+        if price:
+            meta_parts.append(f"от {price} ₽")
+        meta = " · ".join(meta_parts)
+        cat_suffix = f" [{category}]" if category else ""
+        line = f"💆 {name}{cat_suffix}"
+        if meta:
+            line += f" — {meta}"
+        lines.append(line)
+        sd = (svc.get("short_description") or "").strip()
+        if sd:
+            lines.append(f"   _{sd}_")
+
+    builder = InlineKeyboardBuilder()
+    for svc in services:
+        sid = svc.get("id")
+        name = (svc.get("name") or "Услуга")[:50]
+        if sid is None:
+            continue
+        builder.row(CallbackButton(
+            text=name,
+            payload=_payload_pick_service(conv_id, int(sid)),
+        ))
+
+    return ("\n".join(lines), [builder.as_markup()])
 
 
 # ─── ask_clarification ────────────────────────────────────────────────────

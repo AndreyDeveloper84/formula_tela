@@ -62,6 +62,13 @@ def _master_label(master_id: int) -> str:
 
 
 @sync_to_async
+def _service_label(service_id: int) -> str:
+    from services_app.models import Service
+    s = Service.objects.filter(id=service_id).first()
+    return s.name if s else f"#{service_id}"
+
+
+@sync_to_async
 def _last_clarification_options(conv_id: str) -> list[str]:
     """Загружаем options последнего ask_clarification message — для маппинга idx → text."""
     msg = (
@@ -102,6 +109,35 @@ async def on_pick_master(callback: MessageCallback, context: MemoryContext) -> N
         bot=callback.bot, chat_id=chat_id,
         bot_user=bot_user, user_text=pseudo,
         original_user_text=f"выбор мастера {master_name}",
+    )
+
+
+# ─── Pick service (Phase 2.4 T02) ─────────────────────────────────────────
+
+
+@router.message_callback(F.callback.payload.startswith("cb:ai:pick_service:"))
+async def on_pick_service(callback: MessageCallback, context: MemoryContext) -> None:
+    """Клик по карточке услуги в recommend_services → AI turn с псевдо-выбором."""
+    payload = callback.callback.payload
+    kind, rest = _parse_payload(payload)
+    if kind != "pick_service" or len(rest) < 2:
+        return
+    conv_id, service_id_str = rest[0], rest[1]
+
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    user = callback.callback.user
+    bot_user, _ = await get_or_create_bot_user(user.user_id, user.full_name, chat_id=chat_id)
+    service_name = await _service_label(int(service_id_str))
+
+    pseudo = f"Выбираю услугу «{service_name}» (id={service_id_str}). Покажи мастеров."
+    logger.info("ai_callbacks.pick_service conv=%s service=%s", conv_id, service_id_str)
+    await run_ai_turn(
+        bot=callback.bot, chat_id=chat_id,
+        bot_user=bot_user, user_text=pseudo,
+        original_user_text=f"выбор услуги {service_name}",
     )
 
 

@@ -219,6 +219,68 @@ def handle_show_my_bookings(args: dict[str, Any]) -> ToolResult:
     )
 
 
+# ─── handle_recommend_services (Phase 2.4 T02) ────────────────────────────
+
+
+def handle_recommend_services(args: dict[str, Any]) -> ToolResult:
+    """Подобрать топ-4 услуги по goals + ранжировать по is_popular.
+
+    Валидация: 1-3 goal'а из SERVICE_GOAL_VALUES. Если LLM передал что-то
+    несуществующее — фильтруем; если пусто после фильтра — fallback ask_clarification.
+
+    Каждая услуга в action_data.services содержит id, name, short_description,
+    price_from, duration_min, goals — render layer показывает карточки.
+    """
+    from services_app.models import SERVICE_GOAL_VALUES, Service
+
+    raw_goals = args.get("goals") or []
+    explanation = (args.get("explanation") or "").strip()
+
+    valid_goals = [g for g in raw_goals if g in SERVICE_GOAL_VALUES]
+    if not valid_goals:
+        return _fallback_clarification(
+            "recommend_services_no_valid_goals",
+            question="Уточните, пожалуйста, что для вас важнее всего — расслабиться, "
+                     "снять боль, тонизировать или что-то другое?",
+        )
+
+    qs = (
+        Service.objects.active()
+        .with_any_goal(valid_goals)
+        .with_category()
+        .order_by("-is_popular", "order", "name")[:4]
+    )
+    services_data = []
+    for svc in qs:
+        services_data.append({
+            "id": svc.id,
+            "name": svc.name,
+            "short_description": svc.short_description or "",
+            "price_from": str(svc.price_from) if svc.price_from else None,
+            "duration_min": svc.duration_min,
+            "category": svc.category.name if svc.category else "",
+            "goals": list(svc.goals or []),
+            "slug": svc.slug or "",
+        })
+
+    if not services_data:
+        # Нет услуг под эту цель — graceful: ask_clarification с fallback
+        return _fallback_clarification(
+            "recommend_services_no_match",
+            question="Мы не нашли подходящих услуг под этот запрос. "
+                     "Хотите посмотреть популярные услуги или связаться с менеджером?",
+        )
+
+    return ToolResult(
+        action_type=ActionType.RECOMMEND_SERVICES,
+        action_data={
+            "goals": valid_goals,
+            "explanation": explanation,
+            "services": services_data,
+        },
+    )
+
+
 # ─── handle_ask_clarification ─────────────────────────────────────────────
 
 
@@ -259,6 +321,8 @@ def dispatch_tool_call(tool_call, context: MasterContext) -> ToolResult:
         return handle_confirm_booking(args, context)
     if name == ActionType.SHOW_MY_BOOKINGS:
         return handle_show_my_bookings(args)
+    if name == ActionType.RECOMMEND_SERVICES:
+        return handle_recommend_services(args)
     if name == ActionType.ASK_CLARIFICATION:
         return handle_ask_clarification(args)
 
