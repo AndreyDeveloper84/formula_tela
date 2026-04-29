@@ -143,9 +143,8 @@ def test_prompt_short_enough_for_gpt4o_mini():
         today=date(2026, 4, 27), client_name="X" * 100,
         bookings_count=99, master_context=_ctx("х" * 1000),
     )
-    # Грубая оценка: 1 токен ≈ 4 символа для русского. <2700 токенов ≈ <10800 char.
-    # После off-topic + intent-disambiguation + recommend_services правил +
-    # 3 discovery-examples бюджет вырос до ~10000 chars (~2500 токенов).
-    # Оставляем headroom для двух будущих task'ов (T03 health screening +
-    # T05 returning customer rules).
-    assert len(prompt) < 10800
+    # Грубая оценка: 1 токен ≈ 4 символа для русского. <3100 токенов ≈ <12400 char.
+    # После off-topic + intent-disambiguation + recommend_services + T03
+    # health-screening правил бюджет вырос до ~11200 chars (~2800 токенов).
+    # Оставляем headroom для T05 returning customer rules.
+    assert len(prompt) < 12400

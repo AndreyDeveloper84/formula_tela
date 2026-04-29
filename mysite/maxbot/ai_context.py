@@ -33,7 +33,8 @@ class MasterCandidate:
     id: int
     name: str
     specialization: str
-    services: list[tuple[int, str, str]]  # (service_id, name, category_name)
+    # (service_id, name, category_name, requires_health_check)
+    services: list[tuple[int, str, str, bool]]
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,12 @@ def build_master_context(*, limit: int = DEFAULT_LIMIT) -> MasterContext:
             name=master.name,
             specialization=(master.specialization or "").strip(),
             services=[
-                (s.id, s.name, s.category.name if s.category else "Прочее")
+                (
+                    s.id,
+                    s.name,
+                    s.category.name if s.category else "Прочее",
+                    bool(getattr(s, "requires_health_check", False)),
+                )
                 for s in services
             ],
         ))
@@ -119,12 +125,17 @@ def _render_summary(candidates: list[MasterCandidate]) -> str:
             lines.append("    (нет активных услуг)")
             continue
 
-        # Группируем услуги по категории, сохраняя порядок появления
-        by_cat: dict[str, list[tuple[int, str]]] = {}
-        for sid, sname, cat in c.services:
-            by_cat.setdefault(cat, []).append((sid, sname))
+        # Группируем услуги по категории, сохраняя порядок появления.
+        # Опасные услуги маркируем ⚠health чтобы LLM знал — нужен health-check
+        # перед confirm_booking (T03).
+        by_cat: dict[str, list[tuple[int, str, bool]]] = {}
+        for sid, sname, cat, needs_health in c.services:
+            by_cat.setdefault(cat, []).append((sid, sname, needs_health))
 
         for cat_name, items in by_cat.items():
-            inline = "; ".join(f"service_id={sid} {name}" for sid, name in items)
-            lines.append(f"    [{cat_name}] {inline}")
+            parts = []
+            for sid, name, needs_health in items:
+                marker = " ⚠health" if needs_health else ""
+                parts.append(f"service_id={sid} {name}{marker}")
+            lines.append(f"    [{cat_name}] {'; '.join(parts)}")
     return "\n".join(lines)

@@ -205,6 +205,16 @@ class ServiceAdmin(admin.ModelAdmin):
                 "<code>tag_services_goals</code> или вручную."
             ),
         }),
+        ("Противопоказания (для AI-бота)", {
+            "fields": ("requires_health_check", "contraindications"),
+            "description": (
+                "Если <b>requires_health_check=True</b> — бот спросит клиента "
+                "о беременности / давлении / операциях ПЕРЕД записью. "
+                "При наличии противопоказания запись переадресуется менеджеру."
+                "<br>Включи для антицеллюлитных, обёртываний, лимфодренажа, "
+                "баночного массажа, лазерной эпиляции."
+            ),
+        }),
         ("Перелинковка", {
             "fields": ("related_services",),
             "classes": ("collapse",),

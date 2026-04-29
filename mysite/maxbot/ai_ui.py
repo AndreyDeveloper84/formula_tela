@@ -375,7 +375,8 @@ def render_recommend_services(conv_id: str, data: dict[str, Any]) -> tuple[str, 
             meta_parts.append(f"от {price} ₽")
         meta = " · ".join(meta_parts)
         cat_suffix = f" [{category}]" if category else ""
-        line = f"💆 {name}{cat_suffix}"
+        health_suffix = " ⚠️" if svc.get("requires_health_check") else ""
+        line = f"💆 {name}{cat_suffix}{health_suffix}"
         if meta:
             line += f" — {meta}"
         lines.append(line)
