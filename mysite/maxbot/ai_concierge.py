@@ -146,8 +146,13 @@ def _compose_messages(
     return messages
 
 
-def _parse_completion(completion, master_context: MasterContext):
-    """Returns (content, tool_call_raw, action_type, action_data)."""
+async def _parse_completion(completion, master_context: MasterContext):
+    """Returns (content, tool_call_raw, action_type, action_data).
+
+    dispatch_tool_call синхронный и трогает Django ORM (recommend_services,
+    confirm_booking). В async-контексте ORM raise'ит SynchronousOnlyOperation
+    — оборачиваем в sync_to_async чтобы запросы шли в thread-executor.
+    """
     msg = completion.choices[0].message
     tool_calls = getattr(msg, "tool_calls", None)
     content = msg.content or ""
@@ -158,7 +163,7 @@ def _parse_completion(completion, master_context: MasterContext):
     # Берём первый tool_call (наш flow одношаговый — LLM либо отвечает
     # текстом, либо одним tool-call'ом, не цепочкой)
     tc = tool_calls[0]
-    result = dispatch_tool_call(tc, master_context)
+    result = await sync_to_async(dispatch_tool_call)(tc, master_context)
 
     # Сериализуем raw tool_call для аудита (str-arguments)
     raw = {
@@ -242,7 +247,7 @@ async def send_message(
     latency_ms = int((time.monotonic() - started) * 1000)
 
     # 8. Parse: content + opt action (через dispatch_tool_call)
-    content, tool_call_raw, action_type, action_data = _parse_completion(
+    content, tool_call_raw, action_type, action_data = await _parse_completion(
         completion, master_context,
     )
 
