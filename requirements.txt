@@ -52,6 +52,10 @@ mcp>=1.20.0,<2.0
 # Локальная разработка — editable install из sibling-папки:
 #   pip install -e ../ayla-ai-core
 # CI/staging — git URL с тегом версии (TODO DRF-243.1: обсудить с командой).
-# Раскомментируй когда CI настроен:
+# Раскомментируй когда CI настроен с git+ssh deploy key:
 # ayla-ai-core @ git+ssh://git@github.com/AndreyDeveloper84/ayla-ai-core.git@v0.5.0
-ayla-ai-core>=0.5.0,<0.6  # editable-installed locally; CI requires git URL above
+#
+# Локально для разработки/тестирования: pip install -e ../ayla-ai-core
+# CI / staging / prod пока без shared package — bot/local copy в maxbot/ai_*.py
+# работоспособна и используется в проде. DRF-243.4 уберёт local copy после
+# того как CI получит доступ к private repo через git+ssh deploy key.
