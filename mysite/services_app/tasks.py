@@ -14,7 +14,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from notifications import send_notification_telegram
-from services_app.models import Conversation, Message
+from services_app.models import Conversation, FewShotExample, Message
 
 
 logger = logging.getLogger("services_app.tasks")
@@ -22,6 +22,12 @@ logger = logging.getLogger("services_app.tasks")
 STALE_DAYS = 7
 ANALYSIS_SAMPLE = 20   # сколько failed conversations брать на анализ
 ANALYSIS_MODEL = "gpt-4o-mini"
+
+# Phase 2.4 «Auto-tune #1» constants
+FEWSHOT_LOOKBACK_DAYS = 14   # окно для поиска свежих success-диалогов
+FEWSHOT_KEEP_ACTIVE = 10     # сколько примеров держим активными в prompt'е
+FEWSHOT_MIN_USER_LEN = 6     # игнорим «ок», «да», «угу»
+FEWSHOT_MIN_ASSISTANT_LEN = 20
 
 
 # ─── Phase 1: close stale ─────────────────────────────────────────────────
@@ -211,3 +217,93 @@ def analyze_failed_conversations(self, openai_client=None):
         "prompt_additions": result.get("prompt_additions") or [],
         "summary": result.get("summary") or "",
     }
+
+
+# ─── Phase 2.4 «Auto-tune #1»: few-shot rotation ──────────────────────────
+
+
+@shared_task(
+    name="services_app.tasks.collect_success_examples",
+    bind=True, max_retries=1, ignore_result=False,
+)
+def collect_success_examples(self):
+    """Собирает курируемые few-shot примеры из last-week success-диалогов.
+
+    Логика:
+    1. Берём conversations с outcome=success за последние 14 дней.
+    2. Парсим в user→assistant пары (rendered_text > content).
+    3. Дедупим по user_text (lower-cased) против уже сохранённых.
+    4. Сохраняем новые как FewShotExample(is_active=True).
+    5. Оставляем top-FEWSHOT_KEEP_ACTIVE последних, остальные деактивируем.
+
+    Запускается weekly воскресенье 22:00 МСК.
+    """
+    cutoff = timezone.now() - timedelta(days=FEWSHOT_LOOKBACK_DAYS)
+    convs = (
+        Conversation.objects
+        .filter(outcome=Conversation.Outcome.SUCCESS.value, last_message_at__gte=cutoff)
+        .order_by("-last_message_at")
+    )
+
+    existing_user_texts = set(
+        FewShotExample.objects
+        .values_list("user_text", flat=True)
+    )
+    existing_lower = {ut.lower().strip() for ut in existing_user_texts}
+
+    created = 0
+    for conv in convs:
+        msgs = list(
+            Message.objects
+            .filter(conversation=conv)
+            .order_by("created_at")
+            .values("role", "content", "rendered_text")
+        )
+        prev_user: str | None = None
+        for m in msgs:
+            role = m["role"]
+            if role == Message.Role.USER:
+                prev_user = (m["content"] or "").strip()
+                continue
+            if role != Message.Role.ASSISTANT or not prev_user:
+                continue
+            assistant_text = (m["rendered_text"] or m["content"] or "").strip()
+            if (
+                len(prev_user) < FEWSHOT_MIN_USER_LEN
+                or len(assistant_text) < FEWSHOT_MIN_ASSISTANT_LEN
+            ):
+                prev_user = None
+                continue
+            key = prev_user.lower().strip()
+            if key in existing_lower:
+                prev_user = None
+                continue
+            FewShotExample.objects.create(
+                user_text=prev_user,
+                assistant_text=assistant_text,
+                source_conversation=conv,
+                is_active=True,
+            )
+            existing_lower.add(key)
+            created += 1
+            prev_user = None
+
+    # Оставляем топ-N последних активных, остальные деактивируем.
+    keep_ids = list(
+        FewShotExample.objects
+        .filter(is_active=True)
+        .order_by("-created_at")[:FEWSHOT_KEEP_ACTIVE]
+        .values_list("id", flat=True)
+    )
+    deactivated = (
+        FewShotExample.objects
+        .filter(is_active=True)
+        .exclude(id__in=keep_ids)
+        .update(is_active=False)
+    )
+
+    logger.info(
+        "collect_success_examples: created=%d deactivated=%d active_count<=%d",
+        created, deactivated, FEWSHOT_KEEP_ACTIVE,
+    )
+    return {"created": created, "deactivated": deactivated}

@@ -1764,3 +1764,41 @@ class Message(models.Model):
     def __str__(self):
         preview = self.content[:50] + ("\u2026" if len(self.content) > 50 else "")
         return f"{self.role}: {preview}"
+
+
+class FewShotExample(models.Model):
+    """\u041a\u0443\u0440\u0438\u0440\u0443\u0435\u043c\u0430\u044f user\u2192assistant \u043f\u0430\u0440\u0430 \u0438\u0437 \u0443\u0441\u043f\u0435\u0448\u043d\u043e\u0433\u043e \u0434\u0438\u0430\u043b\u043e\u0433\u0430 \u2014 \u0434\u043b\u044f injection \u0432 prompt.
+
+    Phase 2.4 \u00abAuto-tune #1\u00bb. Cron `collect_success_examples` (\u0432\u043e\u0441\u043a\u0440\u0435\u0441\u0435\u043d\u044c\u0435
+    22:00 \u041c\u0421\u041a) \u043a\u0430\u0436\u0434\u0443\u044e \u043d\u0435\u0434\u0435\u043b\u044e \u0432\u044b\u0431\u0438\u0440\u0430\u0435\u0442 \u0434\u0438\u0430\u043b\u043e\u0433\u0438 \u0441 `outcome=success`, \u0440\u0435\u0436\u0435\u0442 \u0438\u0445
+    \u043d\u0430 user\u2192assistant \u043f\u0430\u0440\u044b, \u0434\u0435\u0434\u0443\u043f\u0438\u0442 \u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442. `ai_prompts.render_system_prompt`
+    \u043f\u043e\u0434\u0433\u0440\u0443\u0436\u0430\u0435\u0442 top-10 active \u0438 \u0432\u0441\u0442\u0430\u0432\u043b\u044f\u0435\u0442 \u0431\u043b\u043e\u043a \u00ab\u041f\u0420\u0418\u041c\u0415\u0420\u042b \u0425\u041e\u0420\u041e\u0428\u0418\u0425 \u041e\u0422\u0412\u0415\u0422\u041e\u0412\u00bb.
+
+    \u041c\u0435\u043d\u0435\u0434\u0436\u0435\u0440 \u0432 admin \u043c\u043e\u0436\u0435\u0442 \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043a\u0440\u0438\u0432\u043e\u0439 \u043f\u0440\u0438\u043c\u0435\u0440 (is_active=False) \u2014 \u043e\u043d
+    \u0438\u0441\u0447\u0435\u0437\u043d\u0435\u0442 \u0438\u0437 prompt'\u0430 \u043d\u0430 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u043c turn'\u0435.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_text = models.TextField("\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043a\u043b\u0438\u0435\u043d\u0442\u0430")
+    assistant_text = models.TextField("\u041e\u0442\u0432\u0435\u0442 \u0431\u043e\u0442\u0430 (rendered)")
+    source_conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="few_shot_examples",
+        verbose_name="\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a (\u0434\u0438\u0430\u043b\u043e\u0433)",
+    )
+    is_active = models.BooleanField("\u0410\u043a\u0442\u0438\u0432\u0435\u043d (\u043f\u043e\u043f\u0430\u0434\u0430\u0435\u0442 \u0432 prompt)", default=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="\u0421\u043e\u0437\u0434\u0430\u043d")
+
+    class Meta:
+        verbose_name = "Few-shot \u043f\u0440\u0438\u043c\u0435\u0440 (auto-tune)"
+        verbose_name_plural = "Few-shot \u043f\u0440\u0438\u043c\u0435\u0440\u044b (auto-tune)"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "-created_at"]),
+        ]
+
+    def __str__(self):
+        prv = self.user_text[:60] + ("\u2026" if len(self.user_text) > 60 else "")
+        return f"{prv}"

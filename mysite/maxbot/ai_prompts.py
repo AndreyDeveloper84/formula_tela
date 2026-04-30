@@ -102,7 +102,7 @@ SYSTEM_PROMPT_TEMPLATE = """\
 6. ask_clarification — когда запрос неясен и нужно уточнить с вариантами
    ответа (день недели, тип услуги и т.д.).
 
-ПРАВИЛА:
+{fewshot_block}ПРАВИЛА:
 0. ТЁПЛАЯ ПРЕАМБУЛА перед tool_call: ВСЕГДА перед вызовом ask_clarification /
    recommend_services / show_masters / show_slots пиши ОДНО короткое
    человеческое предложение в content (не в tool args). Это клеится перед
@@ -326,7 +326,44 @@ def render_system_prompt(
         bookings_count=bookings_count,
         masters_summary=master_context.summary_text or "(нет активных мастеров)",
         client_history_block=_render_client_history(last_visits or []),
+        fewshot_block=_render_fewshot_block(),
     )
+
+
+def _render_fewshot_block() -> str:
+    """Блок «ПРИМЕРЫ ХОРОШИХ ОТВЕТОВ» из FewShotExample (auto-tune #1).
+
+    Best-effort: если БД недоступна (тесты без django) или таблицы нет —
+    возвращает пустую строку, prompt рендерится без примеров.
+    """
+    try:
+        from services_app.models import FewShotExample
+        examples = list(
+            FewShotExample.objects
+            .filter(is_active=True)
+            .order_by("-created_at")[:10]
+            .values("user_text", "assistant_text")
+        )
+    except Exception:  # noqa: BLE001
+        return ""
+    if not examples:
+        return ""
+    lines = [
+        "",
+        "ПРИМЕРЫ ХОРОШИХ ОТВЕТОВ из реальных успешных диалогов",
+        "(учись стилю и структуре, не копируй буквально):",
+        "",
+    ]
+    for ex in examples:
+        u = (ex["user_text"] or "").strip().replace("\n", " ")
+        a = (ex["assistant_text"] or "").strip()
+        # Обрезаем assistant до 280 char чтобы не раздуть prompt
+        if len(a) > 280:
+            a = a[:280].rstrip() + "…"
+        lines.append(f"— Клиент: «{u}»")
+        lines.append(f"— Бот: {a}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
 
 
 def _render_client_history(last_visits: list) -> str:
