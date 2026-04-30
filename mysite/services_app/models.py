@@ -1732,6 +1732,10 @@ class Message(models.Model):
     )
     role = models.CharField("\u0420\u043e\u043b\u044c", max_length=16, choices=Role.choices)
     content = models.TextField("\u0421\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0435", blank=True, default="")
+    rendered_text = models.TextField(
+        "\u041e\u0442\u0440\u0435\u043d\u0434\u0435\u0440\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u0447\u0442\u043e \u0443\u0432\u0438\u0434\u0435\u043b \u043a\u043b\u0438\u0435\u043d\u0442)",
+        blank=True, default="",
+    )
 
     # Action attached to assistant message \u2014 \u0434\u043b\u044f \u0440\u0435\u043d\u0434\u0435\u0440\u0430 UI \u043a\u0430\u0440\u0442\u043e\u0447\u043a\u0438.
     # action_type \u043a\u0430\u043a raw string (\u043d\u0435 enum) \u2014 \u0440\u0430\u0441\u0448\u0438\u0440\u044f\u0435\u0442\u0441\u044f \u0431\u0435\u0437 \u043c\u0438\u0433\u0440\u0430\u0446\u0438\u0439.
