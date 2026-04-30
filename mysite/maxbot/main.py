@@ -28,10 +28,10 @@ logger = logging.getLogger("maxbot")
 def build_dispatcher() -> Dispatcher:
     """Собирает Dispatcher с router'ами + middleware (logging + error alerts)."""
     from maxbot.handlers import get_routers
-    from maxbot.middleware import ErrorAlertMiddleware, LoggingMiddleware
+    from maxbot.middleware import ErrorAlertMiddleware, LoggingMiddleware, MarkSeenMiddleware
 
     dp = Dispatcher()
-    dp.middlewares = [LoggingMiddleware(), ErrorAlertMiddleware()]
+    dp.middlewares = [LoggingMiddleware(), MarkSeenMiddleware(), ErrorAlertMiddleware()]
     dp.include_routers(*get_routers())
     return dp
 

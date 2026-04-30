@@ -44,14 +44,16 @@ MAX_PHOTO_BYTES = 10 * 1024 * 1024  # Ayla serializer caps at 10 MiB.
 # ─── Photo upload trigger ──────────────────────────────────────────────────
 
 
-@router.message_created()
+@router.message_created(F.message.body.attachments)
 async def on_photo_message(event: MessageCreated, context: MemoryContext) -> None:
     """Fires only when message has at least one IMAGE attachment.
 
-    We can't easily filter in `@router.message_created()` decorator without
-    a custom F-expression, so we early-return here. Other handlers (free-text
-    AI, FSM) keep working — order in main.py decides which sees the event
-    first; food_scanner must be registered before ai_assistant for photos.
+    F-filter `F.message.body.attachments` (truthy = non-empty list)
+    отсекает text-only сообщения на dispatcher-уровне. Иначе maxapi
+    считает это handler-ом сматчившимся успешно и НЕ прокидывает событие
+    дальше — ai_assistant.on_free_text не получает шанс.
+
+    Внутри handler'а ещё проверяем что есть именно photo (не video / file).
     """
     if event.message.sender is None:
         return  # системные

@@ -1,4 +1,4 @@
-"""Middleware MAX-бота: логирование + Telegram-алерты на handler-exceptions.
+"""Middleware MAX-бота: логирование + MARK_SEEN + Telegram-алерты.
 
 Регистрируется в main.py через `dp.middlewares = [...]`.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable, Dict
 
+from maxapi.enums.sender_action import SenderAction
 from maxapi.filters.middleware import BaseMiddleware
 from maxapi.types import UpdateUnion
 from notifications import send_notification_telegram
@@ -31,6 +32,34 @@ class LoggingMiddleware(BaseMiddleware):
         except Exception:
             user_id = "?"
         logger.info("MAX event: type=%s user_id=%s", update_type, user_id)
+        return await handler(event_object, data)
+
+
+class MarkSeenMiddleware(BaseMiddleware):
+    """Отмечает входящее сообщение прочитанным (MARK_SEEN) сразу при получении.
+
+    UX: пользователь видит «✓✓ прочитано» как только бот забрал событие, а
+    не после генерации ответа. Срабатывает только на message_created.
+
+    Best-effort: ошибка send_action логируется, но handler продолжает.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[Any, Dict[str, Any]], Awaitable[Any]],
+        event_object: UpdateUnion,
+        data: Dict[str, Any],
+    ) -> Any:
+        update_type = getattr(event_object, "update_type", None)
+        if update_type == "message_created":
+            try:
+                bot = getattr(event_object, "bot", None)
+                msg = getattr(event_object, "message", None)
+                chat_id = getattr(getattr(msg, "recipient", None), "chat_id", None)
+                if bot is not None and chat_id is not None:
+                    await bot.send_action(chat_id=chat_id, action=SenderAction.MARK_SEEN)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("MARK_SEEN failed: %s", exc)
         return await handler(event_object, data)
 
 
