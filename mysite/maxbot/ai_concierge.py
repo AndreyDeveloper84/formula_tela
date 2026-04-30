@@ -53,6 +53,20 @@ class ChatResponseDTO:
     content: str
     action_type: str | None
     action_data: dict[str, Any] | None
+    # ID assistant-сообщения для post-update rendered_text (после render_action)
+    assistant_message_id: UUID | None = None
+
+
+@sync_to_async
+def update_message_rendered_text(message_id: UUID, rendered_text: str) -> None:
+    """Сохраняет в Message.rendered_text финальный текст что увидел клиент.
+
+    Вызывается из ai_assistant.run_ai_turn после render_action — для
+    tool-call сообщений `content` пустой, а человекочитаемая выдача (карточки
+    мастеров, слотов, и т.д.) живёт только в rendered_text → admin-аудит
+    конкретного сообщения становится наглядным.
+    """
+    Message.objects.filter(id=message_id).update(rendered_text=rendered_text)
 
 
 # ─── ORM helpers (sync_to_async wrappers) ────────────────────────────────
@@ -268,7 +282,7 @@ async def send_message(
     tokens_out = getattr(usage, "completion_tokens", 0) if usage else 0
 
     # 10. Save assistant message (с action и raw tool_call для audit)
-    await _save_message(
+    assistant_msg = await _save_message(
         conversation,
         role=Message.Role.ASSISTANT,
         content=content,
@@ -291,4 +305,5 @@ async def send_message(
         content=content,
         action_type=action_type,
         action_data=action_data,
+        assistant_message_id=assistant_msg.id,
     )

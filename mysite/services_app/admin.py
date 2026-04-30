@@ -845,9 +845,12 @@ class MessageInline(admin.TabularInline):
         return False
 
     def content_short(self, obj):
-        if not obj.content:
+        # \u0414\u043b\u044f tool-call assistant-\u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439 content="" \u2014 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u043c rendered_text
+        # (\u0442\u043e \u0447\u0442\u043e \u044e\u0437\u0435\u0440 \u0443\u0432\u0438\u0434\u0435\u043b \u043d\u0430 \u044d\u043a\u0440\u0430\u043d\u0435 \u2014 \u043a\u0430\u0440\u0442\u043e\u0447\u043a\u0438 \u043c\u0430\u0441\u0442\u0435\u0440\u043e\u0432/\u0441\u043b\u043e\u0442\u043e\u0432 \u0438 \u0442.\u0434.).
+        text = obj.rendered_text or obj.content
+        if not text:
             return ""
-        return obj.content[:120] + ("\u2026" if len(obj.content) > 120 else "")
+        return text[:200] + ("\u2026" if len(text) > 200 else "")
     content_short.short_description = "\u0422\u0435\u043a\u0441\u0442"
 
 
@@ -885,12 +888,13 @@ class ConversationAdmin(admin.ModelAdmin):
 class MessageAdmin(admin.ModelAdmin):
     """Standalone admin \u2014 full-text \u043f\u043e\u0438\u0441\u043a \u043f\u043e \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u043c\u0443 AI-\u043e\u0442\u0432\u0435\u0442\u043e\u0432."""
     list_display = ("created_at", "conversation_short", "role", "action_type",
-                    "content_preview", "latency_ms")
+                    "display_preview", "latency_ms")
     list_filter = ("role", "action_type", "created_at")
-    search_fields = ("content", "conversation__bot_user__client_name",
+    search_fields = ("content", "rendered_text",
+                     "conversation__bot_user__client_name",
                      "conversation__bot_user__display_name")
-    readonly_fields = ("id", "conversation", "role", "content", "action_type",
-                       "action_data", "tool_call", "tool_call_id",
+    readonly_fields = ("id", "conversation", "role", "content", "rendered_text",
+                       "action_type", "action_data", "tool_call", "tool_call_id",
                        "tokens_in", "tokens_out", "latency_ms", "created_at")
     fields = readonly_fields
 
@@ -901,8 +905,12 @@ class MessageAdmin(admin.ModelAdmin):
         return str(obj.conversation_id)[:8]
     conversation_short.short_description = "\u0414\u0438\u0430\u043b\u043e\u0433"
 
-    def content_preview(self, obj):
-        return obj.content[:80] + ("\u2026" if len(obj.content) > 80 else "")
-    content_preview.short_description = "\u0422\u0435\u043a\u0441\u0442"
+    def display_preview(self, obj):
+        # \u0414\u043b\u044f tool-call \u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043d\u0442-\u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439 content \u043f\u0443\u0441\u0442\u043e\u0439 \u2014 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u043c
+        # rendered_text (\u0447\u0442\u043e \u0443\u0432\u0438\u0434\u0435\u043b \u043a\u043b\u0438\u0435\u043d\u0442). \u0414\u043b\u044f user / plain-text assistant
+        # \u2014 \u043e\u0431\u044b\u0447\u043d\u044b\u0439 content.
+        text = obj.rendered_text or obj.content
+        return text[:120] + ("\u2026" if len(text) > 120 else "")
+    display_preview.short_description = "\u0422\u0435\u043a\u0441\u0442"
 
 

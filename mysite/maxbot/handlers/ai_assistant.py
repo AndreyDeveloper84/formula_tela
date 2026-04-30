@@ -175,6 +175,16 @@ async def run_ai_turn(
         text = dto.content
         action_attachments = []
 
+    # Сохраняем итоговый текст в Message.rendered_text — для admin-аудита
+    # (особенно важно для tool-call: content="" а карточки видны только в текст'е).
+    if dto.assistant_message_id is not None:
+        try:
+            await ai_concierge.update_message_rendered_text(
+                dto.assistant_message_id, text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("update_message_rendered_text failed: %s", exc)
+
     if dto.action_type is None and is_giveup(text):
         await close_active_conversation(bot_user, outcome=Conversation.Outcome.REDIRECTED.value)
         await _create_bot_inquiry(
