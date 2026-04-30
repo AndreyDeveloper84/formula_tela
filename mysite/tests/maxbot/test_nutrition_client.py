@@ -166,3 +166,99 @@ async def test_request_carries_service_token_and_external_id():
 
     assert seen["token"] == "test-token"
     assert seen["external_id"] == "bot:42"
+
+
+# ─── DRF-247: log_meal + daily_summary ─────────────────────────────────────
+
+
+async def test_log_meal_201_returns_log_response():
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(201, json={"data": {
+            "id": "log-uuid",
+            "dish_name": "Борщ",
+            "meal_type": "lunch",
+            "calories": 250,
+        }})
+    )
+    client = _make_client(transport)
+    try:
+        resp = await client.log_meal(
+            external_user_id="bot:1",
+            scan_id="scan-uuid",
+            meal_type="lunch",
+            idempotency_key="abc",
+        )
+    finally:
+        client._reset_httpx()
+
+    assert resp.log_id == "log-uuid"
+    assert resp.dish_name == "Борщ"
+    assert resp.meal_type == "lunch"
+    assert resp.calories == 250
+
+
+async def test_log_meal_forwards_idempotency_header():
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["idem"] = request.headers.get("X-Idempotency-Key", "")
+        return httpx.Response(201, json={"data": {
+            "id": "x", "dish_name": "x", "meal_type": "lunch", "calories": 0,
+        }})
+
+    client = _make_client(httpx.MockTransport(handler))
+    try:
+        await client.log_meal(
+            external_user_id="bot:1",
+            scan_id="scan-uuid",
+            meal_type="lunch",
+            idempotency_key="my-key",
+        )
+    finally:
+        client._reset_httpx()
+
+    assert seen["idem"] == "my-key"
+
+
+async def test_daily_summary_parses_envelope():
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"data": {
+            "date": "2026-04-30",
+            "calories_total": 400,
+            "calories_goal": 2000,
+            "protein_g": 13,
+            "fat_g": 8,
+            "carbs_g": 65,
+            "entries": [{"dish_name": "Борщ", "calories": 250}],
+        }})
+    )
+    client = _make_client(transport)
+    try:
+        resp = await client.daily_summary(external_user_id="bot:1")
+    finally:
+        client._reset_httpx()
+
+    assert resp.date == "2026-04-30"
+    assert resp.calories_total == 400
+    assert resp.calories_goal == 2000
+    assert len(resp.entries) == 1
+
+
+async def test_daily_summary_passes_date_query_param():
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["query"] = str(request.url.query)
+        return httpx.Response(200, json={"data": {
+            "date": "2026-04-29",
+            "calories_total": 0, "calories_goal": 2000,
+            "protein_g": 0, "fat_g": 0, "carbs_g": 0, "entries": [],
+        }})
+
+    client = _make_client(httpx.MockTransport(handler))
+    try:
+        await client.daily_summary(external_user_id="bot:1", date="2026-04-29")
+    finally:
+        client._reset_httpx()
+
+    assert "date=2026-04-29" in seen["query"]

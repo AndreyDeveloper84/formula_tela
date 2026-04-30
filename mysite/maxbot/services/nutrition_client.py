@@ -96,6 +96,31 @@ class ScanResponse:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class FoodLogResponse:
+    """Subset of `FoodLogEntrySerializer` data we care about in the bot."""
+
+    log_id: str
+    dish_name: str
+    meal_type: str
+    calories: float
+    raw: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SummaryResponse:
+    """Subset of `NutritionSummaryResponseSerializer` data we care about."""
+
+    date: str
+    calories_total: float
+    calories_goal: int
+    protein_g: float
+    fat_g: float
+    carbs_g: float
+    entries: list[dict[str, Any]]
+    raw: dict[str, Any]
+
+
 class NutritionClient:
     """Async client. One instance shared by handlers; circuit state is per-instance.
 
@@ -196,6 +221,130 @@ class NutritionClient:
         logger.info("nutrition_client.scan.4xx status=%d ext=%s code=%s",
                     resp.status_code, external_user_id, err_code)
         raise NutritionAPIError(f"http_{resp.status_code}_{err_code or 'unknown'}")
+
+
+    async def log_meal(
+        self,
+        *,
+        external_user_id: str,
+        scan_id: str | None = None,
+        dish_name: str | None = None,
+        meal_type: str,
+        portion_multiplier: float = 1.0,
+        idempotency_key: str | None = None,
+    ) -> FoodLogResponse:
+        """POST /api/v1/nutrition/internal/food-log/.
+
+        At least one of scan_id / dish_name must be provided.
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/food-log/"
+        headers: dict[str, str] = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+        body: dict[str, Any] = {
+            "meal_type": meal_type,
+            "portion_multiplier": portion_multiplier,
+        }
+        if scan_id:
+            body["scan_id"] = scan_id
+        if dish_name:
+            body["dish_name"] = dish_name
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.post(url, headers=headers, json=body)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            logger.warning("nutrition_client.log.network ext=%s err=%s",
+                           external_user_id, type(exc).__name__)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        return self._parse_log_response(resp, external_user_id=external_user_id)
+
+    async def daily_summary(
+        self,
+        *,
+        external_user_id: str,
+        date: str | None = None,
+    ) -> SummaryResponse:
+        """GET /api/v1/nutrition/internal/summary/?date=YYYY-MM-DD."""
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/summary/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        params: dict[str, str] = {}
+        if date:
+            params["date"] = date
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers, params=params)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            logger.warning("nutrition_client.summary.network ext=%s err=%s",
+                           external_user_id, type(exc).__name__)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        return self._parse_summary_response(resp, external_user_id=external_user_id)
+
+    def _parse_log_response(
+        self, resp: httpx.Response, *, external_user_id: str,
+    ) -> FoodLogResponse:
+        now = time.monotonic()
+        if resp.status_code in (200, 201):
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            return FoodLogResponse(
+                log_id=str(body.get("id") or ""),
+                dish_name=body.get("dish_name") or "",
+                meal_type=body.get("meal_type") or "",
+                calories=float(body.get("calories") or 0.0),
+                raw=body,
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        try:
+            err_code = (resp.json().get("error") or {}).get("code", "")
+        except ValueError:
+            err_code = ""
+        if err_code == "FOOD_NOT_RECOGNIZED":
+            raise FoodNotRecognizedError("nutrition_missing")
+        raise NutritionAPIError(f"http_{resp.status_code}_{err_code or 'unknown'}")
+
+    def _parse_summary_response(
+        self, resp: httpx.Response, *, external_user_id: str,
+    ) -> SummaryResponse:
+        now = time.monotonic()
+        if resp.status_code == 200:
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            return SummaryResponse(
+                date=str(body.get("date") or ""),
+                calories_total=float(body.get("calories_total") or 0.0),
+                calories_goal=int(body.get("calories_goal") or 0),
+                protein_g=float(body.get("protein_g") or 0.0),
+                fat_g=float(body.get("fat_g") or 0.0),
+                carbs_g=float(body.get("carbs_g") or 0.0),
+                entries=list(body.get("entries") or []),
+                raw=body,
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
 
 
 _SINGLETON: NutritionClient | None = None

@@ -521,3 +521,54 @@ def render_food_scan(scan: dict[str, Any]) -> tuple[str, list]:
             ),
         )
     return ("\n".join(lines), [builder.as_markup()] if scan_id else [])
+
+
+# ─── /дневник daily summary (DRF-247) ──────────────────────────────────────
+
+
+def render_daily_summary(summary: dict[str, Any]) -> str:
+    """Format `data` envelope from /nutrition/internal/summary/ as text.
+
+    No inline keyboard — main menu is appended by send_with_main_menu.
+    """
+    date_str = summary.get("date") or "сегодня"
+    cals_total = summary.get("calories_total") or 0
+    cals_goal = summary.get("calories_goal") or 0
+    protein = summary.get("protein_g") or 0
+    fat = summary.get("fat_g") or 0
+    carbs = summary.get("carbs_g") or 0
+    entries = summary.get("entries") or []
+
+    lines = [f"📔 Дневник за {date_str}"]
+    if not entries:
+        lines.append("")
+        lines.append("Сегодня записей нет. Сфотографируй еду и нажми кнопку под скана-карточкой.")
+        return "\n".join(lines)
+
+    lines.append("")
+    by_meal: dict[str, list[dict[str, Any]]] = {}
+    for e in entries:
+        meal = e.get("meal_type") or "snack"
+        by_meal.setdefault(meal, []).append(e)
+    meal_labels = {
+        "breakfast": "🍳 Завтрак",
+        "lunch": "🍲 Обед",
+        "dinner": "🍽 Ужин",
+        "snack": "☕ Перекус",
+    }
+    for key in ("breakfast", "lunch", "dinner", "snack"):
+        rows = by_meal.get(key) or []
+        if not rows:
+            continue
+        lines.append(f"{meal_labels[key]}:")
+        for r in rows:
+            dish = r.get("dish_name") or "—"
+            kcal = int(r.get("calories") or 0)
+            lines.append(f"  • {dish} ({kcal} ккал)")
+
+    lines.append("")
+    lines.append(
+        f"Итого: {int(cals_total)}/{cals_goal or '—'} ккал · "
+        f"Б {protein:.0f}г · Ж {fat:.0f}г · У {carbs:.0f}г"
+    )
+    return "\n".join(lines)

@@ -1,22 +1,18 @@
-"""Food scanner handler for the MAX bot (DRF-246).
+"""Food scanner + diary handler for the MAX bot (DRF-246, DRF-247).
 
 Triggers:
-1. User sends a photo (any image attachment in a MessageCreated event).
-2. User clicks a 152-FZ consent button (accept / decline).
+1. User sends a photo → scan flow (DRF-246).
+2. 152-FZ consent buttons (accept / decline) (DRF-246).
+3. Meal-type buttons on a scan card (DRF-247) — write to diary.
+4. /дневник text command (DRF-247) — show daily summary.
 
-Flow on photo:
-1. Resolve BotUser (autocreate if first contact).
-2. If BotUser.food_scanner_consent_at is NULL → render consent prompt, do nothing.
-3. Download image bytes from MAX CDN URL (the URL is short-lived, so we fetch
-   immediately rather than handing it to Ayla).
-4. POST to Ayla `/api/v1/nutrition/internal/scan/` via NutritionClient.
-5. Render `ai_ui.render_food_scan` card with diary buttons.
-
-Errors are surfaced as plain-text fallbacks — the bot never silently fails.
+Errors surface as plain-text fallbacks — the bot never silently fails.
 """
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import datetime
 
 import httpx
 from asgiref.sync import sync_to_async
@@ -170,6 +166,113 @@ async def on_consent_decline(callback: MessageCallback, context: MemoryContext) 
     await callback.bot.send_message(
         chat_id=chat_id,
         text="Понятно. Сканер еды доступен, когда передумаете — просто пришлите фото снова.",
+    )
+
+
+# ─── DRF-247: log meal callback + /дневник command ─────────────────────────
+
+
+@router.message_callback(F.callback.payload.startswith("cb:nutrition:log:"))
+async def on_log_meal(callback: MessageCallback, context: MemoryContext) -> None:
+    """Click `[Завтрак|Обед|Ужин|Перекус]` on a scan card → write FoodLog.
+
+    Payload: `cb:nutrition:log:{scan_id}:{meal_type}`. Idempotency-key
+    derived from (scan_id, meal_type) so re-clicks during a flaky network
+    do not double-log.
+    """
+    payload = callback.callback.payload or ""
+    parts = payload.split(":")
+    if len(parts) != 5:
+        return
+    _, _, _, scan_id, meal_type = parts
+    if meal_type not in ("breakfast", "lunch", "dinner", "snack"):
+        return
+
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+
+    external_id = external_user_id_for(bot_user)
+    # Deterministic idempotency key — re-clicks within a session map to
+    # the same UUID so FoodLogService.create returns the prior row.
+    idem = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{external_id}:{scan_id}:{meal_type}"))
+
+    client = get_nutrition_client()
+    try:
+        log = await client.log_meal(
+            external_user_id=external_id,
+            scan_id=scan_id,
+            meal_type=meal_type,
+            idempotency_key=idem,
+        )
+    except FoodNotRecognizedError:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Это блюдо не удалось распознать на скане — добавь вручную через /дневник.",
+        )
+        return
+    except NutritionUnavailableError:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Сервис временно недоступен. Попробуй через минуту.",
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.exception("food_scanner.log.api_error user=%s err=%s",
+                         bot_user.max_user_id, exc)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось записать. Попробуй ещё раз.",
+        )
+        return
+
+    meal_label = {
+        "breakfast": "завтрак", "lunch": "обед",
+        "dinner": "ужин", "snack": "перекус",
+    }[meal_type]
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=f"✅ Записала {meal_label}: {log.dish_name} ({int(log.calories)} ккал).",
+    )
+
+
+@router.message_created(F.message.body.text.lower().in_(("/дневник", "/diary", "дневник")))
+async def on_diary_command(event: MessageCreated, context: MemoryContext) -> None:
+    """`/дневник` → daily summary card (today UTC by default)."""
+    if event.message.sender is None:
+        return
+    chat_id = event.message.recipient.chat_id
+    sender = event.message.sender
+    bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
+
+    client = get_nutrition_client()
+    try:
+        summary = await client.daily_summary(
+            external_user_id=external_user_id_for(bot_user),
+        )
+    except NutritionUnavailableError:
+        await send_with_main_menu(
+            bot=event.bot, chat_id=chat_id,
+            text="Дневник временно недоступен. Попробуй через минуту.",
+            bot_user=bot_user,
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.exception("food_scanner.summary.api_error user=%s err=%s",
+                         bot_user.max_user_id, exc)
+        await send_with_main_menu(
+            bot=event.bot, chat_id=chat_id,
+            text="Не получилось загрузить дневник.",
+            bot_user=bot_user,
+        )
+        return
+
+    text = ai_ui.render_daily_summary(summary.raw)
+    await send_with_main_menu(
+        bot=event.bot, chat_id=chat_id, text=text, bot_user=bot_user,
     )
 
 
