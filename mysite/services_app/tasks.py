@@ -210,12 +210,33 @@ def analyze_failed_conversations(self, openai_client=None):
         len(result.get("patterns") or []),
         len(result.get("prompt_additions") or []),
     )
+    # Phase 2.4 «Auto-tune #5»: open auto-PR с предложенными амендментами,
+    # если включено и условия выполнены (≥5 failed, неделя с прошлого PR).
+    pr_url: str | None = None
+    try:
+        from services_app.auto_tune import create_amendment_pr
+        pr_url = create_amendment_pr(
+            amendments=result.get("prompt_additions") or [],
+            summary=result.get("summary") or "",
+            failed_conv_ids=[str(c.id) for c in convs],
+            sample_count=sample_count,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("analyze_failed_conversations: auto-tune PR failed: %s", exc)
+
+    if pr_url:
+        try:
+            send_notification_telegram(f"🔧 Auto-tune PR создан: {pr_url}")
+        except Exception:  # noqa: BLE001
+            pass
+
     return {
         "sample_count": sample_count,
         "patterns": result.get("patterns") or [],
         "weak_intents": result.get("weak_intents") or [],
         "prompt_additions": result.get("prompt_additions") or [],
         "summary": result.get("summary") or "",
+        "auto_tune_pr_url": pr_url,
     }
 
 
