@@ -45,14 +45,17 @@ maxapi[webhook]==1.0.0
 # Используется в maxbot/mcp_client.py для persistent stdio-сессии.
 mcp>=1.20.0,<2.0
 
-# AI orchestration shared package (Linear DRF-236, DRF-237).
+# AI orchestration shared package (Linear DRF-236, DRF-237, DRF-243).
 # Repo: https://github.com/AndreyDeveloper84/ayla-ai-core (private)
 #
-# NOT INSTALLED HERE — бот пока использует локальные maxbot/ai_*.py;
-# package добавится сюда только в DRF-243 (Phase B миграция). Если добавим
-# раньше — CI/staging ломается, потому что sibling-папка ../ayla-ai-core
-# отсутствует в CI-runner'ах (только локально на dev-машине).
-#
-# DEV-ONLY: для локального тестирования shared package с ботом —
+# DRF-243 Phase B миграция бота на shared package.
+# Локальная разработка — editable install из sibling-папки:
 #   pip install -e ../ayla-ai-core
-# (после клонирования ayla-ai-core в PycharmProjects/ayla-ai-core)
+# CI/staging — git URL с тегом версии (TODO DRF-243.1: обсудить с командой).
+# Раскомментируй когда CI настроен с git+ssh deploy key:
+# ayla-ai-core @ git+ssh://git@github.com/AndreyDeveloper84/ayla-ai-core.git@v0.5.0
+#
+# Локально для разработки/тестирования: pip install -e ../ayla-ai-core
+# CI / staging / prod пока без shared package — bot/local copy в maxbot/ai_*.py
+# работоспособна и используется в проде. DRF-243.4 уберёт local copy после
+# того как CI получит доступ к private repo через git+ssh deploy key.

@@ -1117,6 +1117,14 @@ class BotUser(models.Model):
         "Контекст", default=dict, blank=True,
         help_text='JSON: {"services_viewed": [slug], "faqs_viewed": [id], "bookings_count": N}',
     )
+    food_scanner_consent_at = models.DateTimeField(
+        "152-ФЗ согласие food scanner",
+        null=True, blank=True,
+        help_text=(
+            "Timestamp когда пользователь нажал «Согласен» на обработку "
+            "фото еды (152-ФЗ). NULL = не давал согласия, scanner недоступен."
+        ),
+    )
 
     class Meta:
         verbose_name = "Пользователь MAX-бота"
