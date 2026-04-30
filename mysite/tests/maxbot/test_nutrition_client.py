@@ -262,3 +262,68 @@ async def test_daily_summary_passes_date_query_param():
         client._reset_httpx()
 
     assert "date=2026-04-29" in seen["query"]
+
+
+# ─── DRF-248: weekly_deficits ──────────────────────────────────────────────
+
+
+async def test_weekly_deficits_parses_hint_envelope():
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"data": {
+            "days_observed": 5,
+            "protein_avg_pct_goal": 0.45,
+            "protein_low_streak_days": 3,
+            "hint": "У клиента 3 дн. подряд белок ниже нормы.",
+            "fired_keys": ["protein_low_streak"],
+        }})
+    )
+    client = _make_client(transport)
+    try:
+        d = await client.weekly_deficits(external_user_id="bot:1")
+    finally:
+        client._reset_httpx()
+
+    assert d.days_observed == 5
+    assert d.protein_avg_pct_goal == 0.45
+    assert d.protein_low_streak_days == 3
+    assert "белок" in d.hint
+    assert d.fired_keys == ["protein_low_streak"]
+
+
+async def test_weekly_deficits_empty_hint_for_no_signal():
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"data": {
+            "days_observed": 0,
+            "protein_avg_pct_goal": None,
+            "protein_low_streak_days": 0,
+            "hint": "",
+            "fired_keys": [],
+        }})
+    )
+    client = _make_client(transport)
+    try:
+        d = await client.weekly_deficits(external_user_id="bot:1")
+    finally:
+        client._reset_httpx()
+
+    assert d.hint == ""
+    assert d.protein_avg_pct_goal is None
+
+
+async def test_weekly_deficits_passes_days_param():
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["query"] = str(request.url.query)
+        return httpx.Response(200, json={"data": {
+            "days_observed": 0, "protein_avg_pct_goal": None,
+            "protein_low_streak_days": 0, "hint": "", "fired_keys": [],
+        }})
+
+    client = _make_client(httpx.MockTransport(handler))
+    try:
+        await client.weekly_deficits(external_user_id="bot:1", days=14)
+    finally:
+        client._reset_httpx()
+
+    assert "days=14" in seen["query"]

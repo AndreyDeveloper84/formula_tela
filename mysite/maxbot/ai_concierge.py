@@ -188,6 +188,36 @@ async def _parse_completion(completion, master_context: MasterContext):
     return content, raw, result.action_type, result.action_data
 
 
+async def _fetch_deficit_hint(bot_user: BotUser) -> str:
+    """Best-effort cross-domain hint fetch from Ayla nutrition (DRF-248).
+
+    Returns empty string on any failure (network, circuit open, missing
+    config). The bot must remain functional when Ayla is unreachable.
+    """
+    try:
+        from maxbot.services.ayla_user_proxy import external_user_id_for
+        from maxbot.services.nutrition_client import (
+            NutritionAPIError, NutritionUnavailableError, get_nutrition_client,
+        )
+        client = get_nutrition_client()
+    except Exception as exc:  # noqa: BLE001
+        # Misconfigured env (no AYLA_BASE_URL / token) — silent skip.
+        logger.debug("ai_concierge: deficit_hint disabled: %s", exc)
+        return ""
+    try:
+        deficits = await client.weekly_deficits(
+            external_user_id=external_user_id_for(bot_user),
+        )
+    except (NutritionUnavailableError, NutritionAPIError) as exc:
+        logger.info("ai_concierge: deficit_hint skip user=%s reason=%s",
+                    bot_user.max_user_id, exc)
+        return ""
+    except Exception:  # noqa: BLE001
+        logger.exception("ai_concierge: deficit_hint unexpected error")
+        return ""
+    return deficits.hint or ""
+
+
 # ─── Main entry point ─────────────────────────────────────────────────────
 
 
@@ -227,17 +257,24 @@ async def send_message(
         conversation, exclude_id=user_msg.id, limit=history_limit,
     )
 
-    # 5. Render system prompt + client history (T05)
+    # 5. Render system prompt + client history (T05) + cross-domain hint (DRF-248)
     from maxbot.personalization import get_client_history
     history_data = await get_client_history(bot_user)
     bookings_count = history_data.get("bookings_count", 0)
     last_visits = history_data.get("last_visits", [])
+
+    # DRF-248: best-effort fetch of nutrition deficit hint. Failures are
+    # silently ignored — bot must work even if Ayla nutrition endpoint is
+    # down or misconfigured. Empty hint is the common case (no signal yet).
+    extra_hint = await _fetch_deficit_hint(bot_user)
+
     system_prompt = render_system_prompt(
         today=timezone.localdate(),
         client_name=bot_user.client_name or bot_user.display_name or "",
         bookings_count=bookings_count,
         master_context=master_context,
         last_visits=last_visits,
+        extra_hint=extra_hint,
     )
 
     # 6. Compose for OpenAI

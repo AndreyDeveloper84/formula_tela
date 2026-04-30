@@ -121,6 +121,18 @@ class SummaryResponse:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class DeficitsResponse:
+    """Cross-domain bridge signal from /internal/deficits/ (DRF-248)."""
+
+    days_observed: int
+    protein_avg_pct_goal: float | None
+    protein_low_streak_days: int
+    hint: str  # may be empty — caller checks before passing to prompt
+    fired_keys: list[str]
+    raw: dict[str, Any]
+
+
 class NutritionClient:
     """Async client. One instance shared by handlers; circuit state is per-instance.
 
@@ -339,6 +351,45 @@ class NutritionClient:
                 fat_g=float(body.get("fat_g") or 0.0),
                 carbs_g=float(body.get("carbs_g") or 0.0),
                 entries=list(body.get("entries") or []),
+                raw=body,
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+    async def weekly_deficits(
+        self,
+        *,
+        external_user_id: str,
+        days: int = 7,
+    ) -> DeficitsResponse:
+        """GET /api/v1/nutrition/internal/deficits/?days=N — DRF-248 bridge signal."""
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/deficits/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers, params={"days": str(days)})
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        if resp.status_code == 200:
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            return DeficitsResponse(
+                days_observed=int(body.get("days_observed") or 0),
+                protein_avg_pct_goal=body.get("protein_avg_pct_goal"),
+                protein_low_streak_days=int(body.get("protein_low_streak_days") or 0),
+                hint=str(body.get("hint") or ""),
+                fired_keys=list(body.get("fired_keys") or []),
                 raw=body,
             )
         if resp.status_code >= 500:
