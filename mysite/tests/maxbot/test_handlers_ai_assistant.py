@@ -105,9 +105,10 @@ async def test_free_text_text_only_response_sends_with_main_menu():
                AsyncMock(return_value=dto)):
         await on_free_text(event, ctx)
 
-    event.bot.send_action.assert_awaited_once_with(
-        chat_id=100, action=SenderAction.TYPING_ON,
-    )
+    # MARK_SEEN + TYPING_ON в правильном порядке
+    assert event.bot.send_action.await_count == 2
+    actions = [c.kwargs["action"] for c in event.bot.send_action.await_args_list]
+    assert actions == [SenderAction.MARK_SEEN, SenderAction.TYPING_ON]
     # Один send_message с текстом ответа + main_menu в attachments
     assert event.bot.send_message.await_count == 1
     call = event.bot.send_message.await_args.kwargs
