@@ -92,17 +92,22 @@ def handle_show_masters(args: dict[str, Any], context: MasterContext) -> ToolRes
     masters: list[dict[str, Any]] = []
     for idx, mid in enumerate(valid_ids):
         c = by_id[mid]
+        # Preview для UI — направления (категории), не отдельные услуги.
+        # Категории информативнее «услуга_X, услуга_Y» — клиент видит
+        # «Лазерная эпиляция, Уходы для лица, RF-лифтинг», а не случайный
+        # набор из 5 услуг внутри этих же категорий.
+        seen: set[str] = set()
+        categories: list[str] = []
+        for _id, _name, cat, _hc in c.services:
+            if cat and cat not in seen:
+                seen.add(cat)
+                categories.append(cat)
         masters.append({
             "master": {
                 "id": c.id,
                 "name": c.name,
                 "specialization": c.specialization,
-                # Preview для UI-карточки — top-5 по имени cross-category,
-                # чтобы клиент увидел разнообразие услуг мастера, а не 5 услуг
-                # из одной категории (c.services сортирован по category__name).
-                "services_preview": [
-                    t[1] for t in sorted(c.services, key=lambda t: t[1])[:5]
-                ],
+                "categories_preview": categories[:5],
             },
             "match_score": scores[idx] if idx < len(scores) else None,
             "match_reasons": reasons[idx] if idx < len(reasons) else [],

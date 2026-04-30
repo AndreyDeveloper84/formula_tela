@@ -161,8 +161,11 @@ def render_show_masters(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
         m = item.get("master", {})
         name = m.get("name", "—")
         spec = m.get("specialization", "")
-        services = m.get("services_preview") or []
-        services_text = ", ".join(services[:3]) if services else ""
+        # categories_preview — список направлений (DRF-categories-fix);
+        # services_preview — старый ключ из исторических Message.action_data,
+        # читаем его как fallback чтобы не сломать рендер старых диалогов.
+        categories = m.get("categories_preview") or m.get("services_preview") or []
+        categories_text = ", ".join(categories[:4]) if categories else ""
         score = item.get("match_score")
         reasons = item.get("match_reasons") or []
 
@@ -172,8 +175,8 @@ def render_show_masters(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
         if score is not None:
             line += f" (★{score}%)"
         lines.append(line)
-        if services_text:
-            lines.append(f"   Услуги: {services_text}")
+        if categories_text:
+            lines.append(f"   Направления: {categories_text}")
         if reasons:
             lines.append(f"   {'; '.join(reasons[:2])}")
 
