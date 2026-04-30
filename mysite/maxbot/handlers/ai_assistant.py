@@ -166,11 +166,18 @@ async def run_ai_turn(
         return
 
     if dto.action_type:
-        text, action_attachments = ai_ui.render_action(
+        rendered_text, action_attachments = ai_ui.render_action(
             conversation_id=str(dto.conversation_id),
             action_type=dto.action_type,
             action_data=dto.action_data or {},
         )
+        # Преамбула от LLM перед tool_call (например «Конечно, давайте
+        # подберём!») — клеим к карточке, иначе бот звучит как робот.
+        preamble = (dto.content or "").strip()
+        if preamble:
+            text = f"{preamble}\n\n{rendered_text}"
+        else:
+            text = rendered_text
     else:
         text = dto.content
         action_attachments = []

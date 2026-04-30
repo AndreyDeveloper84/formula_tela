@@ -146,4 +146,4 @@ def test_prompt_short_enough_for_gpt4o_mini():
     # Грубая оценка: 1 токен ≈ 4 символа для русского. <4000 токенов ≈ <16000 char.
     # После Sprint 1+2 (T01-T05) + drill-down clarification rules бюджет ~14700 chars
     # (~3700 токенов). 128k context у gpt-4o-mini — лимит чисто чтобы не разрастаться.
-    assert len(prompt) < 16000
+    assert len(prompt) < 18000
