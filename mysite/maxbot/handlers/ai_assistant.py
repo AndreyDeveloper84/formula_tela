@@ -87,7 +87,12 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     if not user_text:
         return
 
-    # 1. Typing-индикатор (best-effort)
+    # 1. MARK_SEEN + TYPING_ON (best-effort, порядок важен — typing должен
+    # быть последним active sender_action чтобы UI показал «печатает»)
+    try:
+        await event.bot.send_action(chat_id=chat_id, action=SenderAction.MARK_SEEN)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("send_action MARK_SEEN failed: %s", exc)
     try:
         await event.bot.send_action(chat_id=chat_id, action=SenderAction.TYPING_ON)
     except Exception as exc:  # noqa: BLE001
