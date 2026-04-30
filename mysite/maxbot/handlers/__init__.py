@@ -11,6 +11,7 @@ from .booking import router as booking_router
 from .contacts import router as contacts_router
 from .fallback import router as fallback_router
 from .faq import router as faq_router
+from .food_scanner import router as food_scanner_router
 from .reminders import router as reminders_router
 from .services import router as services_router
 from .start import router as start_router
@@ -41,6 +42,10 @@ def get_routers():
         # ai_callbacks ПЕРЕД ai_assistant — специфичные cb:ai:* callbacks
         # должны матчиться раньше общего message_created handler'а.
         ai_callbacks_router,
+        # food_scanner ПЕРЕД ai_assistant — оба ловят message_created, но
+        # food_scanner early-return'ит если у сообщения нет фото-вложения,
+        # передавая управление дальше. cb:nutrition:* callbacks тоже здесь.
+        food_scanner_router,
         ai_assistant_router,
         fallback_router,
     ]

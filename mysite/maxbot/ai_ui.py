@@ -80,6 +80,16 @@ def _payload_pick_service(conv_id: str, service_id: int) -> str:
     return f"cb:ai:pick_service:{conv_id}:{service_id}"
 
 
+def _payload_food_log(scan_id: str, meal_type: str) -> str:
+    """DRF-247: записать скан в дневник питания."""
+    return f"cb:nutrition:log:{scan_id}:{meal_type}"
+
+
+def _payload_food_consent(action: str) -> str:
+    """DRF-246: 152-ФЗ согласие на обработку фото."""
+    return f"cb:nutrition:consent:{action}"
+
+
 # ─── render_action — главный диспетчер ───────────────────────────────────
 
 
@@ -416,3 +426,98 @@ def render_ask_clarification(conv_id: str, data: dict[str, Any]) -> tuple[str, l
             payload=_payload_answer(conv_id, idx),
         ))
     return (question, [builder.as_markup()])
+
+
+# ─── food_scan (DRF-246) ──────────────────────────────────────────────────
+
+
+def render_food_consent_request() -> tuple[str, list]:
+    """152-ФЗ consent prompt — first time user tries to scan food.
+
+    Bot blocks scan until user clicks «Согласен». Stored as
+    BotUser.food_scanner_consent_at timestamp.
+    """
+    text = (
+        "📸 Чтобы распознавать еду на фото, я отправлю фото на серверы "
+        "OpenAI / Yandex (распознавание блюд + расчёт КБЖУ).\n\n"
+        "Фото хранится 30 дней, потом удаляется. Согласно 152-ФЗ нужно "
+        "ваше согласие."
+    )
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(
+            text="✅ Согласен",
+            payload=_payload_food_consent("agree"),
+            intent=Intent.POSITIVE,
+        ),
+        CallbackButton(
+            text="✖ Отказаться",
+            payload=_payload_food_consent("decline"),
+            intent=Intent.NEGATIVE,
+        ),
+    )
+    return (text, [builder.as_markup()])
+
+
+def render_food_scan(scan: dict[str, Any]) -> tuple[str, list]:
+    """Render FoodScanResponse → MAX message + inline keyboard.
+
+    `scan` is the JSON from `NutritionClient.ScanResponse.raw` (the `data`
+    envelope from Ayla). Buttons offer to log this scan into the user's
+    food diary (DRF-247) by meal type — meal_type autodetect happens
+    callback-side based on current local time.
+    """
+    dish = scan.get("dish_name") or "Не уверена"
+    confidence = float(scan.get("confidence") or 0.0)
+    portion_g = scan.get("portion_g")
+    nutrition = scan.get("nutrition") or {}
+    scan_id = str(scan.get("id") or scan.get("scan_id") or "")
+
+    lines = [f"🍽 {dish}"]
+    if confidence:
+        lines.append(f"Уверенность: {int(confidence * 100)}%")
+    if portion_g:
+        lines.append(f"Порция: ~{int(portion_g)}г")
+
+    if nutrition:
+        kcal = nutrition.get("calories")
+        protein = nutrition.get("protein_g")
+        fat = nutrition.get("fat_g")
+        carbs = nutrition.get("carbs_g")
+        macro_parts = []
+        if kcal is not None:
+            macro_parts.append(f"{int(kcal)} ккал")
+        if protein is not None:
+            macro_parts.append(f"Б {protein:.0f}г")
+        if fat is not None:
+            macro_parts.append(f"Ж {fat:.0f}г")
+        if carbs is not None:
+            macro_parts.append(f"У {carbs:.0f}г")
+        if macro_parts:
+            lines.append(" · ".join(macro_parts))
+    else:
+        lines.append("(КБЖУ не определились — уточните порцию вручную)")
+
+    builder = InlineKeyboardBuilder()
+    if scan_id:
+        builder.row(
+            CallbackButton(
+                text="🍳 Завтрак",
+                payload=_payload_food_log(scan_id, "breakfast"),
+            ),
+            CallbackButton(
+                text="🍲 Обед",
+                payload=_payload_food_log(scan_id, "lunch"),
+            ),
+        )
+        builder.row(
+            CallbackButton(
+                text="🍽 Ужин",
+                payload=_payload_food_log(scan_id, "dinner"),
+            ),
+            CallbackButton(
+                text="☕ Перекус",
+                payload=_payload_food_log(scan_id, "snack"),
+            ),
+        )
+    return ("\n".join(lines), [builder.as_markup()] if scan_id else [])

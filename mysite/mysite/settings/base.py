@@ -326,6 +326,13 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")  # API-прокси для OpenAI
 OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")  # HTTP-прокси (http://user:pass@host:port)
 
+# === Ayla nutrition API (DRF-246) ===
+# MAX bot calls Ayla `/api/v1/nutrition/internal/*` over HTTP with
+# X-Service-Token + X-External-User-ID headers. Both must be set in
+# dev/staging/prod env; empty values disable food scanner.
+AYLA_BASE_URL = os.getenv("AYLA_BASE_URL", "")
+NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
+
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
 YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")
