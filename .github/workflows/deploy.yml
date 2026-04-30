@@ -115,10 +115,11 @@ jobs:
 
             python manage.py check --deploy || true
             
-            # Перезапускаем Django + Celery
+            # Перезапускаем Django + Celery + MAX-бот
             sudo systemctl restart "$SERVICE"
             sudo systemctl restart formula-tela-worker || echo "⚠️ formula-tela-worker not found"
             sudo systemctl restart formula-tela-beat || echo "⚠️ formula-tela-beat not found"
+            sudo systemctl restart formula-tela-maxbot || echo "⚠️ formula-tela-maxbot not found"
 
       - name: Health check
         run: |
