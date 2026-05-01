@@ -362,3 +362,36 @@ async def test_send_message_openai_failure_raises_unavailable():
             bot_user=bu, message_text="x",
             openai_client=openai_client,
         )
+
+
+# ─── Promise-without-tool retry (FT-fix) ──────────────────────────────────
+
+
+def test_looks_like_promise_without_tool_detects_stems():
+    from maxbot.ai_concierge import _looks_like_promise_without_tool
+    cases = [
+        "Я подберу несколько подходящих услуг. Подождите немного.",  # подбер + подождит
+        "Сейчас гляну свободное время",                              # гляну
+        "Поняла, посмотрим что есть",                                # посмотр
+        "Вот варианты для вас:",                                     # вот вариант
+        "Давайте уточним детали",                                    # давайте уточн
+        "Подождите минуточку",                                       # подождит + минуточк
+        "Уточню и вернусь",                                          # уточню
+        "Помогу выбрать подходящее",                                 # помогу выбрать
+        "Рассмотрим массажи которые подойдут",                       # рассмотр
+    ]
+    for c in cases:
+        assert _looks_like_promise_without_tool(c), f"should match: {c!r}"
+
+
+def test_looks_like_promise_without_tool_skips_normal_text():
+    from maxbot.ai_concierge import _looks_like_promise_without_tool
+    safe = [
+        "Здравствуйте! Чем могу помочь?",
+        "Я отвечаю на вопросы о массаже и SPA в нашем салоне.",
+        "У нас три направления — массаж, лазерная эпиляция и уход за лицом.",
+        "",
+        None,
+    ]
+    for c in safe:
+        assert not _looks_like_promise_without_tool(c), f"should NOT match: {c!r}"
