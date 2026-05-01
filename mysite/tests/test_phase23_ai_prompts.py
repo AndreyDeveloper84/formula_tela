@@ -147,3 +147,41 @@ def test_prompt_short_enough_for_gpt4o_mini():
     # После Sprint 1+2 (T01-T05) + drill-down clarification rules бюджет ~14700 chars
     # (~3700 токенов). 128k context у gpt-4o-mini — лимит чисто чтобы не разрастаться.
     assert len(prompt) < 18000
+
+
+# ─── DRF-248 extra_hint kwarg ──────────────────────────────────────────────
+
+
+def test_render_default_no_extra_hint():
+    from datetime import date
+    from maxbot.ai_prompts import render_system_prompt
+    out = render_system_prompt(
+        today=date(2026, 4, 30), client_name="Маша",
+        bookings_count=0, master_context=_ctx("- m"),
+    )
+    assert "ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ" not in out
+
+
+def test_render_with_extra_hint_renders_advisory_block():
+    from datetime import date
+    from maxbot.ai_prompts import render_system_prompt
+    out = render_system_prompt(
+        today=date(2026, 4, 30), client_name="Маша",
+        bookings_count=0, master_context=_ctx("- m"),
+        extra_hint="У клиента 3 дн. подряд белок ниже нормы.",
+    )
+    assert "ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ" in out
+    assert "белок ниже нормы" in out
+    assert "мягкая подсказка" in out
+
+
+def test_render_whitespace_extra_hint_is_no_op():
+    from datetime import date
+    from maxbot.ai_prompts import render_system_prompt
+    for value in ("", "  \n\t  "):
+        out = render_system_prompt(
+            today=date(2026, 4, 30), client_name="Маша",
+            bookings_count=0, master_context=_ctx("- m"),
+            extra_hint=value,
+        )
+        assert "ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ" not in out

@@ -121,6 +121,18 @@ class SummaryResponse:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class DeficitsResponse:
+    """Cross-domain bridge signal from /internal/deficits/ (DRF-248)."""
+
+    days_observed: int
+    protein_avg_pct_goal: float | None
+    protein_low_streak_days: int
+    hint: str  # may be empty — caller checks before passing to prompt
+    fired_keys: list[str]
+    raw: dict[str, Any]
+
+
 class NutritionClient:
     """Async client. One instance shared by handlers; circuit state is per-instance.
 
@@ -345,6 +357,87 @@ class NutritionClient:
             self._circuit.record_failure(now=now)
             raise NutritionUnavailableError(f"http_{resp.status_code}")
         raise NutritionAPIError(f"http_{resp.status_code}")
+
+    async def weekly_deficits(
+        self,
+        *,
+        external_user_id: str,
+        days: int = 7,
+    ) -> DeficitsResponse:
+        """GET /api/v1/nutrition/internal/deficits/?days=N — DRF-248 bridge signal."""
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/deficits/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers, params={"days": str(days)})
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        if resp.status_code == 200:
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            return DeficitsResponse(
+                days_observed=int(body.get("days_observed") or 0),
+                protein_avg_pct_goal=body.get("protein_avg_pct_goal"),
+                protein_low_streak_days=int(body.get("protein_low_streak_days") or 0),
+                hint=_sanitize_hint(body.get("hint")),
+                fired_keys=list(body.get("fired_keys") or []),
+                raw=body,
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+
+# ─── DRF-248 P1 hint sanitization ──────────────────────────────────────────
+
+
+_HINT_MAX_LEN = 300
+_HINT_INJECTION_MARKERS = (
+    "ignore previous", "ignore above", "disregard previous",
+    "забудь правила", "забудь инструкции", "забудь предыдущие",
+    "system:", "###system", "###user", "###assistant",
+    "</system>", "</user>", "</assistant>",
+)
+
+
+def _sanitize_hint(raw: object) -> str:
+    """P1: блокирует prompt-injection через cross-domain hint.
+
+    Hint попадает прямо в SYSTEM_PROMPT_TEMPLATE → если на стороне Ayla
+    данные подменены (compromised DB / bad ingest), злоумышленник может
+    инъектить инструкции для LLM (jailbreak / disable rules).
+
+    Защита (defence in depth, не серебряная пуля):
+    1. Cap длины — длинная инъекция не пройдёт.
+    2. Блок-лист маркеров «забудь правила» / «system:» / etc — на наличие
+       drop'аем hint целиком (приёма рисковых hint'ов нет, лучше пустой).
+    3. Только str — typed-cast гарантия.
+    """
+    if not raw:
+        return ""
+    text = str(raw).strip()
+    if not text:
+        return ""
+    text = text[:_HINT_MAX_LEN]
+    lowered = text.lower()
+    for marker in _HINT_INJECTION_MARKERS:
+        if marker in lowered:
+            logger.warning(
+                "nutrition_client: discarding suspicious hint (marker=%r)",
+                marker,
+            )
+            return ""
+    return text
 
 
 _SINGLETON: NutritionClient | None = None

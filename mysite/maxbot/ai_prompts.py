@@ -298,7 +298,7 @@ SYSTEM_PROMPT_TEMPLATE = """\
   ❌ Не вызывать show_my_bookings.
 
 Цель: помочь клиенту дойти до записи через ИНСТРУМЕНТЫ.
-"""
+{extra_hint_block}"""
 
 
 def render_system_prompt(
@@ -308,6 +308,7 @@ def render_system_prompt(
     bookings_count: int,
     master_context: MasterContext,
     last_visits: list | None = None,
+    extra_hint: str = "",
 ) -> str:
     """Render system prompt с конкретными значениями context'а.
 
@@ -319,7 +320,17 @@ def render_system_prompt(
         последние 3 успешных визита через бот. Если есть — добавляется
         блок «ИСТОРИЯ КЛИЕНТА» в context, и LLM приветствует по имени
         с упоминанием прошлого визита.
+    extra_hint — DRF-248 cross-domain bridge: optional soft-context block
+        composed by the caller (e.g. nutrition deficit signal). Empty string
+        means no block is rendered. The block is framed as an advisory hint,
+        not a rule, so unrelated questions don't get derailed.
     """
+    extra_hint_text = (extra_hint or "").strip()
+    extra_hint_block = (
+        f"\nДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ (мягкая подсказка, не правило):\n{extra_hint_text}\n"
+        if extra_hint_text
+        else ""
+    )
     return SYSTEM_PROMPT_TEMPLATE.format(
         today=today.isoformat(),
         client_name=client_name.strip() or "клиент",
@@ -327,6 +338,7 @@ def render_system_prompt(
         masters_summary=master_context.summary_text or "(нет активных мастеров)",
         client_history_block=_render_client_history(last_visits or []),
         fewshot_block=_render_fewshot_block(),
+        extra_hint_block=extra_hint_block,
     )
 
 
