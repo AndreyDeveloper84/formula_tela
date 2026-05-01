@@ -178,6 +178,18 @@ async def run_ai_turn(
             text = f"{preamble}\n\n{rendered_text}"
         else:
             text = rendered_text
+    elif _is_promise_without_action(dto.content):
+        # Safety net: LLM написал «сейчас подберу», но не вызвал tool →
+        # клиент получит обещание + пустоту. Принудительно даём ему меню.
+        logger.warning(
+            "ai_assistant: promise-without-action detected, fallback to main menu. "
+            "content=%r", (dto.content or "")[:120],
+        )
+        text = (dto.content or "").strip() + (
+            "\n\n(Уточните, что именно подобрать — выберите из меню или "
+            "опишите подробнее.)"
+        )
+        action_attachments = []
     else:
         text = dto.content
         action_attachments = []
@@ -225,6 +237,29 @@ async def run_ai_turn(
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
+
+
+_PROMISE_PATTERNS = (
+    "сейчас подберу", "подобрала", "подобрал", "подбираю",
+    "вот варианты", "вот кто подойдёт", "вот кто подходит",
+    "рассмотрим", "рассмотрите", "посмотрим", "посмотрите",
+    "сейчас гляну", "гляну свободное", "гляну доступн",
+    "давайте уточним", "давай уточним", "давайте подберём",
+    "записываю — проверьте",
+)
+
+
+def _is_promise_without_action(content: str | None) -> bool:
+    """LLM написал тёплую преамбулу-обещание, но НЕ вызвал tool_call.
+
+    Detect-by-substring (lower-case): такая ситуация = silent failure для
+    клиента (получит «сейчас подберу...» и тишину). Возвращаем True если
+    content содержит маркер обещания → handler покажет fallback с меню.
+    """
+    if not content:
+        return False
+    text = content.lower().strip()
+    return any(marker in text for marker in _PROMISE_PATTERNS)
 
 
 async def _create_bot_inquiry(*, user_id: int, full_name: str, chat_id: int,
