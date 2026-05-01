@@ -388,7 +388,7 @@ class NutritionClient:
                 days_observed=int(body.get("days_observed") or 0),
                 protein_avg_pct_goal=body.get("protein_avg_pct_goal"),
                 protein_low_streak_days=int(body.get("protein_low_streak_days") or 0),
-                hint=str(body.get("hint") or ""),
+                hint=_sanitize_hint(body.get("hint")),
                 fired_keys=list(body.get("fired_keys") or []),
                 raw=body,
             )
@@ -396,6 +396,48 @@ class NutritionClient:
             self._circuit.record_failure(now=now)
             raise NutritionUnavailableError(f"http_{resp.status_code}")
         raise NutritionAPIError(f"http_{resp.status_code}")
+
+
+# ─── DRF-248 P1 hint sanitization ──────────────────────────────────────────
+
+
+_HINT_MAX_LEN = 300
+_HINT_INJECTION_MARKERS = (
+    "ignore previous", "ignore above", "disregard previous",
+    "забудь правила", "забудь инструкции", "забудь предыдущие",
+    "system:", "###system", "###user", "###assistant",
+    "</system>", "</user>", "</assistant>",
+)
+
+
+def _sanitize_hint(raw: object) -> str:
+    """P1: блокирует prompt-injection через cross-domain hint.
+
+    Hint попадает прямо в SYSTEM_PROMPT_TEMPLATE → если на стороне Ayla
+    данные подменены (compromised DB / bad ingest), злоумышленник может
+    инъектить инструкции для LLM (jailbreak / disable rules).
+
+    Защита (defence in depth, не серебряная пуля):
+    1. Cap длины — длинная инъекция не пройдёт.
+    2. Блок-лист маркеров «забудь правила» / «system:» / etc — на наличие
+       drop'аем hint целиком (приёма рисковых hint'ов нет, лучше пустой).
+    3. Только str — typed-cast гарантия.
+    """
+    if not raw:
+        return ""
+    text = str(raw).strip()
+    if not text:
+        return ""
+    text = text[:_HINT_MAX_LEN]
+    lowered = text.lower()
+    for marker in _HINT_INJECTION_MARKERS:
+        if marker in lowered:
+            logger.warning(
+                "nutrition_client: discarding suspicious hint (marker=%r)",
+                marker,
+            )
+            return ""
+    return text
 
 
 _SINGLETON: NutritionClient | None = None
