@@ -277,10 +277,17 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=3, minute=0),
     },
     # Phase 2 Learning Roadmap: LLM meta-analysis последних 20 неудавшихся диалогов
-    # → patterns + prompt_additions → Telegram-отчёт администратору.
+    # → patterns + prompt_additions → Telegram-отчёт администратору + auto-PR.
     "weekly-analyze-failed-conversations-monday-6am-msk": {
         "task": "services_app.tasks.analyze_failed_conversations",
         "schedule": crontab(hour=6, minute=0, day_of_week="monday"),
+    },
+    # Phase 2.4 «Auto-tune #1»: курирует success-диалоги в few-shot примеры,
+    # которые render_system_prompt подмешивает в prompt → бот учится стилю
+    # без модели fine-tuning'а.
+    "weekly-collect-success-examples-sunday-22-msk": {
+        "task": "services_app.tasks.collect_success_examples",
+        "schedule": crontab(hour=22, minute=0, day_of_week="sunday"),
     },
     # N2 reminder system — каждые 15 минут отправлять PENDING reminder'ы.
     "maxbot-send-due-reminders-every-15min": {

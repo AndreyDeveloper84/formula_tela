@@ -24,6 +24,7 @@ from .models import (
     HelpArticle,
     BotInquiry,
     Conversation,
+    FewShotExample,
     Message,
     ServiceBlock,
     ServiceMedia,
@@ -913,4 +914,48 @@ class MessageAdmin(admin.ModelAdmin):
         return text[:120] + ("\u2026" if len(text) > 120 else "")
     display_preview.short_description = "\u0422\u0435\u043a\u0441\u0442"
 
+
+# \u2500\u2500 Phase 2.4 Auto-tune #1: FewShotExample \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+
+@admin.register(FewShotExample)
+class FewShotExampleAdmin(admin.ModelAdmin):
+    """\u041a\u0443\u0440\u0438\u0440\u0443\u0435\u043c\u044b\u0435 success-\u043f\u0430\u0440\u044b \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0442 \u0432 prompt \u0431\u043e\u0442\u0430."""
+    list_display = ("created_at", "is_active", "user_preview", "assistant_preview",
+                    "source_short")
+    list_filter = ("is_active", "created_at")
+    list_editable = ("is_active",)
+    search_fields = ("user_text", "assistant_text")
+    readonly_fields = ("id", "created_at", "source_conversation")
+    fields = ("id", "is_active", "user_text", "assistant_text",
+              "source_conversation", "created_at")
+    actions = ["activate", "deactivate"]
+
+    def has_add_permission(self, request):
+        # \u0421\u043e\u0437\u0434\u0430\u044e\u0442\u0441\u044f \u0442\u043e\u043b\u044c\u043a\u043e cron'\u043e\u043c, \u0432\u0440\u0443\u0447\u043d\u0443\u044e \u043d\u0435 \u043d\u0443\u0436\u043d\u043e
+        return False
+
+    def user_preview(self, obj):
+        t = obj.user_text or ""
+        return t[:60] + ("\u2026" if len(t) > 60 else "")
+    user_preview.short_description = "\u041a\u043b\u0438\u0435\u043d\u0442"
+
+    def assistant_preview(self, obj):
+        t = obj.assistant_text or ""
+        return t[:80] + ("\u2026" if len(t) > 80 else "")
+    assistant_preview.short_description = "\u0411\u043e\u0442"
+
+    def source_short(self, obj):
+        return str(obj.source_conversation_id)[:8] if obj.source_conversation_id else "\u2014"
+    source_short.short_description = "\u0414\u0438\u0430\u043b\u043e\u0433"
+
+    @admin.action(description="\u0410\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435")
+    def activate(self, request, queryset):
+        n = queryset.update(is_active=True)
+        self.message_user(request, f"\u0410\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u043d\u043e: {n}")
+
+    @admin.action(description="\u0414\u0435\u0430\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435")
+    def deactivate(self, request, queryset):
+        n = queryset.update(is_active=False)
+        self.message_user(request, f"\u0414\u0435\u0430\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u043d\u043e: {n}")
 
