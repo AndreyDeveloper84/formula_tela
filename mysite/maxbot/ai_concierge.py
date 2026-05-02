@@ -160,6 +160,42 @@ def _compose_messages(
     return messages
 
 
+_PROMISE_STEMS = (
+    # «подберу/подбираю/подобрала/подбери...» — все варианты
+    "подбер", "подбираю", "подбирает", "подобра",
+    # «посмотрю/посмотрим/посмотрите...»
+    "посмотр",
+    # «гляну/поглядим...»
+    "гляну", "погляд",
+    # явный wait — без tool это всегда bug
+    "подождит", "подожди", "минуточк", "минутк", "одну минут",
+    "одну секунд", "секундочк",
+    # «вот варианты», «вот кто подойдёт»
+    "вот вариант", "вот кто",
+    # «давайте уточним/подберём»
+    "давайте уточн", "давай уточн", "давайте подбер", "давай подбер",
+    # «уточню/найду/помогу выбрать»
+    "уточню", "найду подходящ", "помогу выбрать", "помогу подобрать",
+    # «записываю — проверьте»
+    "записываю — проверьте", "записываю - проверьте",
+    # «рассмотрим/рассмотрите»
+    "рассмотр",
+)
+
+
+def _looks_like_promise_without_tool(content: str | None) -> bool:
+    """Stem-based detect: assistant написал обещание-к-действию без tool_call.
+
+    Используется в send_message для retry с tool_choice="required" и в
+    handler ai_assistant для last-resort fallback. Stem-based — переживает
+    разные формы глагола («подберу/подбираю/подобрал»).
+    """
+    if not content:
+        return False
+    text = content.lower().strip()
+    return any(stem in text for stem in _PROMISE_STEMS)
+
+
 async def _parse_completion(completion, master_context: MasterContext):
     """Returns (content, tool_call_raw, action_type, action_data).
 
@@ -301,6 +337,37 @@ async def send_message(
     content, tool_call_raw, action_type, action_data = await _parse_completion(
         completion, master_context,
     )
+
+    # 8.1 Retry с tool_choice="required" если LLM написал promise-content
+    # без tool_call (silent failure). Bot повторяет тот же запрос форсируя
+    # модель эмиттить tool. Cost: +1 LLM call (~$0.0001), latency +1-2s,
+    # но клиент получает рабочий ответ вместо тишины.
+    if not action_type and _looks_like_promise_without_tool(content):
+        logger.warning(
+            "ai_concierge: promise-without-tool detected, retrying with "
+            "tool_choice=required. content=%r", (content or "")[:120],
+        )
+        try:
+            retry_completion = await openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=llm_messages,
+                tools=TOOL_DEFINITIONS,
+                tool_choice="required",
+            )
+            r_content, r_tc, r_action_type, r_action_data = await _parse_completion(
+                retry_completion, master_context,
+            )
+            if r_action_type:
+                # Сохраняем preamble от 1-го вызова если он был, action — от 2-го
+                content = (content or "").strip() or r_content
+                tool_call_raw = r_tc
+                action_type = r_action_type
+                action_data = r_action_data
+                latency_ms = int((time.monotonic() - started) * 1000)
+                # Перезаписываем usage чтобы учесть retry-токены
+                usage = getattr(retry_completion, "usage", None)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ai_concierge: retry with tool_choice=required failed: %s", exc)
 
     # 8.5. Enrichment через YClients (slots/bookings) — handler'ы side-effect-free,
     # реальный fetch здесь чтобы action_data.slots/bookings были готовы для render.
