@@ -20,12 +20,37 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from asgiref.sync import sync_to_async
 from django.core.management.base import BaseCommand, CommandError
+
+
+# Windows PowerShell: cp1251 stdout не умеет emoji/⚠/≤ — переключаемся в UTF-8.
+# На Linux/macOS это no-op (там уже UTF-8).
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# Глушим шумные DEBUG-логи (openai/httpcore/httpx/mcp/asyncio) при запуске
+# simulate_chat — иначе на каждый турн вываливается ~5KB JSON prompt'а.
+# AI Concierge собственные WARNING/ERROR/INFO остаются видны.
+for noisy_logger in (
+    "openai", "openai._base_client",
+    "httpcore", "httpx",
+    "mcp", "mcp.client", "mcp.server",
+    "asyncio",
+    "urllib3", "urllib3.connectionpool",
+):
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 
 DEFAULT_TEST_USER_ID = 99999

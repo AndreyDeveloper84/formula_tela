@@ -13,8 +13,18 @@ staticfiles/
 /media/
 /data/
 /*.log
+**/*.log
 *.sqlite3
 db.sqlite3
+
+# Локальные дампы / fixture exports — не коммитим (могут содержать чувствительные данные)
+prod_fixture.json
+**/prod_fixture.json
+data_dump*.json
+
+# Локальные deploy-скрипты с захардкоженными secrets — не коммитим
+infra/deploy_dev_bot.sh
+infra/deploy_*_local.sh
 
 # Environment variables
 # ВАЖНО: паттерн .env.* слишком широкий и исключает .env.example — не используй его.

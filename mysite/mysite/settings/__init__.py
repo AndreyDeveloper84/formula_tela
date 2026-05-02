@@ -14,8 +14,13 @@ from pathlib import Path as _Path
 try:
     from dotenv import load_dotenv as _load_dotenv
     _settings_dir = _Path(__file__).resolve().parent          # .../mysite/settings
-    _env_file = _settings_dir.parent.parent.parent / '.env'   # .../formula_tela/.env
-    _load_dotenv(_env_file, override=False)                    # override=False: process env приоритетнее
+    _repo_root = _settings_dir.parent.parent.parent           # .../formula_tela/
+    _load_dotenv(_repo_root / '.env', override=False)         # override=False: process env приоритетнее
+    # .env.local — локальные dev-overrides (не коммитится). Если есть —
+    # перекрывает значения из .env. На проде .env.local отсутствует, no-op.
+    _local_env = _repo_root / '.env.local'
+    if _local_env.exists():
+        _load_dotenv(_local_env, override=True)
 except Exception:
     pass  # python-dotenv не установлен или .env нет — не страшно
 
