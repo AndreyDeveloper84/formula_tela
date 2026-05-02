@@ -22,6 +22,9 @@ PAYLOAD_MENU_FAQ = "cb:menu:faq"
 PAYLOAD_BACK = "cb:back"
 PAYLOAD_MENU_ASK = "cb:menu:ask"  # Кнопка «❓ Задать вопрос» (T-06c)
 PAYLOAD_MENU_MY_BOOKINGS = "cb:menu:my_bookings"  # Кнопка «📋 Мои записи»
+PAYLOAD_MENU_NUTRITION = "cb:menu:nutrition"  # Кнопка «🍎 Дневник питания» (Phase 3 T01)
+PAYLOAD_NUTRITION_TRY_NOW = "cb:nutrition:try_now"  # «📸 Попробовать сразу» (Phase 3)
+PAYLOAD_NUTRITION_START_ANKETA = "cb:nutrition:start_anketa"  # «📝 Настроить под себя» (Phase 3)
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -41,7 +44,13 @@ MAX_KEYBOARD_ROWS = 29
 
 
 def main_menu_keyboard():
-    """Главное меню — 6 кнопок в 4 ряда."""
+    """Главное меню — 7 кнопок в 5 рядов.
+
+    Phase 3 T01: добавлена кнопка «🍎 Дневник питания» отдельным рядом
+    между «Мои записи» и «Контакты». Inline keyboard через `attachments=`
+    в каждом ответе — это «floating menu» паттерн (см. menu_state.py).
+    Persistent reply-keyboard в MAX SDK не поддерживается — только inline.
+    """
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="📅 Записаться", payload=PAYLOAD_MENU_BOOK),
@@ -51,11 +60,39 @@ def main_menu_keyboard():
         CallbackButton(text="📋 Мои записи", payload=PAYLOAD_MENU_MY_BOOKINGS),
     )
     builder.row(
+        CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
+    )
+    builder.row(
         CallbackButton(text="📞 Контакты", payload=PAYLOAD_MENU_CONTACTS),
         CallbackButton(text="❓ Вопросы", payload=PAYLOAD_MENU_FAQ),
     )
     builder.row(
         CallbackButton(text="💬 Задать вопрос", payload=PAYLOAD_MENU_ASK),
+    )
+    return builder.as_markup()
+
+
+def nutrition_welcome_keyboard():
+    """Welcome screen дневника питания — 2 кнопки.
+
+    [📸 Попробовать сразу]   — degraded mode без анкеты (defaults норма)
+    [📝 Настроить под себя]  — анкета FSM (T04)
+
+    Phase 3 T01: обе кнопки сейчас ведут на заглушки «Скоро будет»,
+    реальные flow в T03 (food scanner refactor) и T04 (анкета).
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📸 Попробовать сразу", payload=PAYLOAD_NUTRITION_TRY_NOW),
+    )
+    builder.row(
+        CallbackButton(
+            text="📝 Настроить под себя (30 сек)",
+            payload=PAYLOAD_NUTRITION_START_ANKETA,
+        ),
+    )
+    builder.row(
+        CallbackButton(text="← Назад в меню", payload=PAYLOAD_BACK),
     )
     return builder.as_markup()
 
