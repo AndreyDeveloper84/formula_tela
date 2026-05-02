@@ -1,0 +1,89 @@
+name: Deploy DEV bot (SSH)
+
+# Auto-deploy MAX dev-бота на push в dev-ветку.
+#
+# Что делает:
+#   SSH к app.penza.taxi → bash /tmp/deploy_dev_bot.sh
+#
+# Скрипт идемпотентен: git fetch + reset --hard origin/dev → pip install →
+# migrate → systemctl restart formula-tela-maxbot-dev → re-subscribe webhook.
+#
+# Что НЕ затрагивается:
+#   - prod (formula-tela-maxbot.service, formula_tela/, mysite_prod DB) — другой
+#     systemd unit, другой webhook path, другой токен.
+#   - staging web (formula_tela_stg/) — отдельный workflow deploy-staging.yml.
+#   - dev DB (mysite_dev) — снапшот сделан, миграции применяются на копию.
+#
+# Secrets используются те же что для deploy-staging:
+#   SSH_HOST, SSH_USER, SSH_KEY — доступ к app.penza.taxi через taximeter.
+#
+# Скрипт `deploy_dev_bot.sh` лежит в /tmp/ на сервере (положен вручную ранее).
+# Если когда-то слетит — нужно `scp infra/deploy_dev_bot.sh taximeter@app.penza.taxi:/tmp/`
+# (но в репо его НЕТ — содержит secrets, см. .gitignore).
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      # Триггерим только на изменения связанные с ботом — экономим минуты Actions
+      # и не дёргаем ребилд при изменении web-only файлов (templates, agents).
+      - 'mysite/maxbot/**'
+      - 'mysite/services_app/models.py'
+      - 'mysite/services_app/migrations/**'
+      - 'mysite/tests/maxbot/**'
+      - 'mysite/tests/fixtures/ayla_mock.py'
+      - 'requirements.txt'
+      - '.github/workflows/deploy-dev-bot.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  # Отдельная группа от staging — можно параллельно. cancel-in-progress=true:
+  # если 3 push'а подряд — деплой только последнего.
+  group: dev-bot-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Deploy dev-bot via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: 22
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 10m
+          # Скрипт сам логирует все шаги. На fail (set -euo pipefail внутри) —
+          # бот остаётся со старым кодом, потому что reset --hard уже к новому
+          # tip'у; но systemctl restart обновит на новый код только если migrate
+          # прошёл. В худшем случае — runtime exception, журнал в systemd.
+          script: |
+            bash /tmp/deploy_dev_bot.sh
+
+      - name: Smoke check — bot is running
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: 22
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 1m
+          script: |
+            # Проверяем что bot процесс жив через 5 секунд после restart.
+            sleep 5
+            STATUS=$(systemctl is-active formula-tela-maxbot-dev || true)
+            if [ "$STATUS" != "active" ]; then
+              echo "❌ formula-tela-maxbot-dev is not active (status=$STATUS)"
+              sudo journalctl -u formula-tela-maxbot-dev --since '60 seconds ago' --no-pager | tail -30
+              exit 1
+            fi
+            echo "✅ formula-tela-maxbot-dev: active"
+            # Последний коммит на сервере должен совпадать с GITHUB_SHA
+            cd /home/taximeter/mysite/formula_tela_dev
+            DEPLOYED_SHA=$(git rev-parse HEAD)
+            echo "Deployed SHA: $DEPLOYED_SHA"
