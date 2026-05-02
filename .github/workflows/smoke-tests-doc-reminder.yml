@@ -1,0 +1,56 @@
+name: Smoke-tests doc reminder
+
+# При PR с правкой prompt/handler — напоминаем обновить docs/bot_smoke_tests.md.
+# Не блокирует merge, только постит комментарий.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'mysite/maxbot/ai_prompts.py'
+      - 'mysite/maxbot/ai_tool_handlers.py'
+      - 'mysite/maxbot/ai_concierge.py'
+      - 'mysite/maxbot/handlers/ai_assistant.py'
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if smoke-tests doc was updated
+        id: check
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          BOT_FILES=$(echo "$CHANGED" | grep -E '^(mysite/maxbot/(ai_prompts|ai_tool_handlers|ai_concierge)\.py|mysite/maxbot/handlers/ai_assistant\.py)$' || true)
+          DOC=$(echo "$CHANGED" | grep -E '^docs/bot_smoke_tests\.md$' || true)
+
+          if [ -n "$BOT_FILES" ] && [ -z "$DOC" ]; then
+            echo "needs_reminder=true" >> "$GITHUB_OUTPUT"
+            echo "Bot files changed but smoke-tests doc not updated"
+            echo "$BOT_FILES"
+          else
+            echo "needs_reminder=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post reminder comment
+        if: steps.check.outputs.needs_reminder == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            🤖 **Напоминание:** этот PR трогает prompt/handler/dispatcher AI Concierge, но `docs/bot_smoke_tests.md` не обновлён.
+
+            Если правка добавляет новое поведение, edge case, или исправляет регрессию — **добавь сценарий** в smoke-tests doc, чтобы при следующем подобном баге у нас был тестовый кейс.
+
+            Если правка чисто внутренняя (рефакторинг, не меняет UX) — можно проигнорировать это напоминание.
+
+            См. структуру: `docs/bot_smoke_tests.md` → §12 Critical features (для срочных regression checks) или соответствующая секция.
