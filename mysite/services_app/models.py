@@ -1126,6 +1126,38 @@ class BotUser(models.Model):
         ),
     )
 
+    # Phase 3 — Nutrition Tracker (T10).
+    timezone = models.CharField(
+        "Timezone (IANA)",
+        max_length=64, default="Europe/Moscow", blank=True,
+        help_text="IANA timezone для quiet hours и push-времени дневного отчёта.",
+    )
+    health_flags = models.JSONField(
+        "Health flags (cache)",
+        default=dict, blank=True,
+        help_text=(
+            "Кэш health-флагов из Ayla profile для system prompt: "
+            'pregnant, breastfeeding, diabetes_t1/t2, prediabetes, hypertension, '
+            'gi_problems, thyroid, menopause, eating_disorder, meds, allergies (list), '
+            'allergies_vague, *_skipped. Sync при upsert профиля в Ayla.'
+        ),
+    )
+    nutrition_onboarded_at = models.DateTimeField(
+        "Nutrition анкета пройдена",
+        null=True, blank=True,
+        help_text="Timestamp когда пользователь успешно завершил анкету (complete=true).",
+    )
+    nutrition_settings = models.JSONField(
+        "Nutrition UI settings",
+        default=dict, blank=True,
+        help_text=(
+            'JSON: {"daily_report_time": "21:00", "daily_report_enabled": true, '
+            '"water_reminders_enabled": false, "evening_inline_shown_at": "...", '
+            '"food_disclaimer_shown_at": "...", "alcohol_hint_shown_at": "...", '
+            '"daily_report": {date, content, generated_at} cache}'
+        ),
+    )
+
     class Meta:
         verbose_name = "Пользователь MAX-бота"
         verbose_name_plural = "Пользователи MAX-бота"
