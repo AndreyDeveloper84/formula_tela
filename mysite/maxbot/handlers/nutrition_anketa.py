@@ -265,7 +265,7 @@ async def on_age_text(event: MessageCreated, context: MemoryContext) -> None:
         await event.bot.send_message(
             chat_id=chat_id,
             text=(
-                "Не понял возраст — напиши число от 16 до 99 (например, 35) "
+                "Не поняла возраст — напиши число от 16 до 99 (например, 35) "
                 "или нажми «⏭ Пропустить»."
             ),
             attachments=[keyboards.anketa_skip_keyboard()],
