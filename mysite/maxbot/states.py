@@ -19,3 +19,27 @@ class AskStates(StatesGroup):
     После получения ответа state очищается (one-shot).
     """
     awaiting_question = State()
+
+
+class NutritionAnketaStates(StatesGroup):
+    """FSM TIER-A анкеты дневника питания (Phase 3.1 Part 1).
+
+    Запускается из callback PAYLOAD_NUTRITION_START_ANKETA (entry handler).
+    После complete_tier_a → BotUser.nutrition_onboarded_at установлен,
+    Ayla профиль создан. TIER-B (health screening) — отдельный sub-flow,
+    НЕ в этом FSM (запускается lazy перед первым advice-моментом из
+    ai_assistant, см. Design Doc v2 §4.5).
+
+    Все шаги шлют PATCH в Ayla `POST /profile/` с complete=false; последний
+    (complete_tier_a) — с complete=true.
+    """
+    awaiting_consent = State()       # дисклеймер 152-ФЗ обработки ПД для анкеты
+    awaiting_gender = State()
+    awaiting_age = State()           # text-input или Skip-кнопка
+    awaiting_height = State()        # text-input или Skip
+    awaiting_weight = State()        # text-input или Skip
+    awaiting_goal = State()          # 3 кнопки lose/maintain/gain
+    awaiting_pace = State()          # для goal=lose: gentle/moderate
+    awaiting_gain_clarify = State()  # для goal=gain: gain/tone
+    awaiting_bmi_ladder = State()    # если BMI<18.5 + goal=lose
+    complete = State()               # рендер финального экрана с нормой
