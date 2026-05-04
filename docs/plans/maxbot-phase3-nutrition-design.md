@@ -1,9 +1,20 @@
 # MAX-бот Phase 3 — Nutrition Tracker (UX & Architecture Design)
 
-**Статус**: Design spec, готов к декомпозиции в план имплементации
+**Статус**: Design spec v2, готов к декомпозиции в план имплементации
 **Контекст**: Расширение существующего бота «Формула тела» (не отдельный бот) функцией дневника питания, учёта воды и AI-инсайтов на основе данных
 **Аудитория**: женщины 35–45, Пенза, существующие/потенциальные клиенты салона
-**Дата**: 2026-05-01
+**Дата**: 2026-05-04 (v2); v1 от 2026-05-01
+
+## Changelog
+
+**v2 (2026-05-04)** — интегрированы 4 правки из `maxbot-phase3-reconciliation.md` после reconciliation спеки UX v1 от продукта:
+
+1. §4 (анкета) — разделена на **TIER-A** (5 шагов, MVP Phase 3.1) и **TIER-B** (health screening, lazy on-demand перед первым советом, Phase 3.2). Принцип №4 §1 («screening = gate для советов, не для базового учёта») доведён до логического конца.
+2. §5.3 (формат фото-ответа) — добавлены footer-buttons `[💧 Добавить воду][📊 Посмотреть день]` после успешного `add_food_entry` (next-step nudging из спеки UX v1).
+3. §10.2 + §10.9 (нуджи) — `cross_promo` расширен с 1 до 5 data-driven триггеров (low_water→лимфодренаж, meal_skips→антистресс, после достижения цели→поддерживающий, free-text «спина болит»→массаж спины).
+4. §16 (open questions) — добавлены: AI Аватар → Phase 4 (требует 152-ФЗ биометрии + юр-проверки рекламы медрезультатов); `CrossPromoRule` модель vs hard-code — решается при writing-plan; copy-polish для exact welcome-текстов отложен на §17 шаг 4 (отдельный этап после каркаса).
+
+Решения, которые **не** изменены reconciliation'ом (остаются как в v1): 3-кнопочное главное меню §4.1, edit-message loading §5.1, persistent reply-keyboard §7.1, backend в Ayla / бот=thin client (см. `maxbot-phase3-ayla-spec.md`), 8-типов нудж-системы с caps + quiet hours.
 
 ---
 
@@ -325,16 +336,28 @@ Hybrid (C): минималистичный welcome + 2 кнопки.
 
 ### 4.3 Анкета — FSM `NutritionAnketaStates`
 
+**Анкета разделена на 2 уровня (v2 после reconciliation):**
+
+- **TIER-A (Phase 3.1 MVP)** — 5 шагов, собирает базовые антропометрические данные для расчёта норм. Запускается из `[📝 Настроить под себя (30 сек)]` на welcome-экране дневника. Без health screening.
+- **TIER-B (Phase 3.2)** — health screening, **lazy on-demand**: НЕ запускается заранее, а вызывается перед первым моментом, когда AI собирается выдать персональный совет (БЖУ, добавки, weekly insight). Реализует принцип §1 №4 «*health screening = gate для советов, не для базового учёта*».
+
+В TIER-A расчёт норм безопасен: BMR/ккал/БЖУ/water_ml считаются из gender/age/height/weight/goal без override на pregnancy/breastfeeding/eating_disorder. AI в TIER-A работает в **degraded-advice mode** — отвечает на вопросы, но НЕ выдаёт персональные рекомендации до прохождения TIER-B (или явного отказа от советов).
+
 ```python
 class NutritionAnketaStates(StatesGroup):
-    consent = State()  # disclaimer ack
+    # ─── TIER-A (Phase 3.1 MVP) ─────────────────────────────────────
+    consent = State()           # disclaimer ack — 152-ФЗ для базовой обработки
     gender = State()
     age = State()
     height = State()
     weight = State()
     goal = State()
-    goal_pace = State()        # для goal=lose
+    goal_pace = State()         # для goal=lose
     goal_gain_clarify = State() # для goal=gain (набрать vs подтянуть)
+    complete_tier_a = State()   # рассчитываем норму, разрешаем фото
+
+    # ─── TIER-B (Phase 3.2, lazy on-demand) ─────────────────────────
+    health_consent = State()    # отдельный consent для health-data сбора
     health_repro_pregnant = State()
     health_repro_breastfeeding = State()
     health_chronic_diabetes = State()
@@ -343,11 +366,29 @@ class NutritionAnketaStates(StatesGroup):
     health_allergies = State()
     health_allergies_text = State()
     health_meds = State()
-    health_menopause = State()       # условный: ж 45+
-    complete = State()
+    health_menopause = State()      # условный: ж 45+
+    complete_tier_b = State()
 ```
 
-**Прогресс-бар:** `● ● ○ ○` (точки U+25CF/U+25CB), 4 шага основных, sub-progress внутри health screening не показываем.
+**TIER-B trigger conditions** (любое → AI инициирует переход в `health_consent`):
+
+1. AI готов вернуть `recommend_doctor_visit` или `suggest_salon_service` tool (требует health context).
+2. AI готов выдать advice-нудж типа `pattern_detected` / `health_concern_*`.
+3. Free-text юзера содержит health-сигналы: «*беременн*», «*кормлю*», «*срыв*», «*ненавижу свой вес*», «*диабет*», «*давление*» — AI **не отвечает с advice**, а зовёт в screening:
+   ```
+   🤖 Хочу подсказать аккуратно — но сначала
+      пара уточнений (15 секунд), чтобы
+      совет был безопасным.
+
+      [Окей] [Не нужно, понятно так]
+   ```
+4. Юзер сам пишет «*давай настрою советы*» / «*хочу персональные рекомендации*» — explicit opt-in.
+
+`[Не нужно, понятно так]` → ставит `health_consent_declined: ts` в `BotUser.health_flags`. AI остаётся в degraded-advice mode forever (до явного reset).
+
+**Прогресс-бар:**
+- TIER-A: `● ● ○ ○ ○` (5 точек, U+25CF/U+25CB) — gender/age/height/weight/goal.
+- TIER-B: НЕ показываем прогресс-бар (sub-flow по триггеру, длина варьируется условно от menopause-экрана и multi-select toggle'ов).
 
 **Парсеры (`maxbot/ai_parsers.py`):** гибрид regex (95%) → LLM-fallback (5%) → sentinel `"REFUSED"` для явного отказа («*не скажу*», «*🤷*»).
 
@@ -357,9 +398,9 @@ class NutritionAnketaStates(StatesGroup):
 
 - 3 кнопки на главном: `[⬇ Похудеть] [➡ Держать вес] [⬆ Набрать / подтянуть фигуру]`
 - Темп: только 2 опции — `[🐢 Спокойный (-10%)]` и `[⚖️ Средний (-15%)]`. **«Быстрый» (-20%) скрыт за `/настройки → темп → пользовательский`** (safe by default, expert mode hidden).
-- BMI < 18.5 → soft warning ladder с 3 кнопками: `[Хочу к врачу] [Поменять на «держать»] [Всё равно худеть]`. Третья кнопка ставит `bmi_warning_overridden: ts`. **Кнопка «*Хочу к врачу*» НЕ ведёт в салон** — поликлиника / эндокринолог.
+- **BMI < 18.5 → soft warning ladder остаётся в TIER-A** (видим weight + height в TIER-A, можем посчитать BMI без health-flags). 3 кнопки: `[Хочу к врачу] [Поменять на «держать»] [Всё равно худеть]`. Третья кнопка ставит `bmi_warning_overridden: ts`. **Кнопка «*Хочу к врачу*» НЕ ведёт в салон** — поликлиника / эндокринолог.
 - Goal=gain → уточнение «*Набрать вес / Подтянуть фигуру*». Подтянуть → goal=tone, +protein 1.6-1.8 г/кг + cross-promo CTA в финале.
-- Pregnancy/breastfeeding в шаге 4 → **прозрачное переопределение** цели:
+- **Pregnancy/breastfeeding override живёт в TIER-B** (после reconciliation v2 — раньше был в шаге 4 анкеты). Если юзер прошёл только TIER-A с goal=lose, то базовый расчёт ккал применяется без override. При первом advice-моменте AI задаёт TIER-B → если flag всплывает в screening → **прозрачное переопределение** цели:
   ```
   Учла важное:
   • Беременность → дефицит небезопасен.
@@ -367,14 +408,16 @@ class NutritionAnketaStates(StatesGroup):
   
   [Понятно, продолжаем]   [Передумала]
   ```
-  «Передумала» — возврат в шаг 4 для снятия флага.
-- BMR floor ladder: средний → спокойный → maintain. Каждый шаг с явным объяснением через метафору BMR без термина: «*ниже того, что нужно организму чтобы дышать и думать*».
+  «Передумала» — возврат в `health_repro_pregnant` для снятия флага.
+- BMR floor ladder: средний → спокойный → maintain. Каждый шаг с явным объяснением через метафору BMR без термина: «*ниже того, что нужно организму чтобы дышать и думать*». Применяется в TIER-A.
 
-### 4.5 Health screening (3d) — 6 экранов sequential β
+### 4.5 Health screening (TIER-B, lazy on-demand) — 6 экранов sequential β
+
+**Запуск:** не из welcome-экрана дневника, а по trigger conditions из §4.3 (AI готов выдать совет / health-сигнал в free-text / explicit opt-in юзера).
 
 | Экран | Кнопки | Critical |
 |---|---|---|
-| 0 — Consent | `[✓ Понятно, продолжаем] [Не сейчас, без советов]` | Кнопка отказа обязательна (152-ФЗ). Без ack → AI в degraded mode (нет советов). |
+| 0 — Consent | `[✓ Понятно, продолжаем] [Не сейчас, без советов]` | Кнопка отказа обязательна (152-ФЗ). Без ack → AI в degraded mode (нет советов). Ack пишется в `nutrition_disclaimer_acked` + флаг `health_consent_declined` если отказ. |
 | 1 — Беременность | `[Да] [Нет]` | **БЕЗ `[Пропустить]`** — неопределённость опаснее любого ответа |
 | 1b — ГВ | `[Да] [Нет] [⏭ Пропустить]` | |
 | 2 — Диабет | `[Нет] [1 типа] [2 типа] [Преддиабет]` | **БЕЗ `[Пропустить]`** |
@@ -385,11 +428,12 @@ class NutritionAnketaStates(StatesGroup):
 
 **Edit-on-tap для 2b мульти-выбора** — race-condition guard через Redis-mutex per-user; visual feedback `bot.send_action(typing)` мгновенный.
 
+**После TIER-B complete:** если выявлены override-флаги (pregnancy/breastfeeding/eating_disorder), то Ayla `POST /profile/` пересчитывает нормы с goal override (см. `maxbot-phase3-ayla-spec.md` §1.2 server-side обязанности 2-4) и возвращает `overrides_applied[]`. Бот рендерит блок «*Учла важное*» из этого массива (как в §4.6 финале анкеты, но теперь **после** первого advice-момента, не сразу после регистрации).
+
 ### 4.6 Финал анкеты
 
-Два сообщения через 800ms `typing`:
+**TIER-A complete** — одно сообщение через 800ms `typing`:
 
-**Сообщение 1:**
 ```
 Готово ✓
 
@@ -397,23 +441,30 @@ class NutritionAnketaStates(StatesGroup):
    Б 110 / Ж 50 / У 145
    💧 1900 мл воды
 
-Учла важное:
-• Беременность → цель «держать», +200 ккал, +25 г белка, +фолиевая
-• Аллергия на лактозу → исключаю из советов
-
 [📸 Сфоткать первый приём]
 ```
 
-**Сообщение 2 (только если goal=tone или сильный antic-сигнал):**
-```
-💡 Питание × салон
-Антицеллюлитный массаж усиливает
-эффект в 2–3 раза. Рассказать?
+Без блока «*Учла важное*» — health-флагов ещё нет. **Cross-promo сообщение НЕ показывается на этом этапе** — только при commitment 21+ дней (см. §10.2 cross_promo trigger), не сразу после анкеты. Это data-driven принцип §1 №8.
 
-[Расскажи →]   [Не сейчас]
+**TIER-B complete** — после lazy health screening:
+
+Бот показывает обновлённую норму **только если изменилась** (override от Ayla `POST /profile/` сработал). Сообщение через 800ms `typing`:
+
+```
+Готово ✓ Обновила советы под тебя.
+
+🎯 Норма: 1650 ккал (+200)
+   Б 135 / Ж 55 / У 160
+   💧 2000 мл воды
+
+Учла важное:
+• Беременность → цель «держать», +200 ккал, +25 г белка, +фолиевая
+• Аллергия на лактозу → исключаю из советов
 ```
 
-Блок «Учла важное» рендерится только для флагов с реальным advice-impact (см. §4.5 таблицу). Skipped-флаги НЕ отображаются.
+Блок «*Учла важное*» рендерится из `overrides_applied[]` массива от Ayla (см. `maxbot-phase3-ayla-spec.md` §1.2). Skipped-флаги НЕ отображаются. Если override не сработал (все health-флаги false) — сообщение упрощённое: «*Готово ✓ Учту при советах.*» без обновления нормы.
+
+После TIER-B бот возвращается к **исходному advice-намерению** (тот совет, ради которого позвал в screening) — выдаёт его уже с health-context. Если триггер был free-text здоровья — отвечает на исходное сообщение.
 
 ---
 
@@ -452,10 +503,13 @@ Universal fallback `[✏️ Напишу сама]` доступен всегд�
 
 📊 Сегодня: 820 / 1450
    Б 58 / 110 · Ж 32 / 50 · У 78 / 145
+
+[💧 Добавить воду]   [📊 Посмотреть день]
 ```
 
 - `≈` перед ккал (не «~», не «±», не «около»)
 - Дисклеймер «*Это оценка ±15-20%. Хочешь точнее? Напиши что и сколько съела.*» — **только в первом фото после онбординга**, дальше не повторяем.
+- **Footer-buttons (v2 после reconciliation):** после успешного `add_food_entry` карточка получает 2 next-step кнопки. `[💧 Добавить воду]` → запускает water flow §7.1; `[📊 Посмотреть день]` → команда `/день` (см. §6.5). Реализует принцип Spec v1 §3.7 «*постоянное ведение пользователя*» — после каждого успешного шага юзер видит куда дальше. Кнопки **не показываются** при low-confidence routing (<0.3) или `is_food=false` — там свои next-steps.
 
 ### 5.4 Коррекция flow
 
@@ -745,8 +799,26 @@ class NudgeClass(TextChoices):
 | `pattern_detected` | care | PatternRule match | 40 |
 | `pattern_followup` | care | через 7d после accepted pattern | 35 |
 | `health_concern_low` | care | low severity | 30 |
-| `cross_promo` | marketing | commitment 21+d + goal=tone or signal | 20 |
+| `cross_promo` | marketing | data-driven (см. §10.2.1, 5 правил) | 20 |
 | `reengagement` | care | 3-7d silence (nutrition_active) / 5-7d (salon_lead) | 10 |
+
+### 10.2.1 Cross-promo triggers — 5 data-driven правил (v2 после reconciliation)
+
+Раньше (v1) был один trigger «*commitment 21+ days + goal=tone*». В v2 расширено до 5, на основе анализа корреляций «nutrition pattern → подходящая услуга салона». Все правила сохраняют **cap 1 раз / 60 дней per class** (§10.3) — один юзер не может получить два cross-promo подряд, даже если триггерятся разные.
+
+| # | Условие | Услуга | Обоснование сигнала |
+|---|---|---|---|
+| 1 | commitment ≥ 21 дн + goal=tone | антицеллюлитный + аппаратный | сильный сигнал желания подтянуть фигуру + готовность инвестировать время |
+| 2 | commitment ≥ 14 дн + low_water pattern (4+ дня из 7) | лимфодренажный массаж | water deficit ↔ lymph stagnation, образовательный hook |
+| 3 | commitment ≥ 14 дн + meal_skips pattern (3 дня подряд <30% нормы) | антистресс-уход / спа-программа | meal skipping = стресс-eating сигнал, не nutrition fix |
+| 4 | commitment ≥ 30 дн + достижение цели (вес ↓ ≥3 кг подтверждённо weight history) | поддерживающий массаж / целлюлит maintenance | retention для уже-мотивированных, окно «*теперь сохранить результат*» |
+| 5 | free-text упоминание «*спина болит*» / «*шея*» / «*зажим*» в чате | массаж спины / шейно-воротниковой зоны | conversational, **НЕ нудж** — сразу `recommend_services` tool в ai_assistant с salon-context |
+
+**Правило 5** — это inline-recommendation в активном диалоге (Phase 2.4 уже умеет через `recommend_services`), не diспетчерский нудж. Перечислено здесь для полноты mapping'а «*сигнал → услуга*».
+
+**Правила 1-4** — диспетчерские, отрабатываются в `nudge_dispatcher_general` (см. §10.8) с проверкой commitment-streak'а на стороне Ayla (через расширение `GET /patterns/` или новый endpoint, решается при writing-plan).
+
+**Open question:** где живёт mapping этих 5 правил — hard-code в `nudges/dispatcher_general.py` (быстро, но без content-control) **или** новая модель `CrossPromoRule(pattern_slug, service_slug, min_commitment_days, copy_template)` редактируемая через Django Admin (медленнее, но контент-менеджер может править без деплоя). См. §16 OQ #9.
 
 ### 10.3 Caps
 
@@ -1007,10 +1079,11 @@ Data migrations:
 
 ## 16. Open questions (для плана имплементации)
 
-1. **MVP-scope cut.** Что попадает в первый release vs follow-ups?
-   - MVP: онбординг + фото + дневной отчёт + вода + 3-4 базовых нуджа
-   - Phase 3.5: weekly summary, pattern engine, after_service_care, cross_promo
-   - Phase 4: Variant B (vision через ai_assistant), advanced nutrition (микронутриенты)
+1. **MVP-scope cut (v2 после reconciliation).** Phase split:
+   - **Phase 3.1 MVP:** welcome 3-кн + **TIER-A анкета** (5 шагов) + фото с edit-loading + persistent keyboard + вода + дневной отчёт + 3 нуджа (`weekly_unlock`, `reengagement`, `booking_continuation`).
+   - **Phase 3.2:** **TIER-B health screening** (lazy on-demand перед советами) + AI-comment в дневном отчёте + остальные нуджи (`pattern_detected`, `health_concern_*`, `after_service_care`).
+   - **Phase 3.3:** pattern engine (PatternRule seed 7 правил, `GET /patterns/`) + `returning_success` insight + `cross_promo` нуджи (5 правил из §10.2.1).
+   - **Phase 4:** Variant B (vision через ai_assistant) + AI Аватар (см. OQ #10) + микронутриенты + weekly прогрессив 14d/28d.
 2. **Воркфлоу контента.** Кто пишет `Service.aftercare_text_*`? Нужен ли preview-mode для контент-менеджера?
 3. **Тестовая стратегия для AI-nudges.** Как проверять `NUDGE_AI_CONTAINER` валидацию? Snapshot-тесты с фиксированными prompt → expected pattern?
 4. **A/B testing infra.** Хотим ли проверять CTR разных формулировок template'ов? Если да — нужен `NudgeTemplate` с variants.
@@ -1018,6 +1091,18 @@ Data migrations:
 6. **Backup mode при OpenAI outage.** Если vision не отвечает 60s — fallback на «*Запиши приём текстом — сейчас фото-распознавание недоступно*»?
 7. **Existing user migration.** Как обрабатывать BotUser без `NutritionProfile` (все существующие)? Lazy-create при первом hit на nutrition flow.
 8. **GDPR / 152-ФЗ data export.** `/настройки → Скачать мои данные` — JSON со всеми FoodEntry, WaterEntry, health_flags. Backlog или MVP?
+9. **Cross-promo mapping ownership (v2).** 5 правил из §10.2.1 — hard-code в `nudges/dispatcher_general.py` (быстро, без content-control, изменения требуют деплоя) **или** новая модель `CrossPromoRule(pattern_slug, service_slug, min_commitment_days, copy_template)` через Django Admin (контент-менеджер правит без деплоя, но больше работы на старте). Решение фиксируется при writing-plan Phase 3.3.
+10. **AI Аватар — Phase 4 backlog (v2 после reconciliation).** Spec v1 §12 предлагала «*покажу как ты будешь выглядеть через 30 дней*» — селфи → image-to-image generation. **Не входит в Phase 3** по 4 причинам:
+    - **152-ФЗ биометрия** — обработка фото лица требует отдельного consent + storage policy + retention поверх уже непростых food_scanner / nutrition_disclaimer консентов.
+    - **Cost & latency** — image-to-image (DALL-E 3 / SD) ~$0.04-0.10/image, 10-30 сек; p95 = плохой UX.
+    - **Юр-риск** — «*через 30 дней с -10% веса*» = обещание медицинского результата → ФАС / Роспотребнадзор могут квалифицировать как недостоверную рекламу медуслуг (см. CLAUDE.md «Запрещённые действия»).
+    - **Не критично для core loop** — wow-моменты есть в фото-распознавании + дневном отчёте + cross-promo data-driven. Аватар = bonus wow, не foundation.
+    Возврат: после стабилизации Phase 3.1+3.2+3.3 в проде, юр-проверка с дисклеймером «*визуализация, не медицинский прогноз*», 30-дневный TTL хранения, явный consent с правом удаления.
+11. **Copy-polish welcome / disclaimer / errors / milestones (v2).** Exact-тексты не фиксируются в Design Doc — отложены на §17 шаг 4 «*UX-копи в финале*», отдельный этап **после имплементации каркаса** (когда видим бот живьём в стейджинге и подбираем формулировки с реальными ощущениями). Это включает:
+    - Exact welcome для нового пользователя (с целевым хуком «*помогу… прийти в форму*»)
+    - Лейбл 3-й кнопки welcome (`[💬 Задать вопрос]` vs `[💬 Спросить меня]` vs `[💬 Помочь подобрать]`)
+    - Все error-сообщения (low-confidence фото, FSM-aware skip, etc.)
+    - Milestone-копи (50% / 100% / 150% воды)
 
 ---
 
@@ -1031,6 +1116,10 @@ Data migrations:
 
 ---
 
-*Дизайн закреплён 2026-05-01 после 4 раундов UX-walk-through:
+*Дизайн v1 закреплён 2026-05-01 после 4 раундов UX-walk-through:
 welcome → nutrition entry → анкета (gender/age/height/weight/goal/health) →
 daily flow (фото → дневной отчёт → вода → нуджи).*
+
+*Дизайн v2 закреплён 2026-05-04 после reconciliation со Spec v1
+(`maxbot-phase3-reconciliation.md`): TIER-A/B анкета split, footer-buttons
+после фото, cross-promo расширение до 5 правил, AI Аватар → Phase 4 backlog.*
