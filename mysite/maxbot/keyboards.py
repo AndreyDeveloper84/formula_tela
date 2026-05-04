@@ -25,6 +25,33 @@ PAYLOAD_MENU_MY_BOOKINGS = "cb:menu:my_bookings"  # Кнопка «📋 Мои �
 PAYLOAD_MENU_NUTRITION = "cb:menu:nutrition"  # Кнопка «🍎 Дневник питания» (Phase 3 T01)
 PAYLOAD_NUTRITION_TRY_NOW = "cb:nutrition:try_now"  # «📸 Попробовать сразу» (Phase 3)
 PAYLOAD_NUTRITION_START_ANKETA = "cb:nutrition:start_anketa"  # «📝 Настроить под себя» (Phase 3)
+
+# ─── Phase 3.1 Part 1: TIER-A anketa keyboards ─────────────────────────────
+
+PAYLOAD_ANKETA_CONSENT_OK = "cb:anketa:consent:ok"
+PAYLOAD_ANKETA_CONSENT_DECLINE = "cb:anketa:consent:decline"
+
+PAYLOAD_ANKETA_GENDER_FEMALE = "cb:anketa:gender:female"
+PAYLOAD_ANKETA_GENDER_MALE = "cb:anketa:gender:male"
+
+PAYLOAD_ANKETA_SKIP = "cb:anketa:skip"
+
+PAYLOAD_ANKETA_GOAL_LOSE = "cb:anketa:goal:lose"
+PAYLOAD_ANKETA_GOAL_MAINTAIN = "cb:anketa:goal:maintain"
+PAYLOAD_ANKETA_GOAL_GAIN = "cb:anketa:goal:gain"
+
+PAYLOAD_ANKETA_PACE_GENTLE = "cb:anketa:pace:gentle"
+PAYLOAD_ANKETA_PACE_MODERATE = "cb:anketa:pace:moderate"
+
+PAYLOAD_ANKETA_GAIN_MASS = "cb:anketa:gain:mass"
+PAYLOAD_ANKETA_GAIN_TONE = "cb:anketa:gain:tone"
+
+PAYLOAD_ANKETA_BMI_DOCTOR = "cb:anketa:bmi:doctor"
+PAYLOAD_ANKETA_BMI_SWITCH_MAINTAIN = "cb:anketa:bmi:switch_maintain"
+PAYLOAD_ANKETA_BMI_OVERRIDE = "cb:anketa:bmi:override"
+
+PAYLOAD_NUTRITION_FIRST_MEAL = "cb:nutrition:first_meal"
+
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -189,4 +216,113 @@ def confirm_booking_keyboard(*, with_other: bool = False) -> object:
         builder.row(
             CallbackButton(text="📝 Указать другие данные", payload=PAYLOAD_CONFIRM_OTHER),
         )
+    return builder.as_markup()
+
+
+# ─── Phase 3.1 Part 1: TIER-A anketa keyboard builders ─────────────────────
+
+
+def anketa_consent_keyboard():
+    """TIER-A T04: дисклеймер 152-ФЗ для базовой обработки ПД анкеты."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="✓ Понятно, продолжаем",
+                       payload=PAYLOAD_ANKETA_CONSENT_OK),
+    )
+    builder.row(
+        CallbackButton(text="Не сейчас",
+                       payload=PAYLOAD_ANKETA_CONSENT_DECLINE),
+    )
+    return builder.as_markup()
+
+
+def anketa_gender_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="Женский", payload=PAYLOAD_ANKETA_GENDER_FEMALE),
+        CallbackButton(text="Мужской", payload=PAYLOAD_ANKETA_GENDER_MALE),
+    )
+    builder.row(
+        CallbackButton(text="⏭ Пропустить", payload=PAYLOAD_ANKETA_SKIP),
+    )
+    return builder.as_markup()
+
+
+def anketa_skip_keyboard():
+    """Универсальный 1-кнопочный keyboard для text-input шагов
+    (age/height/weight). Юзер пишет число или жмёт пропустить."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="⏭ Пропустить", payload=PAYLOAD_ANKETA_SKIP),
+    )
+    return builder.as_markup()
+
+
+def anketa_goal_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="⬇ Похудеть",
+                       payload=PAYLOAD_ANKETA_GOAL_LOSE),
+    )
+    builder.row(
+        CallbackButton(text="➡ Держать вес",
+                       payload=PAYLOAD_ANKETA_GOAL_MAINTAIN),
+    )
+    builder.row(
+        CallbackButton(text="⬆ Набрать / подтянуть фигуру",
+                       payload=PAYLOAD_ANKETA_GOAL_GAIN),
+    )
+    return builder.as_markup()
+
+
+def anketa_pace_keyboard():
+    """Темп для goal=lose. Fast (-20%) скрыт за /настройки (Design §4.4)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="🐢 Спокойный (-10%)",
+                       payload=PAYLOAD_ANKETA_PACE_GENTLE),
+        CallbackButton(text="⚖️ Средний (-15%)",
+                       payload=PAYLOAD_ANKETA_PACE_MODERATE),
+    )
+    return builder.as_markup()
+
+
+def anketa_gain_clarify_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="💪 Набрать вес",
+                       payload=PAYLOAD_ANKETA_GAIN_MASS),
+    )
+    builder.row(
+        CallbackButton(text="🌸 Подтянуть фигуру",
+                       payload=PAYLOAD_ANKETA_GAIN_TONE),
+    )
+    return builder.as_markup()
+
+
+def anketa_bmi_ladder_keyboard():
+    """BMI<18.5 + goal=lose. «К врачу» НЕ ведёт в салон (Design §4.4)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="Хочу к врачу",
+                       payload=PAYLOAD_ANKETA_BMI_DOCTOR),
+    )
+    builder.row(
+        CallbackButton(text="Поменять на «держать»",
+                       payload=PAYLOAD_ANKETA_BMI_SWITCH_MAINTAIN),
+    )
+    builder.row(
+        CallbackButton(text="Всё равно худеть",
+                       payload=PAYLOAD_ANKETA_BMI_OVERRIDE),
+    )
+    return builder.as_markup()
+
+
+def anketa_complete_keyboard():
+    """Финал TIER-A: одна next-step кнопка."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📸 Сфоткать первый приём",
+                       payload=PAYLOAD_NUTRITION_FIRST_MEAL),
+    )
     return builder.as_markup()
