@@ -209,3 +209,110 @@ async def test_on_log_meal_appends_footer_buttons(monkeypatch, settings):
     payloads = _flatten_payloads(atts[0]) if atts else set()
     assert PAYLOAD_NUTRITION_ADD_WATER in payloads
     assert PAYLOAD_NUTRITION_VIEW_DAY in payloads
+
+
+@pytest.mark.asyncio
+async def test_e2e_photo_to_log_to_view_day(monkeypatch, settings):
+    """E2E: photo → scan high-conf → meal click → footer view_day → summary.
+
+    Cover главный happy-path: убеждаемся что все 3 handler'а вызываются
+    последовательно и состояние/UI прогрессирует ожидаемо."""
+    from maxbot.handlers.food_scanner import on_photo_message, on_log_meal
+    from maxbot.handlers.food_correction import on_view_day
+    from maxbot.services.nutrition_client import (
+        ScanResponse, FoodLogResponse, SummaryResponse,
+    )
+
+    settings.NUTRITION_ENABLED = True
+
+    # Mock Ayla calls
+    scan_mock = AsyncMock(return_value=ScanResponse(
+        scan_id="S1", dish_name="Паста", confidence=0.85,
+        portion_g=300, nutrition={"calories": 520, "protein_g": 35,
+                                  "fat_g": 18, "carbs_g": 55},
+        provider="openai", raw={
+            "id": "S1", "dish_name": "Паста", "confidence": 0.85,
+            "nutrition": {"calories": 520, "protein_g": 35,
+                          "fat_g": 18, "carbs_g": 55},
+        },
+    ))
+    log_mock = AsyncMock(return_value=FoodLogResponse(
+        log_id="L1", dish_name="Паста",
+        meal_type="lunch", calories=520.0, raw={},
+    ))
+    # SummaryResponse with at least one entry — иначе render_daily_summary
+    # пойдёт в "no entries" ветку и не покажет ккал-число.
+    summary_mock = AsyncMock(return_value=SummaryResponse(
+        date="2026-05-04", calories_total=520.0, calories_goal=1450,
+        protein_g=35, fat_g=18, carbs_g=55,
+        entries=[{
+            "id": "L1", "dish_name": "Паста", "meal_type": "lunch",
+            "calories": 520, "protein_g": 35, "fat_g": 18, "carbs_g": 55,
+        }],
+        raw={
+            "date": "2026-05-04", "calories_total": 520,
+            "calories_goal": 1450, "protein_g": 35, "fat_g": 18,
+            "carbs_g": 55,
+            "entries": [{
+                "id": "L1", "dish_name": "Паста", "meal_type": "lunch",
+                "calories": 520, "protein_g": 35, "fat_g": 18, "carbs_g": 55,
+            }],
+        },
+    ))
+    fake_client = MagicMock(
+        scan_photo=scan_mock, log_meal=log_mock, daily_summary=summary_mock,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.food_scanner.get_nutrition_client",
+        lambda: fake_client,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_nutrition_client",
+        lambda: fake_client,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.food_scanner._download_photo",
+        AsyncMock(return_value=b"fake"),
+    )
+    bot_user = MagicMock(food_scanner_consent_at="2026-01-01", max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.food_scanner.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    # ── Step 1: send photo ──
+    sent_msg = MagicMock(message_id="m-1")
+    photo_event = _fake_photo_event()
+    photo_event.bot.send_message = AsyncMock(return_value=sent_msg)
+    photo_event.bot.edit_message = AsyncMock()
+    await on_photo_message(photo_event, ctx)
+    scan_mock.assert_awaited_once()
+
+    # ── Step 2: click meal-type ──
+    cb_log = MagicMock()
+    cb_log.callback.payload = "cb:nutrition:log:S1:lunch"
+    cb_log.callback.user = MagicMock(user_id=200, full_name="Тест")
+    cb_log.message.recipient.chat_id = 100
+    cb_log.bot.send_message = AsyncMock()
+    await on_log_meal(cb_log, ctx)
+    log_mock.assert_awaited_once()
+    log_kwargs = cb_log.bot.send_message.await_args.kwargs
+    # Footer обозначен
+    assert log_kwargs.get("attachments")
+
+    # ── Step 3: click [📊 Посмотреть день] из footer ──
+    cb_view = MagicMock()
+    cb_view.callback.payload = "cb:nutrition:view_day"
+    cb_view.callback.user = MagicMock(user_id=200, full_name="Тест")
+    cb_view.message.recipient.chat_id = 100
+    cb_view.bot.send_message = AsyncMock()
+    await on_view_day(cb_view, ctx)
+    summary_mock.assert_awaited_once()
+    view_text = cb_view.bot.send_message.await_args.kwargs["text"]
+    assert "520" in view_text or "1450" in view_text
