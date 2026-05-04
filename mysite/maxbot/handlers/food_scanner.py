@@ -129,46 +129,55 @@ async def on_photo_message(event: MessageCreated, context: MemoryContext) -> Non
     external_id = external_user_id_for(bot_user)
     client = get_nutrition_client()
 
+    # Edit-message loading pattern (Design Doc §5.1) — сразу шлём
+    # «👀 Распознаю...», потом edit'им на финал. Юзер видит мгновенный
+    # ответ что бот работает, не "висит".
+    loading_msg = await event.bot.send_message(
+        chat_id=chat_id,
+        text=ai_ui.render_loading_card(),
+    )
+    loading_msg_id = getattr(loading_msg, "message_id", None)
+
+    async def _replace(text: str, attachments=None) -> None:
+        """Edit loading-card на финал. Если message_id потерялся
+        (старая API), fallback на новый send_message."""
+        if loading_msg_id is not None:
+            try:
+                await event.bot.edit_message(
+                    message_id=loading_msg_id, text=text,
+                    attachments=attachments,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("food_scanner.edit_failed err=%s", exc)
+        # Fallback — новое сообщение
+        await event.bot.send_message(
+            chat_id=chat_id, text=text, attachments=attachments,
+        )
+
     try:
         scan = await client.scan_photo(
             external_user_id=external_id,
             image_bytes=image_bytes,
         )
     except FoodNotRecognizedError:
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
-            text="Не получилось распознать блюдо на фото. Попробуйте сделать фото получше.",
-            bot_user=bot_user,
+        await _replace(
+            "Не получилось распознать блюдо на фото. Попробуй фото получше.",
         )
         return
     except NutritionUnavailableError as exc:
         logger.warning("food_scanner.unavailable user=%s reason=%s",
                        bot_user.max_user_id, exc)
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
-            text="Сканер еды временно недоступен. Попробуйте через минуту.",
-            bot_user=bot_user,
-        )
+        await _replace("Сканер еды временно недоступен. Попробуй через минуту.")
         return
     except NutritionAPIError as exc:
         logger.exception("food_scanner.api_error user=%s err=%s",
                          bot_user.max_user_id, exc)
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
-            text="Что-то пошло не так со сканером. Попробуйте позже.",
-            bot_user=bot_user,
-        )
+        await _replace("Что-то пошло не так со сканером. Попробуй позже.")
         return
 
     text, attachments = ai_ui.render_food_scan(scan.raw)
-    if attachments:
-        await event.bot.send_message(
-            chat_id=chat_id, text=text, attachments=attachments,
-        )
-    else:
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id, text=text, bot_user=bot_user,
-        )
+    await _replace(text, attachments=attachments if attachments else None)
 
 
 # ─── Consent callbacks ─────────────────────────────────────────────────────

@@ -434,6 +434,14 @@ def render_ask_clarification(conv_id: str, data: dict[str, Any]) -> tuple[str, l
 # ─── food_scan (DRF-246) ──────────────────────────────────────────────────
 
 
+def render_loading_card() -> str:
+    """Loading-card text для photo scan: edit-message pattern (Design §5.1).
+
+    Сначала шлём это, получаем message_id, потом edit на финал.
+    """
+    return "👀 Распознаю..."
+
+
 def render_food_consent_request() -> tuple[str, list]:
     """152-ФЗ consent prompt — first time user tries to scan food.
 
