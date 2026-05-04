@@ -63,3 +63,44 @@ async def test_start_anketa_sets_consent_state_and_renders_disclaimer():
     assert "152" in text_lower or "дисклеймер" in text_lower or "данн" in text_lower
     # Attachments — keyboard с 2 кнопками
     assert call_kwargs.get("attachments") is not None
+
+
+# ─── consent OK / decline ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_consent_ok_advances_to_gender_step():
+    """Клик «✓ Понятно» → state=awaiting_gender, бот шлёт вопрос про пол."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_consent_ok
+    from maxbot.states import NutritionAnketaStates
+
+    cb = _fake_callback("cb:anketa:consent:ok")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_consent)
+
+    await on_consent_ok(cb, ctx)
+
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_gender
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "пол" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_consent_decline_clears_state_and_exits():
+    """Клик «Не сейчас» → state очищен, бот шлёт 'возвращайся когда будешь готова'."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_consent_decline
+    from maxbot.states import NutritionAnketaStates
+
+    cb = _fake_callback("cb:anketa:consent:decline")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_consent)
+
+    await on_consent_decline(cb, ctx)
+
+    assert await ctx.get_state() is None
+    cb.bot.send_message.assert_awaited_once()

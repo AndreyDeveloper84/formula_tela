@@ -36,12 +36,27 @@ CONSENT_TEXT = (
     "Любой шаг можно пропустить — тогда применю средние значения."
 )
 
+GENDER_TEXT = (
+    "● ○ ○ ○ ○\n\n"
+    "Какой у тебя пол?\n\n"
+    "Это нужно для расчёта BMR (базового обмена) — у Ж и М разные "
+    "коэффициенты. Можно пропустить — тогда возьму средние значения."
+)
+
 
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_CONSENT_OK)
 async def on_consent_ok(callback: MessageCallback, context: MemoryContext) -> None:
     """Согласие → переход на awaiting_gender."""
-    # Заполнено в Task 5.
-    raise NotImplementedError("filled in Task 5")
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    await context.set_state(NutritionAnketaStates.awaiting_gender)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=GENDER_TEXT,
+        attachments=[keyboards.anketa_gender_keyboard()],
+    )
 
 
 @router.message_callback(
@@ -50,6 +65,18 @@ async def on_consent_ok(callback: MessageCallback, context: MemoryContext) -> No
 async def on_consent_decline(
     callback: MessageCallback, context: MemoryContext,
 ) -> None:
-    """Отказ → state cleared, exit на главное меню."""
-    # Заполнено в Task 5.
-    raise NotImplementedError("filled in Task 5")
+    """Отказ от анкеты → state очищен. Юзер может вернуться позже из меню."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    await context.clear()
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "Поняла, без проблем. Когда соберёшься настроить — заходи в "
+            "🍎 Дневник питания через главное меню.\n\n"
+            "Сейчас можешь просто прислать фото блюда — посчитаю калории "
+            "по средним значениям."
+        ),
+    )
