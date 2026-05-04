@@ -676,6 +676,35 @@ def render_water_status(today) -> str:
     return f"💧 Сегодня: {total_str} / {norm_str}\n\nСколько добавить?"
 
 
+def render_water_added(entry) -> str:
+    """Phase 3.1 Part 2B: «+250 мл · 1.4 / 2.0 л · Половина нормы — отлично!».
+
+    `entry` — `WaterEntryResponse`. Milestone и alcohol_recovery_hint
+    добавляются inline если присутствуют. Format: «+ml · today_total /
+    norm[ · milestone_text]».
+    """
+    ml = entry.ml
+    total_ml = entry.today_total_ml
+    norm_ml = entry.today_norm_ml
+
+    total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+    norm_str = f"{norm_ml / 1000:.1f} л" if norm_ml >= 1000 else f"{norm_ml} мл"
+
+    parts = [f"+{ml} мл · {total_str} / {norm_str}"]
+    if entry.milestone_text:
+        parts.append(entry.milestone_text)
+
+    text = "\n".join(parts)
+
+    if entry.alcohol_recovery_hint:
+        text += (
+            "\n\n🍷 Алкоголь обезвоживает — "
+            "стакан воды перед сном лишним не будет."
+        )
+
+    return text
+
+
 # ─── /дневник daily summary (DRF-247) ──────────────────────────────────────
 
 

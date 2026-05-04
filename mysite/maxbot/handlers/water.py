@@ -16,6 +16,8 @@ Server-side details (Ayla, см. ayla-spec §2):
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
@@ -72,4 +74,73 @@ async def on_water_menu(callback: MessageCallback, context: MemoryContext) -> No
         chat_id=chat_id,
         text=text,
         attachments=[keyboards.water_amount_keyboard()],
+    )
+
+
+# Map payload → ml для quick + extended (single source of truth)
+_PAYLOAD_TO_ML = {
+    keyboards.PAYLOAD_WATER_AMOUNT_200: 200,
+    keyboards.PAYLOAD_WATER_AMOUNT_250: 250,
+    keyboards.PAYLOAD_WATER_AMOUNT_500: 500,
+    keyboards.PAYLOAD_WATER_AMOUNT_1000: 1000,
+    keyboards.PAYLOAD_WATER_EXTENDED_150: 150,
+    keyboards.PAYLOAD_WATER_EXTENDED_300: 300,
+    keyboards.PAYLOAD_WATER_EXTENDED_350: 350,
+    keyboards.PAYLOAD_WATER_EXTENDED_750: 750,
+    keyboards.PAYLOAD_WATER_EXTENDED_1500: 1500,
+}
+
+
+@router.message_callback(F.callback.payload.in_(set(_PAYLOAD_TO_ML.keys())))
+async def on_water_add_quick(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """Click [+200/+250/+500/+1000 мл] (или extended) → POST add_water."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+    payload = callback.callback.payload or ""
+    ml = _PAYLOAD_TO_ML.get(payload)
+    if ml is None:
+        return
+
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+    extid = external_user_id_for(bot_user)
+
+    # Idempotency-key derived from extid + ml + (timestamp в секундах)
+    # — реклик в течение того же ts даёт same key, повторный POST cached.
+    idem = str(uuid.uuid5(
+        uuid.NAMESPACE_OID,
+        f"{extid}:water:{ml}:{int(time.time())}",
+    ))
+
+    client = get_nutrition_client()
+    try:
+        entry = await client.add_water(
+            external_user_id=extid,
+            ml=ml,
+            idempotency_key=idem,
+        )
+    except NutritionUnavailableError:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Учёт воды временно недоступен. Попробуй через минуту.",
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.exception("water.add.api_error user=%s ml=%d err=%s",
+                         bot_user.max_user_id, ml, exc)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось записать. Попробуй ещё раз.",
+        )
+        return
+
+    text = ai_ui.render_water_added(entry)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        attachments=[keyboards.water_undo_keyboard(entry_id=entry.entry_id)],
     )
