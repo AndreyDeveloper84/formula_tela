@@ -736,3 +736,91 @@ def test_format_complete_text_handles_null_water_ml():
     assert "1450" in text
     assert "💧 0 мл" in text  # defensive fallback
     # Не падает — самое важное
+
+
+# ─── BMI ladder ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_bmi_doctor_button_clears_state_with_referral(monkeypatch):
+    """[Хочу к врачу] → state cleared, бот шлёт текст референса в поликлинику.
+    НЕ ведёт в салон (Design Doc §4.4)."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_bmi_doctor
+
+    cb = _fake_callback("cb:anketa:bmi:doctor")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+
+    await on_bmi_doctor(cb, ctx)
+
+    assert await ctx.get_state() is None
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "врач" in text.lower() or "поликлин" in text.lower() or \
+           "эндокринолог" in text.lower()
+    # НЕ должно быть упоминания салона
+    assert "салон" not in text.lower()
+    assert "массаж" not in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_bmi_switch_maintain_finalizes_as_maintain(monkeypatch):
+    """[Поменять на «держать»] → finalize с goal=maintain."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_bmi_switch_maintain
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(
+        raw={}, daily_kcal=1500, protein_g=100, fat_g=50, carbs_g=150,
+        water_ml=2000, goal_overridden_by=None,
+    ))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._mark_onboarded", AsyncMock(),
+    )
+
+    cb = _fake_callback("cb:anketa:bmi:switch_maintain")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_bmi_ladder)
+
+    await on_bmi_switch_maintain(cb, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["goal"] == "maintain"
+    assert await ctx.get_state() == NutritionAnketaStates.complete
+
+
+@pytest.mark.asyncio
+async def test_bmi_override_advances_to_pace_with_warning_flag(monkeypatch):
+    """[Всё равно худеть] → advance to pace, помечаем bmi_warning_overridden."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_bmi_override
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    cb = _fake_callback("cb:anketa:bmi:override")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_bmi_ladder)
+
+    await on_bmi_override(cb, ctx)
+
+    body = upsert_mock.await_args.kwargs["data"]
+    # Ayla получит флаг через health_flags.bmi_warning_overridden
+    assert body.get("health_flags", {}).get("bmi_warning_overridden") is True
+    assert body["complete"] is False
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_pace

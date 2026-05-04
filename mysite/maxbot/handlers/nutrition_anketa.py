@@ -623,6 +623,78 @@ async def _mark_onboarded(bot_user) -> None:
     await _save()
 
 
+# ─── BMI ladder ────────────────────────────────────────────────────────────
+
+
+DOCTOR_REFERRAL_TEXT = (
+    "Низкий BMI часто связан с гормонами или дефицитами — лучше "
+    "разобраться с врачом, чем гадать.\n\n"
+    "Запишись к терапевту в поликлинике или эндокринологу — они "
+    "проверят анализы и подскажут план. Я буду здесь, когда вернёшься."
+)
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_BMI_DOCTOR)
+async def on_bmi_doctor(callback: MessageCallback, context: MemoryContext) -> None:
+    """[Хочу к врачу] — НЕ кросс-промо в салон (Design Doc §4.4 honest doctor referral)."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await context.clear()
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=DOCTOR_REFERRAL_TEXT,
+    )
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_ANKETA_BMI_SWITCH_MAINTAIN,
+)
+async def on_bmi_switch_maintain(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[Поменять на «держать»] — finalize как maintain."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _finalize_anketa(callback, context, chat_id, goal="maintain")
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_BMI_OVERRIDE)
+async def on_bmi_override(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[Всё равно худеть] — overrides помечаем флагом, advance to pace."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    bot_user = await _resolve_bot_user(callback)
+    extid = external_user_id_for(bot_user)
+
+    try:
+        await _client().upsert_profile(
+            external_user_id=extid,
+            data={
+                "health_flags": {"bmi_warning_overridden": True},
+                "complete": False,
+            },
+        )
+    except (NutritionUnavailableError, NutritionAPIError):
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось сохранить — попробуй ещё раз.",
+        )
+        return
+
+    await context.set_state(NutritionAnketaStates.awaiting_pace)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=PACE_TEXT,
+        attachments=[keyboards.anketa_pace_keyboard()],
+    )
+
+
 # ─── universal Skip handler — диспетчер по текущему state ──────────────────
 
 
