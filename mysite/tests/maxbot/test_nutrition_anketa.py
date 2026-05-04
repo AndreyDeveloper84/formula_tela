@@ -374,3 +374,57 @@ async def test_weight_text_input_exact_value_advances_to_goal(monkeypatch):
 
     assert upsert_mock.await_args.kwargs["data"]["weight_kg"] == 70
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_goal
+
+
+@pytest.mark.asyncio
+async def test_height_text_input_refused_treats_as_skip(monkeypatch):
+    """parse_height возвращает 'REFUSED' для «не скажу» → upsert как skip."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_height_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("не скажу")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_height)
+
+    await on_height_text(msg, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["_skipped_fields"] == ["height"]
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_weight
+
+
+@pytest.mark.asyncio
+async def test_weight_text_input_refused_treats_as_skip(monkeypatch):
+    """parse_weight возвращает 'REFUSED' для «не скажу» → upsert как skip."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_weight_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("не скажу")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_weight)
+
+    await on_weight_text(msg, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["_skipped_fields"] == ["weight"]
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_goal
