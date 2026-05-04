@@ -215,6 +215,75 @@ async def on_gender_male(callback: MessageCallback, context: MemoryContext) -> N
     )
 
 
+# ─── age (text-input) ──────────────────────────────────────────────────────
+
+
+HEIGHT_TEXT = (
+    "● ● ● ○ ○\n\n"
+    "Какой у тебя рост в сантиметрах? Напиши число (например, 165) "
+    "или пропусти."
+)
+
+
+async def _treat_text_step_as_skip(
+    msg, ctx, chat_id, *, field, advance_to, next_text, next_kb,
+) -> None:
+    """Helper: free-text парсер вернул REFUSED → шлём как skip."""
+    await _upsert(
+        msg,
+        step=field,
+        body={"_skipped_fields": [field]},
+        advance_to=advance_to,
+        context=ctx,
+        next_text=next_text,
+        next_keyboard=next_kb,
+        chat_id=chat_id,
+    )
+
+
+@router.message_created(NutritionAnketaStates.awaiting_age)
+async def on_age_text(event: MessageCreated, context: MemoryContext) -> None:
+    """Юзер пишет возраст — пытаемся parse_age."""
+    from maxbot.ai_parsers import parse_age, REFUSED
+
+    text = (event.message.body.text or "").strip()
+    chat_id = event.message.recipient.chat_id
+
+    parsed = await parse_age(text)
+
+    if parsed == REFUSED:
+        await _treat_text_step_as_skip(
+            event, context, chat_id,
+            field="age",
+            advance_to=NutritionAnketaStates.awaiting_height,
+            next_text=HEIGHT_TEXT,
+            next_kb=keyboards.anketa_skip_keyboard,
+        )
+        return
+
+    if parsed is None:
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Не понял возраст — напиши число от 16 до 99 (например, 35) "
+                "или нажми «⏭ Пропустить»."
+            ),
+            attachments=[keyboards.anketa_skip_keyboard()],
+        )
+        return
+
+    await _upsert(
+        event,
+        step="age",
+        body={"age": parsed},
+        advance_to=NutritionAnketaStates.awaiting_height,
+        context=context,
+        next_text=HEIGHT_TEXT,
+        next_keyboard=keyboards.anketa_skip_keyboard,
+        chat_id=chat_id,
+    )
+
+
 # ─── universal Skip handler — диспетчер по текущему state ──────────────────
 
 
@@ -225,7 +294,13 @@ _SKIP_FIELD_BY_STATE = {
         AGE_TEXT,
         keyboards.anketa_skip_keyboard,
     ),
-    # остальные пары добавляются в Tasks 7-9
+    str(NutritionAnketaStates.awaiting_age): (
+        "age",
+        NutritionAnketaStates.awaiting_height,
+        HEIGHT_TEXT,
+        keyboards.anketa_skip_keyboard,
+    ),
+    # остальные пары добавляются в Tasks 8-9
 }
 
 

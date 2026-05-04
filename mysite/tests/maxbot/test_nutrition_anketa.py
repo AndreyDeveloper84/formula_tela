@@ -177,3 +177,115 @@ async def test_gender_skip_sends_skipped_field_and_advances(monkeypatch):
     kwargs = upsert_mock.await_args.kwargs
     assert kwargs["data"]["_skipped_fields"] == ["gender"]
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_age
+
+
+# ─── age step (text-input) ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_age_text_input_parses_and_advances(monkeypatch):
+    """Юзер пишет «35» в state=awaiting_age → parse_age=35, upsert(age=35),
+    state=awaiting_height."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_age_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("35")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_age)
+
+    await on_age_text(msg, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["age"] == 35
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_height
+
+
+@pytest.mark.asyncio
+async def test_age_text_input_refused_treats_as_skip(monkeypatch):
+    """parse_age возвращает 'REFUSED' для «не скажу» → upsert как skip."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_age_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("не скажу")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_age)
+
+    await on_age_text(msg, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["_skipped_fields"] == ["age"]
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_height
+
+
+@pytest.mark.asyncio
+async def test_age_text_input_unparseable_asks_again(monkeypatch):
+    """parse_age возвращает None для «абвгд» → НЕ переходим, просим повторить."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_age_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+
+    msg = _fake_message("абвгд")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_age)
+
+    await on_age_text(msg, ctx)
+
+    upsert_mock.assert_not_awaited()  # NO upsert
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_age  # state same
+    msg.bot.send_message.assert_awaited_once()
+    text = msg.bot.send_message.await_args.kwargs["text"]
+    assert "не понял" in text.lower() or "число" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_skip_button_works_at_age_state(monkeypatch):
+    """Skip-кнопка на awaiting_age → upsert _skipped_fields=['age'],
+    advance to awaiting_height."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_skip
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    cb = _fake_callback("cb:anketa:skip")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_age)
+
+    await on_skip(cb, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["_skipped_fields"] == ["age"]
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_height
