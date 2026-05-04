@@ -1,9 +1,9 @@
-"""Phase 3 T01: handler nutrition_entry — entry-screen дневника + 2 заглушки.
+"""Phase 3 T01/T04: handler nutrition_entry — entry-screen дневника.
 
 Покрывает:
 - on_show_nutrition_welcome — реакция на cb:menu:nutrition (welcome screen)
 - on_try_now_stub — заглушка cb:nutrition:try_now (T03 будет реализована)
-- on_start_anketa_stub — заглушка cb:nutrition:start_anketa (T04 анкета)
+- on_start_anketa — реальный handler запуска TIER-A анкеты (T04 FSM)
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -97,18 +97,23 @@ async def test_try_now_stub_returns_friendly_placeholder():
 
 
 @pytest.mark.asyncio
-async def test_start_anketa_stub_returns_friendly_placeholder():
-    """T04 ещё не сделана — заглушка с честным «скоро»."""
-    from maxbot.handlers.nutrition_entry import on_start_anketa_stub
+async def test_start_anketa_sets_consent_state_and_sends_disclaimer():
+    """T04 реализована — on_start_anketa устанавливает state и шлёт дисклеймер."""
+    from maxbot.handlers.nutrition_entry import on_start_anketa
+    from maxbot.states import NutritionAnketaStates
 
     event = _make_callback(payload="cb:nutrition:start_anketa", user_id=9005)
     ctx = MemoryContext(chat_id=100, user_id=9005)
-    await on_start_anketa_stub(event, ctx)
+    await on_start_anketa(event, ctx)
+
+    state = await ctx.get_state()
+    assert state == NutritionAnketaStates.awaiting_consent
 
     event.bot.send_message.assert_awaited_once()
-    text = event.bot.send_message.await_args.kwargs["text"]
-    assert "Анкета" in text
-    assert "скоро" in text.lower()
+    call_kwargs = event.bot.send_message.await_args.kwargs
+    text = call_kwargs["text"]
+    assert "152" in text or "дисклеймер" in text.lower() or "данн" in text.lower()
+    assert call_kwargs.get("attachments") is not None
 
 
 @pytest.mark.asyncio

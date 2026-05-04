@@ -12,6 +12,7 @@ from .contacts import router as contacts_router
 from .fallback import router as fallback_router
 from .faq import router as faq_router
 from .food_scanner import router as food_scanner_router
+from .nutrition_anketa import router as nutrition_anketa_router
 from .nutrition_entry import router as nutrition_entry_router
 from .reminders import router as reminders_router
 from .services import router as services_router
@@ -47,6 +48,10 @@ def get_routers():
         # и cb:nutrition:try_now/start_anketa должны матчиться раньше широких
         # food_scanner callback-фильтров (Phase 3 T01).
         nutrition_entry_router,
+        # nutrition_anketa ПОСЛЕ nutrition_entry, ПЕРЕД food_scanner и ai_assistant —
+        # FSM обрабатывает cb:anketa:* callbacks и state-filtered free-text для
+        # ввода age/height/weight (Phase 3.1 Part 1).
+        nutrition_anketa_router,
         # food_scanner ПЕРЕД ai_assistant — оба ловят message_created, но
         # food_scanner early-return'ит если у сообщения нет фото-вложения,
         # передавая управление дальше. cb:nutrition:consent:* / cb:nutrition:log:*
