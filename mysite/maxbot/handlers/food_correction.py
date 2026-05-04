@@ -6,7 +6,6 @@ Triggers (cb:scan:correct:* и related payloads):
 - `cb:scan:correct:portion:smaller|normal|larger` — пересчитать порцию (T08, MVP-stub)
 - `cb:scan:correct:other_dish` / `add_ingredient` / `delete` — заглушки (T09)
 - `cb:scan:retake` / `cb:scan:manual` — переснять / ввести вручную (T09)
-- `cb:nutrition:water:add` — заглушка до Part 2B (T10)
 - `cb:nutrition:view_day` — daily_summary через эту cb (T11)
 
 Отдельный router потому что food_scanner.py уже жирный (capture +
@@ -176,30 +175,6 @@ async def on_manual_input(
     if chat_id is None:
         return
     await callback.bot.send_message(chat_id=chat_id, text=COMING_SOON_PHASE32)
-
-
-@router.message_callback(
-    F.callback.payload == keyboards.PAYLOAD_NUTRITION_ADD_WATER,
-)
-async def on_add_water_stub(
-    callback: MessageCallback, context: MemoryContext,
-) -> None:
-    """[💧 Добавить воду] из footer — заглушка до Part 2B.
-
-    Реальный handler в `mysite/maxbot/handlers/water.py` (Part 2B).
-    После создания того модуля — этот handler удаляется (или его router
-    регистрируется ПОСЛЕ water_router чтобы не перехватывать).
-    """
-    chat_id = callback.message.recipient.chat_id if callback.message else None
-    if chat_id is None:
-        return
-    await callback.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "💧 Учёт воды скоро добавлю — фича в разработке (Part 2B). "
-            "Пока можешь пометить себе вручную."
-        ),
-    )
 
 
 @router.message_callback(

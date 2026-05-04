@@ -18,6 +18,7 @@ from .nutrition_entry import router as nutrition_entry_router
 from .reminders import router as reminders_router
 from .services import router as services_router
 from .start import router as start_router
+from .water import router as water_router
 
 
 def get_routers():
@@ -58,6 +59,11 @@ def get_routers():
         # передавая управление дальше. cb:nutrition:consent:* / cb:nutrition:log:*
         # тоже здесь.
         food_scanner_router,
+        # water — обработка [💧 Добавить воду] footer + /вода command
+        # + cb:water:add/undo/more callbacks (Part 2B). Регистрируется
+        # ДО food_correction чтобы перехватить PAYLOAD_NUTRITION_ADD_WATER
+        # вместо stub'а.
+        water_router,
         # food_correction — обработка cb:scan:correct:* callbacks из
         # render_food_scan_v2 [✏️ Поправить] (Part 2A T07-T11).
         food_correction_router,

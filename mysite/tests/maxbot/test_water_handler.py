@@ -343,3 +343,15 @@ async def test_water_menu_skipped_during_anketa_fsm(monkeypatch, settings):
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "анкет" in text.lower() or "вопрос" in text.lower()
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_age
+
+
+def test_water_router_registered():
+    """water_router должен быть зарегистрирован в `get_routers()`.
+
+    water_router claims PAYLOAD_NUTRITION_ADD_WATER первым (зарегистрирован
+    ДО food_correction_router) — поэтому after T08 stub удалён."""
+    from maxbot.handlers import get_routers
+    from maxbot.handlers.water import router as water_router
+
+    routers = get_routers()
+    assert water_router in routers, "water_router not registered in get_routers()"

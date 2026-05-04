@@ -129,21 +129,6 @@ async def test_retake_stub_hints_send_photo():
 
 
 @pytest.mark.asyncio
-async def test_add_water_stub_says_coming_soon():
-    """[💧 Добавить воду] (footer) — заглушка Part 2B."""
-    from maxbot.handlers.food_correction import on_add_water_stub
-
-    cb = _fake_callback("cb:nutrition:water:add")
-    ctx = MemoryContext(chat_id=100, user_id=200)
-
-    await on_add_water_stub(cb, ctx)
-
-    text = cb.bot.send_message.await_args.kwargs["text"]
-    assert "вод" in text.lower()
-    assert "Скоро" in text or "разработ" in text.lower()
-
-
-@pytest.mark.asyncio
 async def test_view_day_calls_daily_summary(monkeypatch, settings):
     """[📊 Посмотреть день] (footer) → daily_summary call → render."""
     from maxbot.handlers.food_correction import on_view_day
