@@ -428,3 +428,115 @@ async def test_weight_text_input_refused_treats_as_skip(monkeypatch):
 
     assert upsert_mock.await_args.kwargs["data"]["_skipped_fields"] == ["weight"]
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_goal
+
+
+# ─── goal step ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_goal_maintain_skips_pace_goes_to_complete(monkeypatch):
+    """goal=maintain → нет pace, нет gain_clarify, нет BMI ladder → complete."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_goal_maintain
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(
+        raw={"daily_kcal": 1450, "protein_g": 110, "fat_g": 50,
+             "carbs_g": 145, "water_ml": 1900},
+    ))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    cb = _fake_callback("cb:anketa:goal:maintain")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_goal)
+
+    await on_goal_maintain(cb, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["goal"] == "maintain"
+    assert upsert_mock.await_args.kwargs["data"]["complete"] is True
+    assert await ctx.get_state() == NutritionAnketaStates.complete
+
+
+@pytest.mark.asyncio
+async def test_goal_lose_normal_bmi_advances_to_pace(monkeypatch):
+    """goal=lose, BMI=24 (норма) → state=awaiting_pace, НЕ ladder.
+    upsert НЕ вызван — pace ещё не выбран, отложили."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_goal_lose
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._fetch_profile_for_bmi",
+        AsyncMock(return_value=(70, 170)),  # weight, height — BMI=24.2
+    )
+
+    cb = _fake_callback("cb:anketa:goal:lose")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_goal)
+
+    await on_goal_lose(cb, ctx)
+
+    upsert_mock.assert_not_awaited()
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_pace
+
+
+@pytest.mark.asyncio
+async def test_goal_lose_low_bmi_triggers_ladder(monkeypatch):
+    """goal=lose, BMI=17.6 (<18.5) → state=awaiting_bmi_ladder."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_goal_lose
+    from maxbot.states import NutritionAnketaStates
+
+    fake_client = MagicMock()
+    fake_client.upsert_profile = AsyncMock()
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._fetch_profile_for_bmi",
+        AsyncMock(return_value=(48, 165)),  # BMI=17.6
+    )
+
+    cb = _fake_callback("cb:anketa:goal:lose")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_goal)
+
+    await on_goal_lose(cb, ctx)
+
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_bmi_ladder
+
+
+@pytest.mark.asyncio
+async def test_goal_gain_advances_to_clarify(monkeypatch):
+    """goal=gain → state=awaiting_gain_clarify (mass vs tone)."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_goal_gain
+    from maxbot.states import NutritionAnketaStates
+
+    cb = _fake_callback("cb:anketa:goal:gain")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_goal)
+
+    await on_goal_gain(cb, ctx)
+
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_gain_clarify

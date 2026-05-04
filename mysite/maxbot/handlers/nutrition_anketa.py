@@ -394,6 +394,146 @@ async def on_weight_text(event: MessageCreated, context: MemoryContext) -> None:
     )
 
 
+# ─── goal step ─────────────────────────────────────────────────────────────
+
+
+PACE_TEXT = (
+    "Темп похудения — какой выбираешь?\n\n"
+    "🐢 Спокойный (-10% к норме) — комфортно, медленно.\n"
+    "⚖️ Средний (-15%) — баланс между скоростью и комфортом."
+)
+
+GAIN_CLARIFY_TEXT = (
+    "Что важнее — набрать массу или подтянуть фигуру?"
+)
+
+BMI_LADDER_TEXT = (
+    "У тебя сейчас вес ниже нормы (BMI < 18.5). Дефицит может быть "
+    "опасен — давай решим вместе:"
+)
+
+
+async def _fetch_profile_for_bmi(bot_user) -> tuple[int, int] | None:
+    """Получить (weight_kg, height_cm) из текущего Ayla профиля для BMI check.
+
+    Возвращает None если хоть одно поле отсутствует — тогда ladder не
+    триггерим (нет данных для расчёта).
+    """
+    extid = external_user_id_for(bot_user)
+    profile = await _client().get_profile(external_user_id=extid)
+    if profile is None:
+        return None
+    if profile.weight_kg <= 0 or profile.height_cm <= 0:
+        return None
+    return (profile.weight_kg, profile.height_cm)
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GOAL_MAINTAIN)
+async def on_goal_maintain(callback: MessageCallback, context: MemoryContext) -> None:
+    """maintain — finalize сразу, нет pace/gain_clarify/BMI ladder."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _finalize_anketa(callback, context, chat_id, goal="maintain")
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GOAL_LOSE)
+async def on_goal_lose(callback: MessageCallback, context: MemoryContext) -> None:
+    """lose — проверяем BMI: если <18.5 → ladder, иначе → pace."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    bot_user = await _resolve_bot_user(callback)
+    profile_data = await _fetch_profile_for_bmi(bot_user)
+
+    if profile_data is not None:
+        from maxbot.nutrition_calc import calc_bmi
+        weight_kg, height_cm = profile_data
+        try:
+            bmi = calc_bmi(weight_kg=weight_kg, height_cm=height_cm)
+        except ValueError:
+            bmi = 25.0  # fallback nominal
+        if bmi < 18.5:
+            await context.set_state(NutritionAnketaStates.awaiting_bmi_ladder)
+            await callback.bot.send_message(
+                chat_id=chat_id,
+                text=BMI_LADDER_TEXT,
+                attachments=[keyboards.anketa_bmi_ladder_keyboard()],
+            )
+            return
+
+    # BMI normal или нет данных — переход на pace
+    await context.set_state(NutritionAnketaStates.awaiting_pace)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=PACE_TEXT,
+        attachments=[keyboards.anketa_pace_keyboard()],
+    )
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GOAL_GAIN)
+async def on_goal_gain(callback: MessageCallback, context: MemoryContext) -> None:
+    """gain — уточняем mass vs tone."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await context.set_state(NutritionAnketaStates.awaiting_gain_clarify)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=GAIN_CLARIFY_TEXT,
+        attachments=[keyboards.anketa_gain_clarify_keyboard()],
+    )
+
+
+# ─── finalize anketa skeleton (Task 9 minimum; Task 10 expands) ────────────
+
+
+async def _finalize_anketa(
+    callback_or_event,
+    context: MemoryContext,
+    chat_id: int,
+    *,
+    goal: str,
+    pace: str | None = None,
+) -> None:
+    """Финальный POST с complete=true → render финального экрана.
+
+    Skeleton — Task 10 will add `_format_complete_text` + `_mark_onboarded`.
+    Here: only minimum required for Task 9 (goal=maintain finalize) so that
+    test_goal_maintain_skips_pace_goes_to_complete passes.
+
+    TODO Task 10: set BotUser.nutrition_onboarded_at after successful finalize.
+    """
+    bot_user = await _resolve_bot_user(callback_or_event)
+    extid = external_user_id_for(bot_user)
+
+    body: dict = {"goal": goal, "complete": True}
+    if pace is not None:
+        body["pace"] = pace
+
+    try:
+        profile = await _client().upsert_profile(
+            external_user_id=extid,
+            data=body,
+        )
+    except (NutritionUnavailableError, NutritionAPIError):
+        await callback_or_event.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось сохранить — попробуй открыть дневник заново.",
+        )
+        await context.clear()
+        return
+
+    await context.set_state(NutritionAnketaStates.complete)
+    await callback_or_event.bot.send_message(
+        chat_id=chat_id,
+        text=f"Готово ✓\n\n🎯 Норма: {profile.daily_kcal} ккал",
+        attachments=[keyboards.anketa_complete_keyboard()],
+    )
+    # TODO Task 10: _mark_onboarded(bot_user) — set BotUser.nutrition_onboarded_at
+
+
 # ─── universal Skip handler — диспетчер по текущему state ──────────────────
 
 
