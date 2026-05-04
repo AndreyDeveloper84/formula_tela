@@ -594,21 +594,45 @@ async def _finalize_anketa(
 
 
 def _format_complete_text(profile) -> str:
-    """Финальный экран TIER-A:
+    """Финальный экран TIER-A с опциональным блоком «Учла важное».
 
-    Готово ✓
-
-    🎯 Норма: 1305 ккал
-       Б 110 / Ж 45 / У 130
-       💧 1900 мл воды
+    Блок рендерится только если Ayla вернула overrides_applied (см.
+    `maxbot-phase3-ayla-spec.md` §1.2). В TIER-A overrides могут быть
+    только bmr_floor (BMI<18.5+lose без override → ladder, но если юзер
+    нажал [Всё равно худеть] и Ayla подняла pace до gentle = bmr_floor) —
+    pregnancy/breastfeeding собирается в TIER-B, не здесь.
     """
     water_ml = profile.water_ml or 0
-    return (
+    base = (
         "Готово ✓\n\n"
         f"🎯 Норма: {profile.daily_kcal} ккал\n"
         f"   Б {profile.protein_g} / Ж {profile.fat_g} / У {profile.carbs_g}\n"
         f"   💧 {water_ml} мл воды"
     )
+
+    overrides = (profile.raw or {}).get("overrides_applied") or []
+    if not overrides:
+        return base
+
+    lines = ["", "Учла важное:"]
+    for ov in overrides:
+        reason = ov.get("reason", "")
+        if reason == "pregnancy":
+            lines.append("• Беременность → дефицит небезопасен, цель «держать вес»")
+        elif reason == "breastfeeding":
+            lines.append("• Грудное вскармливание → +400 ккал, +25 г белка")
+        elif reason == "eating_disorder":
+            lines.append("• Учитываю особенности — без цифр калорий в советах")
+        elif reason == "bmr_floor":
+            lines.append(
+                "• Подняла норму — она была ниже того, что нужно "
+                "организму чтобы дышать и думать"
+            )
+        elif reason == "low_bmi":
+            lines.append("• BMI ниже нормы — рекомендую обсудить с врачом")
+        # неизвестные reasons silent skip
+
+    return base + "\n" + "\n".join(lines)
 
 
 async def _mark_onboarded(bot_user) -> None:

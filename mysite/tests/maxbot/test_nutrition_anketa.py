@@ -824,3 +824,71 @@ async def test_bmi_override_advances_to_pace_with_warning_flag(monkeypatch):
     assert body.get("health_flags", {}).get("bmi_warning_overridden") is True
     assert body["complete"] is False
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_pace
+
+
+# ─── overrides_applied render ──────────────────────────────────────────────
+
+
+def test_format_complete_text_with_pregnancy_override():
+    """Если ProfileResponse.goal_overridden_by='pregnancy' и goal стал
+    maintain (был lose) — показываем блок 'Учла важное'."""
+    from unittest.mock import MagicMock
+
+    from maxbot.handlers.nutrition_anketa import _format_complete_text
+
+    profile = MagicMock(
+        daily_kcal=1650, protein_g=135, fat_g=55, carbs_g=160, water_ml=2000,
+        goal_overridden_by="pregnancy",
+        raw={
+            "overrides_applied": [
+                {"reason": "pregnancy",
+                 "from": {"goal": "lose"},
+                 "to": {"goal": "maintain"}},
+            ],
+        },
+    )
+
+    text = _format_complete_text(profile)
+    assert "1650" in text
+    assert "Учла важное" in text
+    assert "беременн" in text.lower()
+
+
+def test_format_complete_text_no_overrides_no_block():
+    """Без overrides — нет блока 'Учла важное', только норма."""
+    from unittest.mock import MagicMock
+
+    from maxbot.handlers.nutrition_anketa import _format_complete_text
+
+    profile = MagicMock(
+        daily_kcal=1450, protein_g=110, fat_g=50, carbs_g=145, water_ml=1900,
+        goal_overridden_by=None,
+        raw={"overrides_applied": []},
+    )
+
+    text = _format_complete_text(profile)
+    assert "Учла важное" not in text
+
+
+def test_format_complete_text_with_bmr_floor_override():
+    """goal_overridden_by='bmr_floor' → объяснение что подняли норму."""
+    from unittest.mock import MagicMock
+
+    from maxbot.handlers.nutrition_anketa import _format_complete_text
+
+    profile = MagicMock(
+        daily_kcal=1300, protein_g=110, fat_g=45, carbs_g=130, water_ml=1900,
+        goal_overridden_by="bmr_floor",
+        raw={
+            "overrides_applied": [
+                {"reason": "bmr_floor",
+                 "from": {"pace": "moderate"},
+                 "to": {"pace": "gentle"}},
+            ],
+        },
+    )
+
+    text = _format_complete_text(profile)
+    assert "Учла важное" in text
+    # Без термина BMR — метафора (Design Doc §4.4)
+    assert "организм" in text.lower() or "ниже" in text.lower()
