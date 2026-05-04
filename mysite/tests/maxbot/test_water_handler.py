@@ -160,3 +160,62 @@ async def test_water_add_milestone_text_appears_when_set(monkeypatch, settings):
 
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "Половина нормы" in text
+
+
+@pytest.mark.asyncio
+async def test_water_undo_calls_delete_water(monkeypatch, settings):
+    """Click [↩️ Отменить] → DELETE /water/{entry_id}/, бот шлёт ack."""
+    from maxbot.handlers.water import on_water_undo
+
+    settings.NUTRITION_ENABLED = True
+
+    undo_mock = AsyncMock(return_value=True)  # 204 — successfully deleted
+    fake_client = MagicMock(undo_water=undo_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    cb = _fake_callback("cb:water:undo:W-1")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_undo(cb, ctx)
+
+    undo_mock.assert_awaited_once()
+    kwargs = undo_mock.await_args.kwargs
+    assert kwargs["entry_id"] == "W-1"
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Отмен" in text or "удал" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_water_undo_window_expired_says_so(monkeypatch, settings):
+    """undo_water=False (404 — restore window истёк) → юзер видит explanation."""
+    from maxbot.handlers.water import on_water_undo
+
+    settings.NUTRITION_ENABLED = True
+
+    undo_mock = AsyncMock(return_value=False)  # 404 — too late
+    fake_client = MagicMock(undo_water=undo_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    cb = _fake_callback("cb:water:undo:W-old")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_undo(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "поздно" in text.lower() or "истёк" in text.lower() or \
+           "минут" in text.lower()

@@ -144,3 +144,58 @@ async def on_water_add_quick(
         text=text,
         attachments=[keyboards.water_undo_keyboard(entry_id=entry.entry_id)],
     )
+
+
+@router.message_callback(F.callback.payload.startswith(keyboards.PAYLOAD_WATER_UNDO_PREFIX))
+async def on_water_undo(callback: MessageCallback, context: MemoryContext) -> None:
+    """[↩️ Отменить] → DELETE undo_water. 15-минутное window server-side."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+
+    payload = callback.callback.payload or ""
+    if not payload.startswith(keyboards.PAYLOAD_WATER_UNDO_PREFIX):
+        return
+    entry_id = payload[len(keyboards.PAYLOAD_WATER_UNDO_PREFIX):]
+    if not entry_id:
+        return
+
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+
+    client = get_nutrition_client()
+    try:
+        deleted = await client.undo_water(
+            external_user_id=external_user_id_for(bot_user),
+            entry_id=entry_id,
+        )
+    except NutritionUnavailableError:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Сервис недоступен — попробуй отменить через минуту.",
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.exception("water.undo.api_error user=%s entry=%s err=%s",
+                         bot_user.max_user_id, entry_id, exc)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось отменить. Попробуй ещё раз.",
+        )
+        return
+
+    if deleted:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="↩️ Отменила запись — удалила из дневника.",
+        )
+    else:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Поздно — запись уже зафиксирована (прошло больше "
+                "15 минут). Если ошибка существенна — добавь "
+                "противоположный объём вручную."
+            ),
+        )
