@@ -501,7 +501,45 @@ async def on_goal_gain(callback: MessageCallback, context: MemoryContext) -> Non
     )
 
 
-# ─── finalize anketa skeleton (Task 9 minimum; Task 10 expands) ────────────
+# ─── pace handlers ─────────────────────────────────────────────────────────
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_PACE_GENTLE)
+async def on_pace_gentle(callback: MessageCallback, context: MemoryContext) -> None:
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _finalize_anketa(callback, context, chat_id, goal="lose", pace="gentle")
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_PACE_MODERATE)
+async def on_pace_moderate(callback: MessageCallback, context: MemoryContext) -> None:
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _finalize_anketa(callback, context, chat_id, goal="lose", pace="moderate")
+
+
+# ─── gain clarify ──────────────────────────────────────────────────────────
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GAIN_MASS)
+async def on_gain_mass(callback: MessageCallback, context: MemoryContext) -> None:
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _finalize_anketa(callback, context, chat_id, goal="gain")
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GAIN_TONE)
+async def on_gain_tone(callback: MessageCallback, context: MemoryContext) -> None:
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _finalize_anketa(callback, context, chat_id, goal="tone")
+
+
+# ─── finalize anketa (full impl, Task 10) ──────────────────────────────────
 
 
 async def _finalize_anketa(
@@ -512,13 +550,10 @@ async def _finalize_anketa(
     goal: str,
     pace: str | None = None,
 ) -> None:
-    """Финальный POST с complete=true → render финального экрана.
+    """Финальный POST с complete=true → render финальный экран.
 
-    Skeleton — Task 10 will add `_format_complete_text` + `_mark_onboarded`.
-    Here: only minimum required for Task 9 (goal=maintain finalize) so that
-    test_goal_maintain_skips_pace_goes_to_complete passes.
-
-    TODO Task 10: set BotUser.nutrition_onboarded_at after successful finalize.
+    Mark BotUser.nutrition_onboarded_at, чтобы entry-screen в следующий
+    раз сразу вёл в дневник, а не предлагал анкету заново.
     """
     bot_user = await _resolve_bot_user(callback_or_event)
     extid = external_user_id_for(bot_user)
@@ -540,13 +575,45 @@ async def _finalize_anketa(
         await context.clear()
         return
 
+    await _mark_onboarded(bot_user)
+
     await context.set_state(NutritionAnketaStates.complete)
+    text = _format_complete_text(profile)
     await callback_or_event.bot.send_message(
         chat_id=chat_id,
-        text=f"Готово ✓\n\n🎯 Норма: {profile.daily_kcal} ккал",
+        text=text,
         attachments=[keyboards.anketa_complete_keyboard()],
     )
-    # TODO Task 10: _mark_onboarded(bot_user) — set BotUser.nutrition_onboarded_at
+
+
+def _format_complete_text(profile) -> str:
+    """Финальный экран TIER-A:
+
+    Готово ✓
+
+    🎯 Норма: 1305 ккал
+       Б 110 / Ж 45 / У 130
+       💧 1900 мл воды
+    """
+    water_ml = profile.water_ml or 0
+    return (
+        "Готово ✓\n\n"
+        f"🎯 Норма: {profile.daily_kcal} ккал\n"
+        f"   Б {profile.protein_g} / Ж {profile.fat_g} / У {profile.carbs_g}\n"
+        f"   💧 {water_ml} мл воды"
+    )
+
+
+async def _mark_onboarded(bot_user) -> None:
+    """Записать nutrition_onboarded_at = now на BotUser."""
+    from django.utils import timezone
+
+    @sync_to_async
+    def _save():
+        bot_user.nutrition_onboarded_at = timezone.now()
+        bot_user.save(update_fields=["nutrition_onboarded_at"])
+
+    await _save()
 
 
 # ─── universal Skip handler — диспетчер по текущему state ──────────────────

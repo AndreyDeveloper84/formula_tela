@@ -573,3 +573,152 @@ async def test_goal_lose_no_profile_falls_through_to_pace(monkeypatch):
 
     upsert_mock.assert_not_awaited()
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_pace
+
+
+# ─── pace + gain_clarify + finalize render ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_pace_moderate_calls_finalize_with_lose_moderate(monkeypatch):
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_pace_moderate
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(
+        raw={"daily_kcal": 1450, "protein_g": 110, "fat_g": 50,
+             "carbs_g": 145, "water_ml": 1900,
+             "goal_overridden_by": None, "overrides_applied": []},
+        daily_kcal=1450, protein_g=110, fat_g=50, carbs_g=145, water_ml=1900,
+        goal_overridden_by=None,
+    ))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._mark_onboarded",
+        AsyncMock(),
+    )
+
+    cb = _fake_callback("cb:anketa:pace:moderate")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_pace)
+
+    await on_pace_moderate(cb, ctx)
+
+    body = upsert_mock.await_args.kwargs["data"]
+    assert body["goal"] == "lose"
+    assert body["pace"] == "moderate"
+    assert body["complete"] is True
+    assert await ctx.get_state() == NutritionAnketaStates.complete
+
+
+@pytest.mark.asyncio
+async def test_gain_tone_finalizes_with_goal_tone(monkeypatch):
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_gain_tone
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(
+        raw={}, daily_kcal=1700, protein_g=130, fat_g=60, carbs_g=180,
+        water_ml=2000, goal_overridden_by=None,
+    ))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._mark_onboarded",
+        AsyncMock(),
+    )
+
+    cb = _fake_callback("cb:anketa:gain:tone")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_gain_clarify)
+
+    await on_gain_tone(cb, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["goal"] == "tone"
+
+
+@pytest.mark.asyncio
+async def test_finalize_renders_full_norms_screen(monkeypatch):
+    """Финальный экран показывает: 🎯 ккал · Б Ж У · 💧 ml + кнопка
+    [📸 Сфоткать первый приём]."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_pace_gentle
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(
+        raw={}, daily_kcal=1305, protein_g=110, fat_g=45, carbs_g=130,
+        water_ml=1900, goal_overridden_by=None,
+    ))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._mark_onboarded",
+        AsyncMock(),
+    )
+
+    cb = _fake_callback("cb:anketa:pace:gentle")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_pace)
+
+    await on_pace_gentle(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    # Формат: содержит ккал + БЖУ + воду
+    assert "1305" in text
+    assert "Б 110" in text
+    assert "1900" in text or "1.9" in text
+    # Кнопка фото есть
+    assert cb.bot.send_message.await_args.kwargs.get("attachments") is not None
+
+
+@pytest.mark.asyncio
+async def test_finalize_marks_bot_user_onboarded(monkeypatch):
+    """После complete — _mark_onboarded(bot_user) вызван."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_goal_maintain
+    from maxbot.states import NutritionAnketaStates
+
+    bot_user = MagicMock(max_user_id=99, nutrition_onboarded_at=None)
+    upsert_mock = AsyncMock(return_value=MagicMock(
+        raw={}, daily_kcal=1500, protein_g=100, fat_g=50, carbs_g=150,
+        water_ml=2000, goal_overridden_by=None,
+    ))
+    mark_mock = AsyncMock()
+
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=bot_user),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._mark_onboarded", mark_mock,
+    )
+
+    cb = _fake_callback("cb:anketa:goal:maintain")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_goal)
+
+    await on_goal_maintain(cb, ctx)
+
+    mark_mock.assert_awaited_once_with(bot_user)
