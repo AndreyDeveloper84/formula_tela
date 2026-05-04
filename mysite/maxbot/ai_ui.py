@@ -660,6 +660,22 @@ def render_food_logged_with_footer(
     return (text, [builder.as_markup()])
 
 
+# ─── 💧 Water status (Phase 3.1 Part 2B) ───────────────────────────────────
+
+
+def render_water_status(today) -> str:
+    """Phase 3.1 Part 2B: «💧 Сегодня: 1.2 / 2.0 л».
+
+    `today` — `WaterTodayResponse` dataclass с полями total_ml, norm_ml.
+    Литры с одним знаком после запятой когда total_ml ≥ 1000, иначе мл.
+    """
+    total_ml = today.total_ml
+    norm_ml = today.norm_ml
+    total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+    norm_str = f"{norm_ml / 1000:.1f} л" if norm_ml >= 1000 else f"{norm_ml} мл"
+    return f"💧 Сегодня: {total_str} / {norm_str}\n\nСколько добавить?"
+
+
 # ─── /дневник daily summary (DRF-247) ──────────────────────────────────────
 
 
