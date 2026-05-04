@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
     "payments",
+    "maxbot",
 ]
 
 MIDDLEWARE = [

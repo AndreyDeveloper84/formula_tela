@@ -109,7 +109,10 @@ async def _resolve_bot_user(callback_or_event):
         sender_id = callback_or_event.callback.user.user_id  # MessageCallback
     else:
         sender_id = callback_or_event.message.sender.user_id  # MessageCreated
-    return await sync_to_async(get_or_create_bot_user)(sender_id)
+    # get_or_create_bot_user is already @sync_to_async — call directly.
+    # It returns (BotUser, created) — unpack to bot_user only.
+    bot_user, _ = await get_or_create_bot_user(sender_id)
+    return bot_user
 
 
 def _idempotency_key(external_user_id: str, step: str) -> str:
