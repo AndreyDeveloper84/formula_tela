@@ -568,6 +568,13 @@ async def _finalize_anketa(
             data=body,
         )
     except (NutritionUnavailableError, NutritionAPIError):
+        # Финальный шаг — оба класса ошибок трактуем одинаково: fatal,
+        # без recovery (вернуться в анкету посередине нельзя — все шаги
+        # уже отправлены, complete=True не прошёл). Клиент должен
+        # начать заново через меню. Это намеренная divergence от _upsert,
+        # где на Unavailable сохраняем state для retry — здесь некуда
+        # ретраить (state уже awaiting_pace/gain_clarify, его нельзя
+        # «дозавершить» новым кликом по той же кнопке).
         await callback_or_event.bot.send_message(
             chat_id=chat_id,
             text="Не получилось сохранить — попробуй открыть дневник заново.",

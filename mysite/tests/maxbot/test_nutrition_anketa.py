@@ -722,3 +722,17 @@ async def test_finalize_marks_bot_user_onboarded(monkeypatch):
     await on_goal_maintain(cb, ctx)
 
     mark_mock.assert_awaited_once_with(bot_user)
+
+
+def test_format_complete_text_handles_null_water_ml():
+    """Если Ayla вернула water_ml=None — рендер показывает 0 (не crash)."""
+    from maxbot.handlers.nutrition_anketa import _format_complete_text
+
+    profile = MagicMock(
+        daily_kcal=1450, protein_g=110, fat_g=50, carbs_g=145, water_ml=None,
+    )
+
+    text = _format_complete_text(profile)
+    assert "1450" in text
+    assert "💧 0 мл" in text  # defensive fallback
+    # Не падает — самое важное
