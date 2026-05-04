@@ -52,6 +52,21 @@ PAYLOAD_ANKETA_BMI_OVERRIDE = "cb:anketa:bmi:override"
 
 PAYLOAD_NUTRITION_FIRST_MEAL = "cb:nutrition:first_meal"
 
+# ─── Phase 3.1 Part 2A: photo refactor + footer + correction ───────────────
+
+PAYLOAD_NUTRITION_ADD_WATER = "cb:nutrition:water:add"
+PAYLOAD_NUTRITION_VIEW_DAY = "cb:nutrition:view_day"
+
+PAYLOAD_SCAN_CORRECT_MENU = "cb:scan:correct:menu"
+PAYLOAD_SCAN_PORTION_SMALLER = "cb:scan:correct:portion:smaller"
+PAYLOAD_SCAN_PORTION_NORMAL = "cb:scan:correct:portion:normal"
+PAYLOAD_SCAN_PORTION_LARGER = "cb:scan:correct:portion:larger"
+PAYLOAD_SCAN_OTHER_DISH = "cb:scan:correct:other_dish"
+PAYLOAD_SCAN_ADD_INGREDIENT = "cb:scan:correct:add_ingredient"
+PAYLOAD_SCAN_DELETE = "cb:scan:correct:delete"
+PAYLOAD_SCAN_RETAKE = "cb:scan:retake"
+PAYLOAD_SCAN_MANUAL_INPUT = "cb:scan:manual"
+
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -329,5 +344,70 @@ def anketa_complete_keyboard():
     builder.row(
         CallbackButton(text="📸 Сфоткать первый приём",
                        payload=PAYLOAD_NUTRITION_FIRST_MEAL),
+    )
+    return builder.as_markup()
+
+
+def action_row_keyboard():
+    """Узкий action-bar для footer'а scan-карточки и daily_summary.
+
+    `[📸 Фото][💧 Вода][📋 Меню]` — минимум CTA-кнопок без полного
+    main_menu. Photo button переиспользует `cb:menu:nutrition` payload
+    (jump в entry-screen дневника). Water — заглушка Part 2B.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📸 Фото", payload=PAYLOAD_MENU_NUTRITION),
+        CallbackButton(text="💧 Вода", payload=PAYLOAD_NUTRITION_ADD_WATER),
+        CallbackButton(text="📋 Меню", payload=PAYLOAD_MENU_BOOK),
+    )
+    return builder.as_markup()
+
+
+def food_scan_correct_menu_keyboard():
+    """Открывается по клику [✏️ Поправить] на scan-карточке.
+
+    4 опции по Design Doc §5.4: размер порции / другое блюдо / добавить
+    ингредиент / удалить. Последние 3 — заглушки до Phase 3.2 (требуют
+    новых Ayla endpoints для override scan и delete FoodLog).
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📦 Размер порции",
+                       payload=PAYLOAD_SCAN_PORTION_SMALLER + ":menu"),
+    )
+    builder.row(
+        CallbackButton(text="🔄 Это другое блюдо",
+                       payload=PAYLOAD_SCAN_OTHER_DISH),
+    )
+    builder.row(
+        CallbackButton(text="➕ Добавить ингредиент",
+                       payload=PAYLOAD_SCAN_ADD_INGREDIENT),
+    )
+    builder.row(
+        CallbackButton(text="⏭ Удалить",
+                       payload=PAYLOAD_SCAN_DELETE),
+    )
+    return builder.as_markup()
+
+
+def food_scan_portion_keyboard():
+    """[Меньше] [Норм] [Больше] — выбор portion_multiplier 0.7/1.0/1.3."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="Меньше", payload=PAYLOAD_SCAN_PORTION_SMALLER),
+        CallbackButton(text="Норм", payload=PAYLOAD_SCAN_PORTION_NORMAL),
+        CallbackButton(text="Больше", payload=PAYLOAD_SCAN_PORTION_LARGER),
+    )
+    return builder.as_markup()
+
+
+def food_scan_low_confidence_keyboard():
+    """Low confidence (<0.5) или FoodNotRecognizedError → 2 кнопки:
+    переснять или ввести вручную (заглушка manual = Phase 3.2)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📸 Переснять", payload=PAYLOAD_SCAN_RETAKE),
+        CallbackButton(text="✏️ Напишу сама", payload=PAYLOAD_SCAN_MANUAL_INPUT),
     )
     return builder.as_markup()
