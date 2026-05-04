@@ -15,12 +15,20 @@ PAYLOAD_NUTRITION_START_ANKETA). Дальше — chain handlers по state'ам
 from __future__ import annotations
 
 import logging
+import uuid
 
+from asgiref.sync import sync_to_async
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards
+from maxbot.services.ayla_user_proxy import external_user_id_for
+from maxbot.services.nutrition_client import (
+    NutritionAPIError,
+    NutritionUnavailableError,
+    get_nutrition_client,
+)
 from maxbot.states import NutritionAnketaStates
 
 
@@ -79,4 +87,165 @@ async def on_consent_decline(
             "Сейчас можешь просто прислать фото блюда — посчитаю калории "
             "по средним значениям."
         ),
+    )
+
+
+# ─── helpers ───────────────────────────────────────────────────────────────
+
+
+def _client():
+    """Indirection чтобы тесты могли monkeypatch'ить."""
+    return get_nutrition_client()
+
+
+async def _resolve_bot_user(callback_or_event):
+    """Получить BotUser по sender max_user_id с lazy-create.
+
+    Принимает либо MessageCallback (имеет .callback.user.user_id), либо
+    MessageCreated (имеет .message.sender.user_id).
+    """
+    from maxbot.personalization import get_or_create_bot_user
+    if hasattr(callback_or_event, "callback"):
+        sender_id = callback_or_event.callback.user.user_id  # MessageCallback
+    else:
+        sender_id = callback_or_event.message.sender.user_id  # MessageCreated
+    return await sync_to_async(get_or_create_bot_user)(sender_id)
+
+
+def _idempotency_key(external_user_id: str, step: str) -> str:
+    """UUID5 — стабилен между ретраями того же шага.
+
+    Note: `upsert_profile` не принимает idempotency_key как kwarg (реализовано
+    на стороне HTTP-клиента через X-Idempotency-Key header — будущая задача).
+    Определён здесь для использования в Tasks 7-9.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{external_user_id}:anketa:{step}"))
+
+
+async def _upsert(
+    callback_or_event,
+    *,
+    step: str,
+    body: dict,
+    advance_to,
+    context: MemoryContext,
+    next_text: str,
+    next_keyboard,
+    chat_id: int,
+) -> None:
+    """Общий шаг анкеты: POST в Ayla → если успех, advance state + render
+    next screen. На транзиентной ошибке — show retry hint, state не меняем.
+    """
+    bot_user = await _resolve_bot_user(callback_or_event)
+    extid = external_user_id_for(bot_user)
+
+    try:
+        await _client().upsert_profile(
+            external_user_id=extid,
+            data={**body, "complete": False},
+        )
+    except NutritionUnavailableError:
+        await callback_or_event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Хм, не могу сохранить шаг — попробуй ещё раз через минуту "
+                "или нажми «Назад» в меню. Извини 🙏"
+            ),
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.warning("anketa.upsert_failed step=%s err=%s", step, exc)
+        await callback_or_event.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось — давай попробуем заново через меню.",
+        )
+        await context.clear()
+        return
+
+    await context.set_state(advance_to)
+    await callback_or_event.bot.send_message(
+        chat_id=chat_id,
+        text=next_text,
+        attachments=[next_keyboard()] if next_keyboard else None,
+    )
+
+
+# ─── gender ────────────────────────────────────────────────────────────────
+
+
+AGE_TEXT = (
+    "● ● ○ ○ ○\n\n"
+    "Сколько тебе лет? Напиши число (например, 35) или пропусти."
+)
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GENDER_FEMALE)
+async def on_gender_female(callback: MessageCallback, context: MemoryContext) -> None:
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _upsert(
+        callback,
+        step="gender",
+        body={"gender": "female"},
+        advance_to=NutritionAnketaStates.awaiting_age,
+        context=context,
+        next_text=AGE_TEXT,
+        next_keyboard=keyboards.anketa_skip_keyboard,
+        chat_id=chat_id,
+    )
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GENDER_MALE)
+async def on_gender_male(callback: MessageCallback, context: MemoryContext) -> None:
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await _upsert(
+        callback,
+        step="gender",
+        body={"gender": "male"},
+        advance_to=NutritionAnketaStates.awaiting_age,
+        context=context,
+        next_text=AGE_TEXT,
+        next_keyboard=keyboards.anketa_skip_keyboard,
+        chat_id=chat_id,
+    )
+
+
+# ─── universal Skip handler — диспетчер по текущему state ──────────────────
+
+
+_SKIP_FIELD_BY_STATE = {
+    str(NutritionAnketaStates.awaiting_gender): (
+        "gender",
+        NutritionAnketaStates.awaiting_age,
+        AGE_TEXT,
+        keyboards.anketa_skip_keyboard,
+    ),
+    # остальные пары добавляются в Tasks 7-9
+}
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_SKIP)
+async def on_skip(callback: MessageCallback, context: MemoryContext) -> None:
+    """Универсальный Skip: маппит current state → field name + next state."""
+    state = await context.get_state()
+    if str(state) not in _SKIP_FIELD_BY_STATE:
+        return  # silent ignore — не должно случиться, но safe
+    field, advance_to, next_text, next_kb = _SKIP_FIELD_BY_STATE[str(state)]
+
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    await _upsert(
+        callback,
+        step=field,
+        body={"_skipped_fields": [field]},
+        advance_to=advance_to,
+        context=context,
+        next_text=next_text,
+        next_keyboard=next_kb,
+        chat_id=chat_id,
     )
