@@ -99,3 +99,73 @@ async def on_portion_apply(
             "с правильной порцией в кадре."
         ),
     )
+
+
+COMING_SOON_PHASE32 = (
+    "🔧 Скоро добавлю — пока в разработке (Phase 3.2). "
+    "Пришли фото снова или впиши блюдо текстом."
+)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_SCAN_OTHER_DISH,
+)
+async def on_other_dish(callback: MessageCallback, context: MemoryContext) -> None:
+    """[🔄 Это другое блюдо] — заглушка Phase 3.2 (требует new Ayla endpoint
+    для override-scan с caption: 'это был ризотто')."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(chat_id=chat_id, text=COMING_SOON_PHASE32)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_SCAN_ADD_INGREDIENT,
+)
+async def on_add_ingredient(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[➕ Добавить ингредиент] — заглушка Phase 3.2."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(chat_id=chat_id, text=COMING_SOON_PHASE32)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_SCAN_DELETE,
+)
+async def on_delete_log(callback: MessageCallback, context: MemoryContext) -> None:
+    """[⏭ Удалить] — заглушка Phase 3.2 (требует new Ayla endpoint
+    DELETE /food-log/{id}/)."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(chat_id=chat_id, text=COMING_SOON_PHASE32)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_SCAN_RETAKE,
+)
+async def on_retake(callback: MessageCallback, context: MemoryContext) -> None:
+    """[📸 Переснять] — попроси прислать новое фото."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text="📸 Пришли фото блюда ещё раз — попробую распознать получше.",
+    )
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_SCAN_MANUAL_INPUT,
+)
+async def on_manual_input(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[✏️ Напишу сама] — заглушка Phase 3.2 (free-text + GPT-парсинг)."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(chat_id=chat_id, text=COMING_SOON_PHASE32)

@@ -98,3 +98,31 @@ async def test_portion_apply_button_stub_says_phase32():
     text = cb.bot.send_message.await_args.kwargs["text"]
     # Stub обозначает что MVP готов
     assert "Скоро" in text or "пришли" in text.lower() or "снова" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_other_dish_stub_says_coming_soon():
+    """[🔄 Это другое блюдо] — заглушка Phase 3.2."""
+    from maxbot.handlers.food_correction import on_other_dish
+
+    cb = _fake_callback("cb:scan:correct:other_dish")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_other_dish(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Скоро" in text or "разработ" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_retake_stub_hints_send_photo():
+    """[📸 Переснять] — попроси прислать новое фото."""
+    from maxbot.handlers.food_correction import on_retake
+
+    cb = _fake_callback("cb:scan:retake")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_retake(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Пришли" in text or "пришли" in text or "фото" in text.lower()
