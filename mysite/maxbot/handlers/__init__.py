@@ -11,6 +11,7 @@ from .booking import router as booking_router
 from .contacts import router as contacts_router
 from .fallback import router as fallback_router
 from .faq import router as faq_router
+from .food_correction import router as food_correction_router
 from .food_scanner import router as food_scanner_router
 from .nutrition_anketa import router as nutrition_anketa_router
 from .nutrition_entry import router as nutrition_entry_router
@@ -57,6 +58,9 @@ def get_routers():
         # передавая управление дальше. cb:nutrition:consent:* / cb:nutrition:log:*
         # тоже здесь.
         food_scanner_router,
+        # food_correction — обработка cb:scan:correct:* callbacks из
+        # render_food_scan_v2 [✏️ Поправить] (Part 2A T07-T11).
+        food_correction_router,
         ai_assistant_router,
         fallback_router,
     ]
