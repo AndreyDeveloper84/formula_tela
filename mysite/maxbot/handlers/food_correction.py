@@ -20,7 +20,14 @@ from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback
 
-from maxbot import keyboards
+from maxbot import ai_ui, keyboards
+from maxbot.personalization import get_or_create_bot_user
+from maxbot.services.ayla_user_proxy import external_user_id_for
+from maxbot.services.nutrition_client import (
+    NutritionAPIError,
+    NutritionUnavailableError,
+    get_nutrition_client,
+)
 
 
 logger = logging.getLogger("maxbot.handlers.food_correction")
@@ -193,3 +200,40 @@ async def on_add_water_stub(
             "Пока можешь пометить себе вручную."
         ),
     )
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_NUTRITION_VIEW_DAY,
+)
+async def on_view_day(callback: MessageCallback, context: MemoryContext) -> None:
+    """[📊 Посмотреть день] из footer scan-карточки →
+    то же что /дневник команда: daily_summary + render."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+
+    client = get_nutrition_client()
+    try:
+        summary = await client.daily_summary(
+            external_user_id=external_user_id_for(bot_user),
+        )
+    except NutritionUnavailableError:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Дневник временно недоступен. Попробуй через минуту.",
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.exception("food_correction.summary.api_error user=%s err=%s",
+                         bot_user.max_user_id, exc)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось загрузить дневник.",
+        )
+        return
+
+    text = ai_ui.render_daily_summary(summary.raw)
+    await callback.bot.send_message(chat_id=chat_id, text=text)
