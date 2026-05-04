@@ -719,6 +719,32 @@ async def on_bmi_override(
     )
 
 
+# ─── first meal CTA ────────────────────────────────────────────────────────
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_NUTRITION_FIRST_MEAL)
+async def on_first_meal(callback: MessageCallback, context: MemoryContext) -> None:
+    """[📸 Сфоткать первый приём] — exit FSM, hint про фото.
+
+    Сам food scanner работает через handlers/food_scanner.py — нам тут
+    нужно только закрыть FSM (чтобы юзер мог свободно слать фото) и
+    дать инструкцию.
+    """
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+
+    await context.clear()
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "📸 Пришли фото блюда — распознаю и посчитаю калории.\n\n"
+            "Можешь добавить подпись («половина порции», «у мамы в гостях») — "
+            "учту в расчёте."
+        ),
+    )
+
+
 # ─── universal Skip handler — диспетчер по текущему state ──────────────────
 
 

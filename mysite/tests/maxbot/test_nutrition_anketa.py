@@ -892,3 +892,25 @@ def test_format_complete_text_with_bmr_floor_override():
     assert "Учла важное" in text
     # Без термина BMR — метафора (Design Doc §4.4)
     assert "организм" in text.lower() or "ниже" in text.lower()
+
+
+# ─── first meal CTA ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_first_meal_clears_state_and_hints_photo():
+    """[📸 Сфоткать первый приём] → state cleared, бот шлёт hint про фото."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_first_meal
+    from maxbot.states import NutritionAnketaStates
+
+    cb = _fake_callback("cb:nutrition:first_meal")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.complete)
+
+    await on_first_meal(cb, ctx)
+
+    assert await ctx.get_state() is None
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "фото" in text.lower() or "сфотограф" in text.lower() or "пришли" in text.lower()
