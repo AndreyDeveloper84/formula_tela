@@ -355,3 +355,71 @@ def test_water_router_registered():
 
     routers = get_routers()
     assert water_router in routers, "water_router not registered in get_routers()"
+
+
+@pytest.mark.asyncio
+async def test_e2e_water_menu_to_add_to_undo(monkeypatch, settings):
+    """E2E: open water menu → click +250 → click ↩️ Отменить → ack.
+    Покрывает 3 handler'а в последовательности с 3 mocked Ayla calls.
+    """
+    from maxbot.handlers.water import (
+        on_water_menu, on_water_add_quick, on_water_undo,
+    )
+    from maxbot.services.nutrition_client import (
+        WaterEntryResponse, WaterTodayResponse,
+    )
+
+    settings.NUTRITION_ENABLED = True
+
+    today_mock = AsyncMock(return_value=WaterTodayResponse(
+        total_ml=1200, norm_ml=2000,
+        entries=[],
+        raw={},
+    ))
+    add_mock = AsyncMock(return_value=WaterEntryResponse(
+        entry_id="W-e2e", ml=250, water_ml=250, kcal=0,
+        milestone_text=None,
+        today_total_ml=1450, today_norm_ml=2000,
+        alcohol_recovery_hint=False, raw={},
+    ))
+    undo_mock = AsyncMock(return_value=True)
+
+    fake_client = MagicMock(
+        get_water_today=today_mock,
+        add_water=add_mock,
+        undo_water=undo_mock,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    # ── Step 1: open menu ──
+    cb_menu = _fake_callback("cb:nutrition:water:add")
+    await on_water_menu(cb_menu, ctx)
+    today_mock.assert_awaited_once()
+
+    # ── Step 2: click +250 ──
+    cb_add = _fake_callback("cb:water:add:250")
+    await on_water_add_quick(cb_add, ctx)
+    add_mock.assert_awaited_once()
+    add_kwargs = add_mock.await_args.kwargs
+    assert add_kwargs["ml"] == 250
+    # Verify undo button с entry_id-suffix
+    add_atts = cb_add.bot.send_message.await_args.kwargs.get("attachments") or []
+    assert add_atts
+
+    # ── Step 3: click ↩️ Отменить ──
+    cb_undo = _fake_callback("cb:water:undo:W-e2e")
+    await on_water_undo(cb_undo, ctx)
+    undo_mock.assert_awaited_once()
+    undo_kwargs = undo_mock.await_args.kwargs
+    assert undo_kwargs["entry_id"] == "W-e2e"
+    undo_text = cb_undo.bot.send_message.await_args.kwargs["text"]
+    assert "Отмен" in undo_text or "удал" in undo_text.lower()
