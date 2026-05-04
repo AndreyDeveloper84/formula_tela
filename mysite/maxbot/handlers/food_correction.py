@@ -169,3 +169,27 @@ async def on_manual_input(
     if chat_id is None:
         return
     await callback.bot.send_message(chat_id=chat_id, text=COMING_SOON_PHASE32)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_NUTRITION_ADD_WATER,
+)
+async def on_add_water_stub(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[💧 Добавить воду] из footer — заглушка до Part 2B.
+
+    Реальный handler в `mysite/maxbot/handlers/water.py` (Part 2B).
+    После создания того модуля — этот handler удаляется (или его router
+    регистрируется ПОСЛЕ water_router чтобы не перехватывать).
+    """
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "💧 Учёт воды скоро добавлю — фича в разработке (Part 2B). "
+            "Пока можешь пометить себе вручную."
+        ),
+    )
