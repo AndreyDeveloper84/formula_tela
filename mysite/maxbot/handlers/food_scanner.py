@@ -32,6 +32,8 @@ from maxbot.services.nutrition_client import (
     NutritionUnavailableError,
     get_nutrition_client,
 )
+from django.conf import settings as django_settings
+from maxbot.states import NutritionAnketaStates
 
 
 logger = logging.getLogger("maxbot.food_scanner")
@@ -67,6 +69,34 @@ async def on_photo_message(event: MessageCreated, context: MemoryContext) -> Non
         return
 
     chat_id = event.message.recipient.chat_id
+
+    # NUTRITION_ENABLED gate — feature flag (Part 1 hotfix). До деплоя
+    # Ayla DRF-300..303 endpoints — фото не идёт в Ayla. Юзер видит
+    # «Скоро будет» (тот же UX что в nutrition_entry::COMING_SOON_TEXT).
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🍎 Дневник питания\n\n"
+                "Скоро будет — фича в разработке. Когда подключим, "
+                "посчитаю калории по фото блюда."
+            ),
+        )
+        return
+
+    # FSM-aware skip — если юзер сейчас в анкете, не запускаем scan
+    # (Design Doc v2 §5.5). Подсказываем продолжить FSM.
+    state = await context.get_state()
+    if state is not None and str(state).startswith("NutritionAnketaStates"):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Сейчас отвечаю на вопросы анкеты — "
+                "пришли число / нажми кнопку, чтобы продолжить."
+            ),
+        )
+        return
+
     sender = event.message.sender
     bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
 
