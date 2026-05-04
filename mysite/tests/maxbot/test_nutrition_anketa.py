@@ -1024,3 +1024,14 @@ async def test_e2e_anketa_happy_path_female_30_165_60_lose_moderate(monkeypatch)
     # ── Verify BotUser.nutrition_onboarded_at установлен ──
     await sync_to_async(bot_user.refresh_from_db)()
     assert bot_user.nutrition_onboarded_at is not None
+
+    # ── Verify finalize rendered Ayla-computed norms (not zero) ──
+    # Guard against regression: Ayla spec §1.1 возвращает нормы под norms{} с daily_ префиксом.
+    # BMR Mifflin-St Jeor для female 30/165/60 ≈ 1364; daily_kcal lose moderate (-15%) ≈ 1450.
+    # Если парсер читает flat top-level — получаем 0 и юзер видит «Норма: 0 ккал».
+    assert profile.daily_kcal > 0, (
+        "daily_kcal=0 — парсер читает flat top-level вместо norms{daily_kcal} (Ayla spec §1.1)"
+    )
+    assert profile.daily_protein_g > 0, (
+        "daily_protein_g=0 — парсер читает flat top-level вместо norms{daily_protein_g}"
+    )
