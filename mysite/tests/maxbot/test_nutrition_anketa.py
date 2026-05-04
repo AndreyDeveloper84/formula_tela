@@ -914,3 +914,113 @@ async def test_first_meal_clears_state_and_hints_photo():
     assert await ctx.get_state() is None
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "фото" in text.lower() or "сфотограф" in text.lower() or "пришли" in text.lower()
+
+
+# ─── E2E happy path с ayla_mock ────────────────────────────────────────────
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_e2e_anketa_happy_path_female_30_165_60_lose_moderate(monkeypatch):
+    """Полный TIER-A flow: consent → female → 30 → 165 → 60 → lose → moderate.
+
+    Используем in-memory ayla_mock как backend, проверяем что профиль
+    в state.profiles содержит всё ожидаемое + BotUser.nutrition_onboarded_at
+    установлен.
+    """
+    from asgiref.sync import sync_to_async
+
+    from maxapi.context.context import MemoryContext
+
+    from model_bakery import baker
+
+    from maxbot.handlers.nutrition_anketa import (
+        on_consent_ok,
+        on_gender_female,
+        on_age_text,
+        on_height_text,
+        on_weight_text,
+        on_goal_lose,
+        on_pace_moderate,
+    )
+    from maxbot.handlers.nutrition_entry import on_start_anketa
+    from maxbot.states import NutritionAnketaStates
+    from services_app.models import BotUser
+    from tests.fixtures.ayla_mock import AylaMockState, install_mock_transport
+
+    # ── Setup ──
+    state = AylaMockState()
+    install_mock_transport(monkeypatch, state)
+
+    # install_mock_transport sets os.environ but NutritionClient reads from
+    # Django settings (getattr(settings, "AYLA_BASE_URL", "")). Patch settings
+    # directly so get_nutrition_client() can construct the singleton.
+    from django.conf import settings as django_settings
+    from django.test import override_settings
+    monkeypatch.setattr(django_settings, "AYLA_BASE_URL", "http://ayla.test", raising=False)
+    monkeypatch.setattr(django_settings, "NUTRITION_SERVICE_TOKEN", "test-token", raising=False)
+
+    bot_user = await sync_to_async(baker.make)(
+        BotUser,
+        max_user_id=99,
+        nutrition_onboarded_at=None,
+    )
+
+    # _resolve_bot_user обычно вызывает get_or_create_bot_user(sender_id) —
+    # подменяем чтобы он вернул наш fixture'овский BotUser, не создавал
+    # нового в БД через get_or_create. Нам важно что bot_user.save()
+    # в _mark_onboarded реально пройдёт.
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=bot_user),
+    )
+
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+
+    # ── Step 1: enter anketa from welcome ──
+    await on_start_anketa(_fake_callback("cb:nutrition:start_anketa"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_consent
+
+    # ── Step 2: consent ──
+    await on_consent_ok(_fake_callback("cb:anketa:consent:ok"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_gender
+
+    # ── Step 3: gender=female ──
+    await on_gender_female(_fake_callback("cb:anketa:gender:female"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_age
+
+    # ── Step 4: age=30 ──
+    await on_age_text(_fake_message("30"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_height
+
+    # ── Step 5: height=165 ──
+    await on_height_text(_fake_message("165"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_weight
+
+    # ── Step 6: weight=60 ──
+    await on_weight_text(_fake_message("60"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_goal
+
+    # ── Step 7: goal=lose (BMI=22 → норма, нет ladder) ──
+    await on_goal_lose(_fake_callback("cb:anketa:goal:lose"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_pace
+
+    # ── Step 8: pace=moderate → finalize ──
+    await on_pace_moderate(_fake_callback("cb:anketa:pace:moderate"), ctx)
+    assert await ctx.get_state() == NutritionAnketaStates.complete
+
+    # ── Verify Ayla state ──
+    profile = state.profiles.get("bot:99")
+    assert profile is not None
+    assert profile.gender == "female"
+    assert profile.age == 30
+    assert profile.height_cm == 165
+    # weight may be int or Decimal depending on mock impl — accept either
+    assert profile.weight_kg == 60 or profile.weight_kg == 60.0
+    assert profile.goal == "lose"
+    assert profile.pace == "moderate"
+
+    # ── Verify BotUser.nutrition_onboarded_at установлен ──
+    await sync_to_async(bot_user.refresh_from_db)()
+    assert bot_user.nutrition_onboarded_at is not None
