@@ -219,3 +219,33 @@ async def test_water_undo_window_expired_says_so(monkeypatch, settings):
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "поздно" in text.lower() or "истёк" in text.lower() or \
            "минут" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_water_more_shows_extended_keyboard():
+    """[✏️ Другое] click → бот показывает extended keyboard
+    (150/300/350/750/1500)."""
+    from maxbot.handlers.water import on_water_more
+    from maxbot.keyboards import (
+        PAYLOAD_WATER_EXTENDED_150,
+        PAYLOAD_WATER_EXTENDED_300,
+        PAYLOAD_WATER_EXTENDED_350,
+        PAYLOAD_WATER_EXTENDED_750,
+        PAYLOAD_WATER_EXTENDED_1500,
+    )
+
+    cb = _fake_callback("cb:water:more")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_more(cb, ctx)
+
+    cb.bot.send_message.assert_awaited_once()
+    atts = cb.bot.send_message.await_args.kwargs.get("attachments") or []
+    payloads = _flatten_payloads(atts[0]) if atts else set()
+    assert {
+        PAYLOAD_WATER_EXTENDED_150,
+        PAYLOAD_WATER_EXTENDED_300,
+        PAYLOAD_WATER_EXTENDED_350,
+        PAYLOAD_WATER_EXTENDED_750,
+        PAYLOAD_WATER_EXTENDED_1500,
+    } <= payloads

@@ -199,3 +199,16 @@ async def on_water_undo(callback: MessageCallback, context: MemoryContext) -> No
                 "противоположный объём вручную."
             ),
         )
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_WATER_MORE)
+async def on_water_more(callback: MessageCallback, context: MemoryContext) -> None:
+    """[✏️ Другое] → расширенный keyboard с 150/300/350/750/1500 мл."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text="Выбери объём:",
+        attachments=[keyboards.water_extended_keyboard()],
+    )
