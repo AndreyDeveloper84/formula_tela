@@ -115,9 +115,11 @@ async def _resolve_bot_user(callback_or_event):
 def _idempotency_key(external_user_id: str, step: str) -> str:
     """UUID5 — стабилен между ретраями того же шага.
 
-    Note: `upsert_profile` не принимает idempotency_key как kwarg (реализовано
-    на стороне HTTP-клиента через X-Idempotency-Key header — будущая задача).
-    Определён здесь для использования в Tasks 7-9.
+    NOTE (deferred): этот ключ ПОКА не передаётся в `upsert_profile` —
+    у `NutritionClient.upsert_profile()` нет kwarg `idempotency_key`.
+    Helper зарезервирован под расширение клиента (Phase 3.2): добавить
+    `idempotency_key: str | None = None` в client method, который
+    приклеит его как HTTP header `Idempotency-Key: <uuid>` (Ayla spec §1.2).
     """
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{external_user_id}:anketa:{step}"))
 
@@ -232,7 +234,14 @@ async def on_skip(callback: MessageCallback, context: MemoryContext) -> None:
     """Универсальный Skip: маппит current state → field name + next state."""
     state = await context.get_state()
     if str(state) not in _SKIP_FIELD_BY_STATE:
-        return  # silent ignore — не должно случиться, но safe
+        # Skip-кнопка не должна появляться вне состояний из мапа.
+        # Если попали — это либо UI-баг, либо забыли добавить state в
+        # _SKIP_FIELD_BY_STATE при добавлении нового шага.
+        logger.warning(
+            "anketa.skip_unknown_state state=%r — _SKIP_FIELD_BY_STATE not updated?",
+            state,
+        )
+        return
     field, advance_to, next_text, next_kb = _SKIP_FIELD_BY_STATE[str(state)]
 
     chat_id = callback.message.recipient.chat_id if callback.message else None
