@@ -56,3 +56,45 @@ async def test_correct_open_menu_shows_4_options():
     # Attachments — keyboard с 4 опциями
     atts = cb.bot.send_message.await_args.kwargs.get("attachments") or []
     assert atts
+
+
+@pytest.mark.asyncio
+async def test_portion_menu_button_shows_size_keyboard():
+    """[📦 Размер порции] (PAYLOAD_SCAN_PORTION_OPEN_MENU) →
+    показать [Меньше][Норм][Больше]."""
+    from maxbot.handlers.food_correction import on_portion_menu
+    from maxbot.keyboards import (
+        PAYLOAD_SCAN_PORTION_SMALLER,
+        PAYLOAD_SCAN_PORTION_NORMAL,
+        PAYLOAD_SCAN_PORTION_LARGER,
+    )
+
+    cb = _fake_callback("cb:scan:correct:portion:menu")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_portion_menu(cb, ctx)
+
+    cb.bot.send_message.assert_awaited_once()
+    atts = cb.bot.send_message.await_args.kwargs.get("attachments") or []
+    assert atts
+    payloads = _flatten_payloads(atts[0])
+    assert PAYLOAD_SCAN_PORTION_SMALLER in payloads
+    assert PAYLOAD_SCAN_PORTION_NORMAL in payloads
+    assert PAYLOAD_SCAN_PORTION_LARGER in payloads
+
+
+@pytest.mark.asyncio
+async def test_portion_apply_button_stub_says_phase32():
+    """[Меньше][Норм][Больше] — Phase 3.2 заглушка (пересчёт через
+    scan_photo+portion_multiplier требует storage scan↔image)."""
+    from maxbot.handlers.food_correction import on_portion_apply
+
+    cb = _fake_callback("cb:scan:correct:portion:smaller")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_portion_apply(cb, ctx)
+
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    # Stub обозначает что MVP готов
+    assert "Скоро" in text or "пришли" in text.lower() or "снова" in text.lower()

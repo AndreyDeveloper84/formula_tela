@@ -48,3 +48,54 @@ async def on_correct_open_menu(
         text=CORRECT_MENU_TEXT,
         attachments=[keyboards.food_scan_correct_menu_keyboard()],
     )
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_SCAN_PORTION_OPEN_MENU,
+)
+async def on_portion_menu(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[📦 Размер порции] → показать [Меньше][Норм][Больше].
+
+    Phase 3.2: связать с фактическим scan_id для пересчёта через
+    scan_photo(portion_multiplier=...). Сейчас MVP — просто меню
+    показываем; пересчёт не делаем (требует storage scan↔image).
+    """
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text="📦 Какого размера порция?",
+        attachments=[keyboards.food_scan_portion_keyboard()],
+    )
+
+
+@router.message_callback(
+    F.callback.payload.in_({
+        keyboards.PAYLOAD_SCAN_PORTION_SMALLER,
+        keyboards.PAYLOAD_SCAN_PORTION_NORMAL,
+        keyboards.PAYLOAD_SCAN_PORTION_LARGER,
+    }),
+)
+async def on_portion_apply(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[Меньше][Норм][Больше] — Phase 3.2 пересчёт через scan_photo
+    с portion_multiplier=0.7/1.0/1.3. MVP — заглушка.
+
+    Полноценная реализация требует хранить scan_id ↔ image_bytes (или
+    URL) чтобы можно было пересчитать. Сейчас Ayla scan не возвращает
+    image_url, и бот не хранит bytes. Backlog Phase 3.2.
+    """
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "🔧 Пересчёт порции скоро добавлю — пока пришли фото снова "
+            "с правильной порцией в кадре."
+        ),
+    )
