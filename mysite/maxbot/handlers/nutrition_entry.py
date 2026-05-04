@@ -47,15 +47,42 @@ STUB_TRY_NOW_TEXT = (
     "калории. Просто пришли фото в чат."
 )
 
+RESUME_TEXT = (
+    "\U0001f34e Дневник питания\n\n"
+    "Дневник уже настроен ✓\n\n"
+    "\U0001f4f8 Пришли фото блюда — посчитаю калории.\n"
+    "\U0001f4a7 Напиши «вода» или «выпила кофе» — добавлю.\n"
+    "\U0001f4ca Команда /день покажет сегодняшние итоги."
+)
+
+
+async def _resolve_bot_user_for_entry(callback):
+    """Lazy-load BotUser для проверки nutrition_onboarded_at."""
+    from maxbot.personalization import get_or_create_bot_user
+
+    sender_id = callback.callback.user.user_id
+    return await get_or_create_bot_user(sender_id)
+
 
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_NUTRITION)
 async def on_show_nutrition_welcome(
     callback: MessageCallback, context: MemoryContext,
 ) -> None:
-    """Главный entry-screen дневника. Кликается из main_menu_keyboard()."""
+    """Главный entry-screen дневника. Если юзер уже прошёл анкету —
+    показываем resume вместо welcome (Design Doc v2 §4.1 учёт history)."""
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None:
         return
+
+    bot_user = await _resolve_bot_user_for_entry(callback)
+    if bot_user.nutrition_onboarded_at is not None:
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=RESUME_TEXT,
+        )
+        return
+
+    # Новый юзер — welcome с 2 кнопками
     await callback.bot.send_message(
         chat_id=chat_id,
         text=WELCOME_TEXT,

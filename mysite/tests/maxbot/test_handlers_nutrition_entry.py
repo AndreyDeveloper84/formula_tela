@@ -31,9 +31,15 @@ def _make_callback(*, chat_id=100, user_id=200, payload=""):
 
 
 @pytest.mark.asyncio
-async def test_welcome_screen_text_contains_key_phrases():
+async def test_welcome_screen_text_contains_key_phrases(monkeypatch):
     """Welcome screen дневника начинается с emoji + краткое описание ценности."""
     from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=9001)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
 
     event = _make_callback(payload="cb:menu:nutrition", user_id=9001)
     ctx = MemoryContext(chat_id=100, user_id=9001)
@@ -48,9 +54,15 @@ async def test_welcome_screen_text_contains_key_phrases():
 
 
 @pytest.mark.asyncio
-async def test_welcome_screen_keyboard_has_two_action_buttons():
+async def test_welcome_screen_keyboard_has_two_action_buttons(monkeypatch):
     """Welcome screen прикрепляет nutrition_welcome_keyboard — 3 payload'а."""
     from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=9002)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
 
     event = _make_callback(payload="cb:menu:nutrition", user_id=9002)
     ctx = MemoryContext(chat_id=100, user_id=9002)
@@ -131,3 +143,72 @@ async def test_router_registered_in_handlers_init():
     ai_idx = routers.index(ai_assistant_router)
     assert nutrition_idx < food_idx, "nutrition_entry must come before food_scanner"
     assert nutrition_idx < ai_idx, "nutrition_entry must come before ai_assistant"
+
+
+# ─── Phase 3.1 Part 1 T14: resume для onboarded юзера ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_onboarded_user_sees_resume_screen_not_anketa(monkeypatch):
+    """Юзер с nutrition_onboarded_at != None → бот шлёт «Дневник готов,
+    пришли фото» вместо welcome-screen."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    bot_user = MagicMock(
+        nutrition_onboarded_at="2026-05-03T12:00:00Z",
+        max_user_id=99,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
+
+    cb = MagicMock()
+    cb.callback.payload = "cb:menu:nutrition"
+    cb.callback.user.user_id = 99
+    cb.message.recipient.chat_id = 12345
+    cb.bot.send_message = AsyncMock()
+
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+
+    await on_show_nutrition_welcome(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    # Resume-сообщение, не welcome
+    assert "Дневник" in text
+    # Welcome-text про «4 вопроса 30 секунд» НЕ показывается
+    assert "30 сек" not in text and "анкет" not in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_new_user_sees_welcome_screen(monkeypatch):
+    """Юзер с nutrition_onboarded_at=None → стандартный welcome с 2 кнопками."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=99)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
+
+    cb = MagicMock()
+    cb.callback.payload = "cb:menu:nutrition"
+    cb.callback.user.user_id = 99
+    cb.message.recipient.chat_id = 12345
+    cb.bot.send_message = AsyncMock()
+
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+
+    await on_show_nutrition_welcome(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "30 сек" in text or "Сфоткай" in text  # text from WELCOME_TEXT
+    assert cb.bot.send_message.await_args.kwargs.get("attachments") is not None
