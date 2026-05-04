@@ -293,3 +293,53 @@ async def test_water_command_opens_menu(monkeypatch, settings):
     text = msg.bot.send_message.await_args.kwargs["text"]
     assert "500" in text or "0.5" in text
     assert "2.0" in text or "2000" in text
+
+
+@pytest.mark.asyncio
+async def test_water_menu_blocked_when_nutrition_disabled(monkeypatch, settings):
+    """NUTRITION_ENABLED=False → юзер видит COMING_SOON, Ayla не вызывается."""
+    from maxbot.handlers.water import on_water_menu
+
+    settings.NUTRITION_ENABLED = False
+
+    today_mock = AsyncMock()
+    fake_client = MagicMock(get_water_today=today_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+
+    cb = _fake_callback("cb:nutrition:water:add")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_menu(cb, ctx)
+
+    today_mock.assert_not_awaited()
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Скоро" in text or "разработ" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_water_menu_skipped_during_anketa_fsm(monkeypatch, settings):
+    """В анкете water gate сработает → подсказка про вопросы анкеты."""
+    from maxbot.handlers.water import on_water_menu
+    from maxbot.states import NutritionAnketaStates
+
+    settings.NUTRITION_ENABLED = True
+
+    today_mock = AsyncMock()
+    fake_client = MagicMock(get_water_today=today_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+
+    cb = _fake_callback("cb:nutrition:water:add")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+    await ctx.set_state(NutritionAnketaStates.awaiting_age)
+
+    await on_water_menu(cb, ctx)
+
+    today_mock.assert_not_awaited()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "анкет" in text.lower() or "вопрос" in text.lower()
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_age

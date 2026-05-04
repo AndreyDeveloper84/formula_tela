@@ -31,6 +31,8 @@ from maxbot.services.nutrition_client import (
     NutritionUnavailableError,
     get_nutrition_client,
 )
+from django.conf import settings as django_settings
+from maxbot.states import NutritionAnketaStates
 
 
 logger = logging.getLogger("maxbot.handlers.water")
@@ -45,6 +47,28 @@ async def on_water_menu(callback: MessageCallback, context: MemoryContext) -> No
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None or callback.callback.user is None:
         return
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "💧 Учёт воды скоро добавлю — фича в разработке. "
+                "Когда подключим — будешь следить за нормой воды и напитков."
+            ),
+        )
+        return
+
+    state = await context.get_state()
+    if state is not None and str(state).startswith("NutritionAnketaStates"):
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Сейчас отвечаю на вопросы анкеты — "
+                "пришли число / нажми кнопку, чтобы продолжить."
+            ),
+        )
+        return
+
     user_id = callback.callback.user.user_id
     full_name = callback.callback.user.full_name
     bot_user, _ = await get_or_create_bot_user(user_id, full_name)
@@ -226,6 +250,28 @@ async def on_water_command(event: MessageCreated, context: MemoryContext) -> Non
     if event.message.sender is None:
         return
     chat_id = event.message.recipient.chat_id
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "💧 Учёт воды скоро добавлю — фича в разработке. "
+                "Когда подключим — будешь следить за нормой воды и напитков."
+            ),
+        )
+        return
+
+    state = await context.get_state()
+    if state is not None and str(state).startswith("NutritionAnketaStates"):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Сейчас отвечаю на вопросы анкеты — "
+                "пришли число / нажми кнопку, чтобы продолжить."
+            ),
+        )
+        return
+
     user_id = event.message.sender.user_id
     full_name = event.message.sender.full_name
     bot_user, _ = await get_or_create_bot_user(user_id, full_name)
