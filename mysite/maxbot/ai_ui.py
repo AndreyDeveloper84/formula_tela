@@ -634,6 +634,32 @@ def _render_food_scan_low_confidence(scan: dict[str, Any]) -> str:
     )
 
 
+# ─── food_logged footer (Phase 3.1 Part 2A T06) ──────────────────────────
+
+
+def render_food_logged_with_footer(
+    meal_label: str, dish_name: str, kcal: int,
+) -> tuple[str, list]:
+    """Подтверждение записи блюда + footer next-step buttons (Design §5.3).
+
+    [💧 Добавить воду] — заглушка Part 2B (handler ответит «Скоро будет»).
+    [📊 Посмотреть день] — открывает /дневник flow.
+    """
+    from maxbot.keyboards import (
+        PAYLOAD_NUTRITION_ADD_WATER,
+        PAYLOAD_NUTRITION_VIEW_DAY,
+    )
+
+    text = f"✅ Записала {meal_label}: {dish_name} ({kcal} ккал)."
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="💧 Добавить воду", payload=PAYLOAD_NUTRITION_ADD_WATER),
+        CallbackButton(text="📊 Посмотреть день", payload=PAYLOAD_NUTRITION_VIEW_DAY),
+    )
+    return (text, [builder.as_markup()])
+
+
 # ─── /дневник daily summary (DRF-247) ──────────────────────────────────────
 
 

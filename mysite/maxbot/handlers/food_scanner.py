@@ -274,9 +274,11 @@ async def on_log_meal(callback: MessageCallback, context: MemoryContext) -> None
         "breakfast": "завтрак", "lunch": "обед",
         "dinner": "ужин", "snack": "перекус",
     }[meal_type]
+    text, attachments = ai_ui.render_food_logged_with_footer(
+        meal_label=meal_label, dish_name=log.dish_name, kcal=int(log.calories),
+    )
     await callback.bot.send_message(
-        chat_id=chat_id,
-        text=f"✅ Записала {meal_label}: {log.dish_name} ({int(log.calories)} ккал).",
+        chat_id=chat_id, text=text, attachments=attachments,
     )
 
 
