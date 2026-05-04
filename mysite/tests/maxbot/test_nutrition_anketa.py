@@ -289,3 +289,88 @@ async def test_skip_button_works_at_age_state(monkeypatch):
 
     assert upsert_mock.await_args.kwargs["data"]["_skipped_fields"] == ["age"]
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_height
+
+
+# ─── height + weight (same shape as age) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_height_text_input_parses_and_advances(monkeypatch):
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_height_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("165")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_height)
+
+    await on_height_text(msg, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["height_cm"] == 165
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_weight
+
+
+@pytest.mark.asyncio
+async def test_weight_text_input_with_range_stores_range_field(monkeypatch):
+    """parse_weight возвращает {'value': None, 'range': '65-75', 'exact': False}
+    для диапазона → upsert с weight_range, без weight_kg."""
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_weight_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("65-75")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_weight)
+
+    await on_weight_text(msg, ctx)
+
+    body = upsert_mock.await_args.kwargs["data"]
+    assert body.get("weight_range") == "65-75"
+    assert "weight_kg" not in body or body["weight_kg"] is None
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_goal
+
+
+@pytest.mark.asyncio
+async def test_weight_text_input_exact_value_advances_to_goal(monkeypatch):
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_weight_text
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock(return_value=MagicMock(raw={}))
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    msg = _fake_message("70")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_weight)
+
+    await on_weight_text(msg, ctx)
+
+    assert upsert_mock.await_args.kwargs["data"]["weight_kg"] == 70
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_goal

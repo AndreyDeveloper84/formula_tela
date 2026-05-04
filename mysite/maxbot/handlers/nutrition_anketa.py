@@ -284,6 +284,116 @@ async def on_age_text(event: MessageCreated, context: MemoryContext) -> None:
     )
 
 
+# ─── height ────────────────────────────────────────────────────────────────
+
+
+WEIGHT_TEXT = (
+    "● ● ● ● ○\n\n"
+    "Сколько весишь в кг? Можно точно (70) или диапазоном (65-75). "
+    "Или пропусти."
+)
+
+
+@router.message_created(NutritionAnketaStates.awaiting_height)
+async def on_height_text(event: MessageCreated, context: MemoryContext) -> None:
+    from maxbot.ai_parsers import parse_height, REFUSED
+
+    text = (event.message.body.text or "").strip()
+    chat_id = event.message.recipient.chat_id
+
+    parsed = await parse_height(text)
+
+    if parsed == REFUSED:
+        await _treat_text_step_as_skip(
+            event, context, chat_id,
+            field="height",
+            advance_to=NutritionAnketaStates.awaiting_weight,
+            next_text=WEIGHT_TEXT,
+            next_kb=keyboards.anketa_skip_keyboard,
+        )
+        return
+
+    if parsed is None:
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text="Не поняла рост — напиши число в см (например, 165) или пропусти.",
+            attachments=[keyboards.anketa_skip_keyboard()],
+        )
+        return
+
+    await _upsert(
+        event,
+        step="height",
+        body={"height_cm": parsed},
+        advance_to=NutritionAnketaStates.awaiting_weight,
+        context=context,
+        next_text=WEIGHT_TEXT,
+        next_keyboard=keyboards.anketa_skip_keyboard,
+        chat_id=chat_id,
+    )
+
+
+# ─── weight ────────────────────────────────────────────────────────────────
+
+
+GOAL_TEXT = (
+    "● ● ● ● ●\n\n"
+    "Какая цель?"
+)
+
+
+@router.message_created(NutritionAnketaStates.awaiting_weight)
+async def on_weight_text(event: MessageCreated, context: MemoryContext) -> None:
+    """parse_weight возвращает dict {value: int|None, range: tuple|None, exact: bool}
+    или 'REFUSED' или None."""
+    from maxbot.ai_parsers import parse_weight, REFUSED
+
+    text = (event.message.body.text or "").strip()
+    chat_id = event.message.recipient.chat_id
+
+    parsed = await parse_weight(text)
+
+    if parsed == REFUSED:
+        await _treat_text_step_as_skip(
+            event, context, chat_id,
+            field="weight",
+            advance_to=NutritionAnketaStates.awaiting_goal,
+            next_text=GOAL_TEXT,
+            next_kb=keyboards.anketa_goal_keyboard,
+        )
+        return
+
+    if parsed is None:
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text="Не поняла вес — напиши число (70) или диапазон (65-75) или пропусти.",
+            attachments=[keyboards.anketa_skip_keyboard()],
+        )
+        return
+
+    body: dict = {}
+    if parsed.get("exact"):
+        body["weight_kg"] = parsed["value"]
+    else:
+        rng = parsed.get("range")
+        if rng is not None:
+            body["weight_range"] = f"{rng[0]}-{rng[1]}"
+        else:
+            # approx без диапазона — сохраняем как weight_kg
+            body["weight_kg"] = parsed["value"]
+
+    await _upsert(
+        event,
+        step="weight",
+        body=body,
+        advance_to=NutritionAnketaStates.awaiting_goal,
+        context=context,
+        next_text=GOAL_TEXT,
+        next_keyboard=keyboards.anketa_goal_keyboard,
+        chat_id=chat_id,
+    )
+
+
 # ─── universal Skip handler — диспетчер по текущему state ──────────────────
 
 
@@ -300,7 +410,18 @@ _SKIP_FIELD_BY_STATE = {
         HEIGHT_TEXT,
         keyboards.anketa_skip_keyboard,
     ),
-    # остальные пары добавляются в Tasks 8-9
+    str(NutritionAnketaStates.awaiting_height): (
+        "height",
+        NutritionAnketaStates.awaiting_weight,
+        WEIGHT_TEXT,
+        keyboards.anketa_skip_keyboard,
+    ),
+    str(NutritionAnketaStates.awaiting_weight): (
+        "weight",
+        NutritionAnketaStates.awaiting_goal,
+        GOAL_TEXT,
+        keyboards.anketa_goal_keyboard,
+    ),
 }
 
 
