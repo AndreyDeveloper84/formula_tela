@@ -540,3 +540,36 @@ async def test_goal_gain_advances_to_clarify(monkeypatch):
     await on_goal_gain(cb, ctx)
 
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_gain_clarify
+
+
+@pytest.mark.asyncio
+async def test_goal_lose_no_profile_falls_through_to_pace(monkeypatch):
+    """goal=lose без данных профиля (_fetch_profile_for_bmi=None) → state=awaiting_pace.
+    Безопасный fallback: нет данных для BMI ladder, продолжаем в pace.
+    """
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_goal_lose
+    from maxbot.states import NutritionAnketaStates
+
+    upsert_mock = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.upsert_profile = upsert_mock
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", lambda: fake_client)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._fetch_profile_for_bmi",
+        AsyncMock(return_value=None),  # ← profile missing or invalid
+    )
+
+    cb = _fake_callback("cb:anketa:goal:lose")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_goal)
+
+    await on_goal_lose(cb, ctx)
+
+    upsert_mock.assert_not_awaited()
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_pace

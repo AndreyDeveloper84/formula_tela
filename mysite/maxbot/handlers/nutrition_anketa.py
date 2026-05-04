@@ -452,8 +452,16 @@ async def on_goal_lose(callback: MessageCallback, context: MemoryContext) -> Non
         weight_kg, height_cm = profile_data
         try:
             bmi = calc_bmi(weight_kg=weight_kg, height_cm=height_cm)
-        except ValueError:
-            bmi = 25.0  # fallback nominal
+        except ValueError as exc:
+            # _fetch_profile_for_bmi уже валидирует weight/height > 0,
+            # поэтому сюда дойдём только при race-condition (Ayla side
+            # rounded value до 0). Не падаем — логируем и не триггерим
+            # ladder (assume normal BMI).
+            logger.warning(
+                "anketa.goal_lose.calc_bmi_value_error weight_kg=%r height_cm=%r err=%r",
+                weight_kg, height_cm, exc,
+            )
+            bmi = 25.0  # fallback nominal — не триггерит ladder
         if bmi < 18.5:
             await context.set_state(NutritionAnketaStates.awaiting_bmi_ladder)
             await callback.bot.send_message(
@@ -474,7 +482,14 @@ async def on_goal_lose(callback: MessageCallback, context: MemoryContext) -> Non
 
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_ANKETA_GOAL_GAIN)
 async def on_goal_gain(callback: MessageCallback, context: MemoryContext) -> None:
-    """gain — уточняем mass vs tone."""
+    """gain — уточняем mass vs tone.
+
+    Намеренно НЕ персистим goal=gain здесь — финальный выбор (gain или tone)
+    делается в gain_clarify шаге (Task 10) и тогда же шлём complete=True
+    upsert. Если юзер отключится на awaiting_gain_clarify — потеряет
+    только choice цели, прошлые шаги (gender/age/height/weight) уже
+    сохранены через свои _upsert вызовы.
+    """
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None:
         return
