@@ -176,7 +176,7 @@ async def on_photo_message(event: MessageCreated, context: MemoryContext) -> Non
         await _replace("Что-то пошло не так со сканером. Попробуй позже.")
         return
 
-    text, attachments = ai_ui.render_food_scan(scan.raw)
+    text, attachments = ai_ui.render_food_scan_v2(scan.raw)
     await _replace(text, attachments=attachments if attachments else None)
 
 

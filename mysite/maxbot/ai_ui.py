@@ -534,6 +534,106 @@ def render_food_scan(scan: dict[str, Any]) -> tuple[str, list]:
     return ("\n".join(lines), [builder.as_markup()] if scan_id else [])
 
 
+# ─── food_scan_v2 (Phase 3.1 Part 2A T04) ────────────────────────────────
+
+
+def render_food_scan_v2(scan: dict[str, Any]) -> tuple[str, list]:
+    """Phase 3.1 Part 2A: confidence-routed render food scan.
+
+    Confidence >= 0.7  → high path: best-guess + 4 meal-type + [✏️ Поправить]
+    Confidence <  0.5  → low path: «Не разобрала 🙈» + [📸 Переснять][✏️ Напишу]
+    Confidence 0.5-0.7 → треатим как high (medium с alternatives — Phase 3.2,
+                                          требует расширения Ayla scan response)
+
+    Replaces existing `render_food_scan` (которая не имела confidence
+    routing и correct-button).
+    """
+    from maxbot.keyboards import food_scan_low_confidence_keyboard
+
+    confidence = float(scan.get("confidence") or 0.0)
+
+    if confidence < 0.5:
+        return _render_food_scan_low_confidence(scan), [
+            food_scan_low_confidence_keyboard(),
+        ]
+
+    return _render_food_scan_high_confidence(scan)
+
+
+def _render_food_scan_high_confidence(scan: dict[str, Any]) -> tuple[str, list]:
+    from maxbot.keyboards import PAYLOAD_SCAN_CORRECT_MENU
+
+    dish = scan.get("dish_name") or "Не уверена"
+    confidence = float(scan.get("confidence") or 0.0)
+    portion_g = scan.get("portion_g")
+    nutrition = scan.get("nutrition") or {}
+    scan_id = str(scan.get("id") or scan.get("scan_id") or "")
+
+    lines = [f"🍽 {dish}"]
+    if confidence:
+        lines.append(f"Уверенность: {int(confidence * 100)}%")
+    if portion_g:
+        lines.append(f"Порция: ~{int(portion_g)}г")
+
+    if nutrition:
+        kcal = nutrition.get("calories")
+        protein = nutrition.get("protein_g")
+        fat = nutrition.get("fat_g")
+        carbs = nutrition.get("carbs_g")
+        macro_parts = []
+        if kcal is not None:
+            macro_parts.append(f"≈{int(kcal)} ккал")
+        if protein is not None:
+            macro_parts.append(f"Б {protein:.0f}г")
+        if fat is not None:
+            macro_parts.append(f"Ж {fat:.0f}г")
+        if carbs is not None:
+            macro_parts.append(f"У {carbs:.0f}г")
+        if macro_parts:
+            lines.append(" · ".join(macro_parts))
+    else:
+        lines.append("(КБЖУ не определились — уточни порцию вручную)")
+
+    builder = InlineKeyboardBuilder()
+    if scan_id:
+        builder.row(
+            CallbackButton(
+                text="🍳 Завтрак",
+                payload=_payload_food_log(scan_id, "breakfast"),
+            ),
+            CallbackButton(
+                text="🍲 Обед",
+                payload=_payload_food_log(scan_id, "lunch"),
+            ),
+        )
+        builder.row(
+            CallbackButton(
+                text="🍽 Ужин",
+                payload=_payload_food_log(scan_id, "dinner"),
+            ),
+            CallbackButton(
+                text="☕ Перекус",
+                payload=_payload_food_log(scan_id, "snack"),
+            ),
+        )
+        # Correct button — открывает correction-menu (T07+)
+        builder.row(
+            CallbackButton(
+                text="✏️ Поправить",
+                payload=PAYLOAD_SCAN_CORRECT_MENU + ":" + scan_id,
+            ),
+        )
+    return ("\n".join(lines), [builder.as_markup()] if scan_id else [])
+
+
+def _render_food_scan_low_confidence(scan: dict[str, Any]) -> str:
+    """Low confidence (<0.5) — «Не разобрала, переснять или ввести»."""
+    return (
+        "🙈 Не разобрала, что на фото.\n\n"
+        "Попробуй переснять под лучшим светом или впиши блюдо текстом."
+    )
+
+
 # ─── /дневник daily summary (DRF-247) ──────────────────────────────────────
 
 
