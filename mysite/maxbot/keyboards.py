@@ -68,6 +68,23 @@ PAYLOAD_SCAN_DELETE = "cb:scan:correct:delete"
 PAYLOAD_SCAN_RETAKE = "cb:scan:retake"
 PAYLOAD_SCAN_MANUAL_INPUT = "cb:scan:manual"
 
+# ─── Phase 3.1 Part 2B: water flow ─────────────────────────────────────────
+
+PAYLOAD_WATER_AMOUNT_200 = "cb:water:add:200"
+PAYLOAD_WATER_AMOUNT_250 = "cb:water:add:250"
+PAYLOAD_WATER_AMOUNT_500 = "cb:water:add:500"
+PAYLOAD_WATER_AMOUNT_1000 = "cb:water:add:1000"
+
+PAYLOAD_WATER_MORE = "cb:water:more"
+
+PAYLOAD_WATER_EXTENDED_150 = "cb:water:add:150"
+PAYLOAD_WATER_EXTENDED_300 = "cb:water:add:300"
+PAYLOAD_WATER_EXTENDED_350 = "cb:water:add:350"
+PAYLOAD_WATER_EXTENDED_750 = "cb:water:add:750"
+PAYLOAD_WATER_EXTENDED_1500 = "cb:water:add:1500"
+
+PAYLOAD_WATER_UNDO_PREFIX = "cb:water:undo:"  # + entry_id
+
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -410,5 +427,59 @@ def food_scan_low_confidence_keyboard():
     builder.row(
         CallbackButton(text="📸 Переснять", payload=PAYLOAD_SCAN_RETAKE),
         CallbackButton(text="✏️ Напишу сама", payload=PAYLOAD_SCAN_MANUAL_INPUT),
+    )
+    return builder.as_markup()
+
+
+def water_amount_keyboard():
+    """Главный selector воды — 4 quick-add + [Другое]."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="+200 мл", payload=PAYLOAD_WATER_AMOUNT_200),
+        CallbackButton(text="+250 мл · стакан",
+                       payload=PAYLOAD_WATER_AMOUNT_250),
+    )
+    builder.row(
+        CallbackButton(text="+500 мл · бутылка",
+                       payload=PAYLOAD_WATER_AMOUNT_500),
+        CallbackButton(text="+1000 мл · литр",
+                       payload=PAYLOAD_WATER_AMOUNT_1000),
+    )
+    builder.row(
+        CallbackButton(text="✏️ Другое", payload=PAYLOAD_WATER_MORE),
+    )
+    return builder.as_markup()
+
+
+def water_extended_keyboard():
+    """Atypical volumes (после клика [✏️ Другое])."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="+150 мл", payload=PAYLOAD_WATER_EXTENDED_150),
+        CallbackButton(text="+300 мл", payload=PAYLOAD_WATER_EXTENDED_300),
+    )
+    builder.row(
+        CallbackButton(text="+350 мл", payload=PAYLOAD_WATER_EXTENDED_350),
+        CallbackButton(text="+750 мл", payload=PAYLOAD_WATER_EXTENDED_750),
+    )
+    builder.row(
+        CallbackButton(text="+1500 мл", payload=PAYLOAD_WATER_EXTENDED_1500),
+    )
+    return builder.as_markup()
+
+
+def water_undo_keyboard(*, entry_id: str):
+    """1-button [↩️ Отменить] inline после успешного add_water.
+
+    Payload format: `cb:water:undo:{entry_id}` — handler парсит entry_id
+    и вызывает undo_water. После клика Ayla soft-delete'ит запись (15-мин
+    restore window server-side, restore по UI — backlog Phase 3.2).
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(
+            text="↩️ Отменить",
+            payload=f"{PAYLOAD_WATER_UNDO_PREFIX}{entry_id}",
+        ),
     )
     return builder.as_markup()
