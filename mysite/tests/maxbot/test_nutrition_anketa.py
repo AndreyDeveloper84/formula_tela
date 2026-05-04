@@ -1035,3 +1035,44 @@ async def test_e2e_anketa_happy_path_female_30_165_60_lose_moderate(monkeypatch)
     assert profile.daily_protein_g > 0, (
         "daily_protein_g=0 — парсер читает flat top-level вместо norms{daily_protein_g}"
     )
+
+
+# ─── Regression: ValueError при пустом env не должен пробивать handler ─────
+
+
+@pytest.mark.asyncio
+async def test_upsert_misconfigured_env_shows_soft_message_not_crash(monkeypatch):
+    """Прод-инцидент 2026-05-04: на staging .env не было AYLA_BASE_URL —
+    `NutritionClient` ctor бросал ValueError, которая пробивалась через
+    handler как HandlerException вместо мягкого сообщения юзеру.
+
+    Defensive fix: _upsert ловит ValueError, показывает «Сервис временно
+    недоступен», логирует ERROR — handler НЕ падает.
+    """
+    from maxapi.context.context import MemoryContext
+
+    from maxbot.handlers.nutrition_anketa import on_gender_male
+    from maxbot.states import NutritionAnketaStates
+
+    def _client_misconfigured():
+        raise ValueError("AYLA_BASE_URL is empty — nutrition client cannot start")
+
+    monkeypatch.setattr("maxbot.handlers.nutrition_anketa._client", _client_misconfigured)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_anketa._resolve_bot_user",
+        AsyncMock(return_value=MagicMock(max_user_id=99)),
+    )
+
+    cb = _fake_callback("cb:anketa:gender:male")
+    ctx = MemoryContext(chat_id=12345, user_id=99)
+    await ctx.set_state(NutritionAnketaStates.awaiting_gender)
+
+    # Не должно бросать ValueError
+    await on_gender_male(cb, ctx)
+
+    # Юзеру показано мягкое сообщение
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "недоступен" in text.lower() or "позже" in text.lower()
+    # State preserved (не clear, можно ретраить когда сервис вернётся)
+    assert await ctx.get_state() == NutritionAnketaStates.awaiting_gender

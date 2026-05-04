@@ -166,6 +166,19 @@ async def _upsert(
         )
         await context.clear()
         return
+    except ValueError as exc:
+        # NutritionClient ctor бросает ValueError при пустом AYLA_BASE_URL
+        # / NUTRITION_SERVICE_TOKEN. На проде этого быть не должно (env
+        # задан), но если кто-то забыл настроить — не падаем
+        # HandlerException, показываем мягкое сообщение и логируем для
+        # ops. Прод-инцидент 2026-05-04: на staging .env не было vars
+        # → юзер увидел красный handler-crash вместо «не получилось».
+        logger.error("anketa.upsert_misconfigured step=%s err=%s", step, exc)
+        await callback_or_event.bot.send_message(
+            chat_id=chat_id,
+            text="Сервис временно недоступен — попробуй чуть позже 🙏",
+        )
+        return
 
     await context.set_state(advance_to)
     await callback_or_event.bot.send_message(
