@@ -48,3 +48,42 @@ def _flatten_payloads(keyboard):
             if payload:
                 out.add(payload)
     return out
+
+
+def test_render_food_scan_low_confidence_shows_retake_buttons():
+    """confidence < 0.5 → text «Не разобрала» + кнопки переснять/ввести."""
+    from maxbot.ai_ui import render_food_scan_v2
+    from maxbot.keyboards import PAYLOAD_SCAN_RETAKE, PAYLOAD_SCAN_MANUAL_INPUT
+
+    scan = {
+        "id": "s1",
+        "dish_name": "?",
+        "confidence": 0.3,  # low
+        "nutrition": None,
+    }
+
+    text, attachments = render_food_scan_v2(scan)
+    assert "разобрала" in text.lower() or "🙈" in text
+
+    payloads = _flatten_payloads(attachments[0])
+    assert PAYLOAD_SCAN_RETAKE in payloads
+    assert PAYLOAD_SCAN_MANUAL_INPUT in payloads
+
+
+def test_render_food_scan_borderline_medium_treated_as_high():
+    """confidence 0.5-0.7 (medium без alternatives) → как high path."""
+    from maxbot.ai_ui import render_food_scan_v2
+    from maxbot.keyboards import PAYLOAD_SCAN_CORRECT_MENU
+
+    scan = {
+        "id": "s1",
+        "dish_name": "Что-то",
+        "confidence": 0.6,
+        "nutrition": {"calories": 300, "protein_g": 10, "fat_g": 5, "carbs_g": 40},
+    }
+
+    text, attachments = render_food_scan_v2(scan)
+    assert "Что-то" in text
+    payloads = _flatten_payloads(attachments[0])
+    # Correct-button присутствует (с scan_id suffix или без — гибко)
+    assert any(p.startswith(PAYLOAD_SCAN_CORRECT_MENU) for p in payloads)
