@@ -61,6 +61,7 @@ PAYLOAD_SCAN_CORRECT_MENU = "cb:scan:correct:menu"
 PAYLOAD_SCAN_PORTION_SMALLER = "cb:scan:correct:portion:smaller"
 PAYLOAD_SCAN_PORTION_NORMAL = "cb:scan:correct:portion:normal"
 PAYLOAD_SCAN_PORTION_LARGER = "cb:scan:correct:portion:larger"
+PAYLOAD_SCAN_PORTION_OPEN_MENU = "cb:scan:correct:portion:menu"
 PAYLOAD_SCAN_OTHER_DISH = "cb:scan:correct:other_dish"
 PAYLOAD_SCAN_ADD_INGREDIENT = "cb:scan:correct:add_ingredient"
 PAYLOAD_SCAN_DELETE = "cb:scan:correct:delete"
@@ -374,7 +375,7 @@ def food_scan_correct_menu_keyboard():
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="📦 Размер порции",
-                       payload=PAYLOAD_SCAN_PORTION_SMALLER + ":menu"),
+                       payload=PAYLOAD_SCAN_PORTION_OPEN_MENU),
     )
     builder.row(
         CallbackButton(text="🔄 Это другое блюдо",

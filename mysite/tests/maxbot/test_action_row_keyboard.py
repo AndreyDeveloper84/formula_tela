@@ -39,3 +39,51 @@ def _flatten_payloads(keyboard) -> set[str]:
             if payload:
                 out.add(payload)
     return out
+
+
+# ─── Smoke tests for remaining T01 keyboards ──────────────────────────────
+
+
+def test_food_scan_correct_menu_keyboard_has_4_options():
+    from maxbot.keyboards import (
+        food_scan_correct_menu_keyboard,
+        PAYLOAD_SCAN_PORTION_OPEN_MENU,
+        PAYLOAD_SCAN_OTHER_DISH,
+        PAYLOAD_SCAN_ADD_INGREDIENT,
+        PAYLOAD_SCAN_DELETE,
+    )
+
+    payloads = _flatten_payloads(food_scan_correct_menu_keyboard())
+    assert {
+        PAYLOAD_SCAN_PORTION_OPEN_MENU,
+        PAYLOAD_SCAN_OTHER_DISH,
+        PAYLOAD_SCAN_ADD_INGREDIENT,
+        PAYLOAD_SCAN_DELETE,
+    } <= payloads
+
+
+def test_food_scan_portion_keyboard_has_3_size_buttons():
+    from maxbot.keyboards import (
+        food_scan_portion_keyboard,
+        PAYLOAD_SCAN_PORTION_SMALLER,
+        PAYLOAD_SCAN_PORTION_NORMAL,
+        PAYLOAD_SCAN_PORTION_LARGER,
+    )
+
+    payloads = _flatten_payloads(food_scan_portion_keyboard())
+    assert {
+        PAYLOAD_SCAN_PORTION_SMALLER,
+        PAYLOAD_SCAN_PORTION_NORMAL,
+        PAYLOAD_SCAN_PORTION_LARGER,
+    } <= payloads
+
+
+def test_food_scan_low_confidence_keyboard_has_2_buttons():
+    from maxbot.keyboards import (
+        food_scan_low_confidence_keyboard,
+        PAYLOAD_SCAN_RETAKE,
+        PAYLOAD_SCAN_MANUAL_INPUT,
+    )
+
+    payloads = _flatten_payloads(food_scan_low_confidence_keyboard())
+    assert {PAYLOAD_SCAN_RETAKE, PAYLOAD_SCAN_MANUAL_INPUT} <= payloads
