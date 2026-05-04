@@ -21,7 +21,7 @@ import uuid
 
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
-from maxapi.types import MessageCallback
+from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_ui, keyboards
 from maxbot.personalization import get_or_create_bot_user
@@ -211,4 +211,48 @@ async def on_water_more(callback: MessageCallback, context: MemoryContext) -> No
         chat_id=chat_id,
         text="Выбери объём:",
         attachments=[keyboards.water_extended_keyboard()],
+    )
+
+
+@router.message_created(
+    F.message.body.text.lower().in_(("/вода", "/water", "вода")),
+)
+async def on_water_command(event: MessageCreated, context: MemoryContext) -> None:
+    """`/вода` text command → status + amount keyboard.
+
+    То же поведение что on_water_menu (callback) — pattern скопирован
+    из food_scanner.on_diary_command.
+    """
+    if event.message.sender is None:
+        return
+    chat_id = event.message.recipient.chat_id
+    user_id = event.message.sender.user_id
+    full_name = event.message.sender.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+
+    client = get_nutrition_client()
+    try:
+        today = await client.get_water_today(
+            external_user_id=external_user_id_for(bot_user),
+        )
+    except NutritionUnavailableError:
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text="Учёт воды временно недоступен. Попробуй через минуту.",
+        )
+        return
+    except NutritionAPIError as exc:
+        logger.exception("water.command.api_error user=%s err=%s",
+                         bot_user.max_user_id, exc)
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось загрузить статус.",
+        )
+        return
+
+    text = ai_ui.render_water_status(today)
+    await event.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        attachments=[keyboards.water_amount_keyboard()],
     )

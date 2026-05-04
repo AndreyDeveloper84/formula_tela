@@ -249,3 +249,47 @@ async def test_water_more_shows_extended_keyboard():
         PAYLOAD_WATER_EXTENDED_750,
         PAYLOAD_WATER_EXTENDED_1500,
     } <= payloads
+
+
+def _fake_message(text, chat_id=100, user_id=200):
+    msg = MagicMock()
+    msg.message.body.text = text
+    msg.message.recipient.chat_id = chat_id
+    msg.message.sender = MagicMock(user_id=user_id, full_name="Тест")
+    msg.bot.send_message = AsyncMock()
+    return msg
+
+
+@pytest.mark.asyncio
+async def test_water_command_opens_menu(monkeypatch, settings):
+    """`/вода` text command → тот же flow что on_water_menu (status + amount keyboard)."""
+    from maxbot.handlers.water import on_water_command
+    from maxbot.services.nutrition_client import WaterTodayResponse
+
+    settings.NUTRITION_ENABLED = True
+
+    today_mock = AsyncMock(return_value=WaterTodayResponse(
+        total_ml=500, norm_ml=2000,
+        entries=[],
+        raw={},
+    ))
+    fake_client = MagicMock(get_water_today=today_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    msg = _fake_message("/вода")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_command(msg, ctx)
+
+    today_mock.assert_awaited_once()
+    msg.bot.send_message.assert_awaited_once()
+    text = msg.bot.send_message.await_args.kwargs["text"]
+    assert "500" in text or "0.5" in text
+    assert "2.0" in text or "2000" in text
