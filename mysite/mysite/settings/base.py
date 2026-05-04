@@ -341,6 +341,13 @@ OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")  # HTTP-прокси (http://user:p
 AYLA_BASE_URL = os.getenv("AYLA_BASE_URL", "")
 NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
 
+# Feature flag: показывать ли кнопку «🍎 Дневник питания» в main_menu_keyboard.
+# Default OFF — Phase 3.1 Part 1 готов code-wise, но Ayla backend ещё не
+# задеплоил DRF-300..303 internal endpoints. Когда Ayla готов — поставить
+# NUTRITION_ENABLED=1 в .env + рестартануть бота. См.
+# `docs/plans/maxbot-phase3-ayla-spec.md` §6 acceptance criteria.
+NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", default=False)
+
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
 YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")

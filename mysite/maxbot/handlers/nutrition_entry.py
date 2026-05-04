@@ -72,14 +72,36 @@ async def _resolve_bot_user_for_entry(callback):
     return bot_user
 
 
+COMING_SOON_TEXT = (
+    "🍎 Дневник питания\n\n"
+    "Скоро будет — фича в разработке. Когда подключим, "
+    "посчитаем калории по фото блюда и подберём норму под тебя.\n\n"
+    "Пока можешь записаться на массаж или задать вопрос через меню."
+)
+
+
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_NUTRITION)
 async def on_show_nutrition_welcome(
     callback: MessageCallback, context: MemoryContext,
 ) -> None:
     """Главный entry-screen дневника. Если юзер уже прошёл анкету —
-    показываем resume вместо welcome (Design Doc v2 §4.1 учёт history)."""
+    показываем resume вместо welcome (Design Doc v2 §4.1 учёт history).
+
+    Feature flag NUTRITION_ENABLED: если выключен (default), показываем
+    «Скоро будет» — даже если юзер кликнул старую inline-клаву из
+    истории чата где кнопка ещё была видна.
+    """
+    from django.conf import settings
+
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None:
+        return
+
+    if not getattr(settings, "NUTRITION_ENABLED", False):
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=COMING_SOON_TEXT,
+        )
         return
 
     bot_user = await _resolve_bot_user_for_entry(callback)

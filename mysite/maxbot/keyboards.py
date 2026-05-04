@@ -71,13 +71,17 @@ MAX_KEYBOARD_ROWS = 29
 
 
 def main_menu_keyboard():
-    """Главное меню — 7 кнопок в 5 рядов.
+    """Главное меню — 6-7 кнопок в 4-5 рядов.
 
-    Phase 3 T01: добавлена кнопка «🍎 Дневник питания» отдельным рядом
-    между «Мои записи» и «Контакты». Inline keyboard через `attachments=`
-    в каждом ответе — это «floating menu» паттерн (см. menu_state.py).
+    Кнопка «🍎 Дневник питания» появляется только если `NUTRITION_ENABLED=1`
+    в env (Phase 3.1 Part 1 + Ayla DRF-300..303 endpoints готовы). Default
+    OFF — Ayla backend пока не задеплоил internal endpoints, кнопка скрыта
+    чтобы не показывать заведомо-сломанный flow. Inline keyboard через
+    `attachments=` в каждом ответе — «floating menu» паттерн.
     Persistent reply-keyboard в MAX SDK не поддерживается — только inline.
     """
+    from django.conf import settings
+
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="📅 Записаться", payload=PAYLOAD_MENU_BOOK),
@@ -86,9 +90,10 @@ def main_menu_keyboard():
     builder.row(
         CallbackButton(text="📋 Мои записи", payload=PAYLOAD_MENU_MY_BOOKINGS),
     )
-    builder.row(
-        CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
-    )
+    if getattr(settings, "NUTRITION_ENABLED", False):
+        builder.row(
+            CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
+        )
     builder.row(
         CallbackButton(text="📞 Контакты", payload=PAYLOAD_MENU_CONTACTS),
         CallbackButton(text="❓ Вопросы", payload=PAYLOAD_MENU_FAQ),

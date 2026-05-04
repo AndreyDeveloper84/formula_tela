@@ -31,10 +31,11 @@ def _make_callback(*, chat_id=100, user_id=200, payload=""):
 
 
 @pytest.mark.asyncio
-async def test_welcome_screen_text_contains_key_phrases(monkeypatch):
+async def test_welcome_screen_text_contains_key_phrases(monkeypatch, settings):
     """Welcome screen дневника начинается с emoji + краткое описание ценности."""
     from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
 
+    settings.NUTRITION_ENABLED = True
     bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=9001)
     monkeypatch.setattr(
         "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
@@ -54,10 +55,11 @@ async def test_welcome_screen_text_contains_key_phrases(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_welcome_screen_keyboard_has_two_action_buttons(monkeypatch):
+async def test_welcome_screen_keyboard_has_two_action_buttons(monkeypatch, settings):
     """Welcome screen прикрепляет nutrition_welcome_keyboard — 3 payload'а."""
     from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
 
+    settings.NUTRITION_ENABLED = True
     bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=9002)
     monkeypatch.setattr(
         "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
@@ -149,7 +151,7 @@ async def test_router_registered_in_handlers_init():
 
 
 @pytest.mark.asyncio
-async def test_onboarded_user_sees_resume_screen_not_anketa(monkeypatch):
+async def test_onboarded_user_sees_resume_screen_not_anketa(monkeypatch, settings):
     """Юзер с nutrition_onboarded_at != None → бот шлёт «Дневник готов,
     пришли фото» вместо welcome-screen."""
     from unittest.mock import AsyncMock, MagicMock
@@ -158,6 +160,7 @@ async def test_onboarded_user_sees_resume_screen_not_anketa(monkeypatch):
 
     from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
 
+    settings.NUTRITION_ENABLED = True
     bot_user = MagicMock(
         nutrition_onboarded_at="2026-05-03T12:00:00Z",
         max_user_id=99,
@@ -185,7 +188,7 @@ async def test_onboarded_user_sees_resume_screen_not_anketa(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_new_user_sees_welcome_screen(monkeypatch):
+async def test_new_user_sees_welcome_screen(monkeypatch, settings):
     """Юзер с nutrition_onboarded_at=None → стандартный welcome с 2 кнопками."""
     from unittest.mock import AsyncMock, MagicMock
 
@@ -193,6 +196,7 @@ async def test_new_user_sees_welcome_screen(monkeypatch):
 
     from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
 
+    settings.NUTRITION_ENABLED = True
     bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=99)
     monkeypatch.setattr(
         "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
@@ -243,3 +247,46 @@ async def test_resolve_bot_user_for_entry_unpacks_tuple_from_get_or_create(monke
 
     assert result is fake_bot_user, "_resolve_bot_user_for_entry должен вернуть BotUser, не кортеж"
     assert hasattr(result, "nutrition_onboarded_at"), "Возврат должен иметь .nutrition_onboarded_at"
+
+
+# ─── Feature flag NUTRITION_ENABLED ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_nutrition_disabled_shows_coming_soon_not_welcome(monkeypatch, settings):
+    """NUTRITION_ENABLED=False → клик на «🍎 Дневник питания» отвечает
+    «Скоро будет», НЕ welcome-screen."""
+    from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    settings.NUTRITION_ENABLED = False
+    cb = _make_callback(payload="cb:menu:nutrition")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_show_nutrition_welcome(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Скоро будет" in text or "разработке" in text.lower()
+    # НЕ welcome-text
+    assert "30 сек" not in text and "Сфоткай" not in text
+
+
+@pytest.mark.asyncio
+async def test_nutrition_enabled_shows_welcome_screen(monkeypatch, settings):
+    """NUTRITION_ENABLED=True + new user → welcome screen с 2 кнопками."""
+    from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    settings.NUTRITION_ENABLED = True
+    bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
+
+    cb = _make_callback(payload="cb:menu:nutrition")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_show_nutrition_welcome(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "30 сек" in text or "Сфоткай" in text
+    assert cb.bot.send_message.await_args.kwargs.get("attachments") is not None

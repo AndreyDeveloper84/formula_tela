@@ -157,3 +157,24 @@ def _flatten_payloads(keyboard) -> set[str]:
             if payload:
                 out.add(payload)
     return out
+
+
+# ─── Feature flag NUTRITION_ENABLED — main_menu_keyboard ───────────────────
+
+
+def test_main_menu_hides_nutrition_button_when_disabled(settings):
+    """NUTRITION_ENABLED=False → кнопки «🍎 Дневник питания» нет в main_menu."""
+    from maxbot.keyboards import main_menu_keyboard, PAYLOAD_MENU_NUTRITION
+
+    settings.NUTRITION_ENABLED = False
+    payloads = _flatten_payloads(main_menu_keyboard())
+    assert PAYLOAD_MENU_NUTRITION not in payloads
+
+
+def test_main_menu_shows_nutrition_button_when_enabled(settings):
+    """NUTRITION_ENABLED=True → кнопка присутствует."""
+    from maxbot.keyboards import main_menu_keyboard, PAYLOAD_MENU_NUTRITION
+
+    settings.NUTRITION_ENABLED = True
+    payloads = _flatten_payloads(main_menu_keyboard())
+    assert PAYLOAD_MENU_NUTRITION in payloads
