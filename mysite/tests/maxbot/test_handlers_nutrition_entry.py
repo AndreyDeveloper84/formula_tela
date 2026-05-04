@@ -212,3 +212,34 @@ async def test_new_user_sees_welcome_screen(monkeypatch):
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "30 сек" in text or "Сфоткай" in text  # text from WELCOME_TEXT
     assert cb.bot.send_message.await_args.kwargs.get("attachments") is not None
+
+
+# ─── Regression: get_or_create_bot_user возвращает кортеж ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_bot_user_for_entry_unpacks_tuple_from_get_or_create(monkeypatch):
+    """`get_or_create_bot_user` возвращает (BotUser, created) — helper должен
+    распаковать и вернуть только BotUser. Прод-инцидент 2026-05-04: handler
+    падал с `AttributeError: 'tuple' object has no attribute
+    'nutrition_onboarded_at'` потому что helper возвращал кортеж целиком.
+
+    Тесты T14 monkeypatch'или _resolve_bot_user_for_entry полностью и не
+    ходили в реальную ORM — баг проскочил. Этот тест ходит до get_or_create
+    и проверяет распаковку.
+    """
+    from maxbot.handlers.nutrition_entry import _resolve_bot_user_for_entry
+
+    fake_bot_user = MagicMock(nutrition_onboarded_at=None, max_user_id=12345)
+    fake_get_or_create = AsyncMock(return_value=(fake_bot_user, True))
+    monkeypatch.setattr(
+        "maxbot.personalization.get_or_create_bot_user",
+        fake_get_or_create,
+    )
+
+    cb = _make_callback(user_id=12345)
+
+    result = await _resolve_bot_user_for_entry(cb)
+
+    assert result is fake_bot_user, "_resolve_bot_user_for_entry должен вернуть BotUser, не кортеж"
+    assert hasattr(result, "nutrition_onboarded_at"), "Возврат должен иметь .nutrition_onboarded_at"

@@ -57,11 +57,19 @@ RESUME_TEXT = (
 
 
 async def _resolve_bot_user_for_entry(callback):
-    """Lazy-load BotUser для проверки nutrition_onboarded_at."""
+    """Lazy-load BotUser для проверки nutrition_onboarded_at.
+
+    `get_or_create_bot_user` возвращает кортеж `(BotUser, created)` —
+    распаковываем и отдаём только BotUser. Та же ошибка ранее ловилась
+    в `nutrition_anketa._resolve_bot_user` (Task 16 fix); тут вторая
+    копия helper'а осталась с багом потому что unit-тесты T14
+    monkeypatch'или весь helper, не ходили в реальную ORM.
+    """
     from maxbot.personalization import get_or_create_bot_user
 
     sender_id = callback.callback.user.user_id
-    return await get_or_create_bot_user(sender_id)
+    bot_user, _ = await get_or_create_bot_user(sender_id)
+    return bot_user
 
 
 @router.message_callback(F.callback.payload == keyboards.PAYLOAD_MENU_NUTRITION)
