@@ -132,12 +132,7 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
             return
 
     # 2. Чистим state — AI Concierge управляет multi-turn через Conversation.
-    # best-effort: в unit-тестах context может быть MagicMock'ом без awaitable
-    # .clear(); прод-flow никогда не падает на этом.
-    try:
-        await context.clear()
-    except TypeError:
-        pass
+    await context.clear()
 
     # 3. Intent-router (regex, ~1ms): phatic phrases → canned, без OpenAI
     intent_response = detect_intent(user_text)

@@ -370,23 +370,11 @@ def render_system_prompt(
         else ""
     )
 
-    # Type-tolerant: today/master_context могут приходить как строки
-    # (например в unit-тестах render_system_prompt), так и как полноценные
-    # объекты (date / MasterContext) в проде. Извлекаем текст безопасно.
-    if hasattr(today, "isoformat"):
-        today_text = today.isoformat()
-    else:
-        today_text = str(today)
-    if hasattr(master_context, "summary_text"):
-        masters_summary = master_context.summary_text or "(нет активных мастеров)"
-    else:
-        masters_summary = str(master_context) or "(нет активных мастеров)"
-
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
-        today=today_text,
+        today=today.isoformat(),
         client_name=client_name.strip() or "клиент",
         bookings_count=bookings_count,
-        masters_summary=masters_summary,
+        masters_summary=master_context.summary_text or "(нет активных мастеров)",
         client_history_block=_render_client_history(last_visits or []),
         fewshot_block=_render_fewshot_block(),
         extra_hint_block=extra_hint_block,

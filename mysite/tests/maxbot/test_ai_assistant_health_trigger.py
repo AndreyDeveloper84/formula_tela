@@ -1,9 +1,14 @@
 """Phase 3.2A T08: ai_assistant pre-hook — health-signal triggers TIER-B."""
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from maxapi.context.context import MemoryContext
+
+from maxbot.ai_context import MasterContext
 
 
 @pytest.mark.asyncio
@@ -33,7 +38,8 @@ async def test_health_signal_triggers_screening_when_not_consented(monkeypatch):
     event.message.sender = MagicMock(user_id=200, full_name="Аня")
     event.bot = MagicMock(send_message=AsyncMock())
 
-    await on_free_text(event, MagicMock())
+    ctx = MemoryContext(chat_id=100, user_id=200)
+    await on_free_text(event, ctx)
 
     start_mock.assert_awaited_once()
     concierge_mock.assert_not_called()
@@ -67,7 +73,8 @@ async def test_health_signal_skipped_when_already_consented(monkeypatch):
     event.message.sender = MagicMock(user_id=200, full_name="Аня")
     event.bot = MagicMock(send_message=AsyncMock())
 
-    await on_free_text(event, MagicMock())
+    ctx = MemoryContext(chat_id=100, user_id=200)
+    await on_free_text(event, ctx)
 
     start_mock.assert_not_called()
     concierge_mock.assert_awaited_once()
@@ -101,18 +108,30 @@ async def test_health_signal_skipped_when_declined(monkeypatch):
     event.message.sender = MagicMock(user_id=200, full_name="Аня")
     event.bot = MagicMock(send_message=AsyncMock())
 
-    await on_free_text(event, MagicMock())
+    ctx = MemoryContext(chat_id=100, user_id=200)
+    await on_free_text(event, ctx)
 
     start_mock.assert_not_called()
     concierge_mock.assert_awaited_once()
+
+
+def _make_master_context() -> MasterContext:
+    """Минимальный MasterContext для unit-теста render_system_prompt."""
+    return MasterContext(
+        candidates=[],
+        candidate_ids=frozenset(),
+        candidate_service_ids=frozenset(),
+        summary_text="(тест)",
+    )
 
 
 def test_render_system_prompt_appends_degraded_note():
     """Phase 3.2A: advice_mode='degraded' → prompt содержит warning."""
     from maxbot.ai_prompts import render_system_prompt
     prompt = render_system_prompt(
-        today="2026-05-05", client_name="Аня", bookings_count=0,
-        master_context="...", last_visits=[], advice_mode="degraded",
+        today=date(2026, 5, 5), client_name="Аня", bookings_count=0,
+        master_context=_make_master_context(), last_visits=[],
+        advice_mode="degraded",
     )
     text = prompt.lower()
     assert "screening" in text or "скрининг" in text or "уточнен" in text
@@ -123,8 +142,9 @@ def test_render_system_prompt_appends_degraded_note():
 def test_render_system_prompt_default_mode_no_degraded_note():
     from maxbot.ai_prompts import render_system_prompt
     prompt = render_system_prompt(
-        today="2026-05-05", client_name="Аня", bookings_count=0,
-        master_context="...", last_visits=[], advice_mode="full",
+        today=date(2026, 5, 5), client_name="Аня", bookings_count=0,
+        master_context=_make_master_context(), last_visits=[],
+        advice_mode="full",
     )
     # Default mode does not contain the degraded-advice marker block.
     # Note: base prompt rule 12 already mentions «health screening» for
