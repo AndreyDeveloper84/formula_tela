@@ -32,6 +32,7 @@ from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_concierge, ai_ui, keyboards, texts
 from maxbot.ai_action_service import close_active_conversation
+from maxbot.handlers.water import try_handle_water_text
 from maxbot.intents import detect_intent
 from maxbot.llm import LLM_GIVEUP_MESSAGE, is_giveup
 from maxbot.menu_state import send_with_main_menu
@@ -85,6 +86,12 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     chat_id = event.message.recipient.chat_id
     user_text = (event.message.body.text or "").strip() if event.message.body else ""
     if not user_text:
+        return
+
+    # Phase 3.1 Part 2D.1: попытка обработать как water entry ДО AI.
+    # Если parse_beverage hit → try_handle_water_text возвращает True,
+    # AI не вызывается (water-handler владеет всем UX-flow).
+    if await try_handle_water_text(event, context):
         return
 
     # 1. MARK_SEEN + TYPING_ON (best-effort, порядок важен — typing должен

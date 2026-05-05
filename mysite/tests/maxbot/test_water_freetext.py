@@ -134,3 +134,72 @@ async def test_try_handle_water_text_skipped_during_anketa_fsm(
     assert handled is False
     add_mock.assert_not_awaited()
     assert await ctx.get_state() == NutritionAnketaStates.awaiting_age
+
+
+@pytest.mark.asyncio
+async def test_on_free_text_intercepts_water_text_before_ai(monkeypatch, settings):
+    """on_free_text вызывает try_handle_water_text первым; если True →
+    AI Concierge (run_ai_turn) не вызывается."""
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    settings.NUTRITION_ENABLED = True
+
+    # Mock try_handle_water_text → True (handled)
+    handler_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.try_handle_water_text", handler_mock,
+    )
+
+    # run_ai_turn — should NOT be called when water handled
+    run_ai_mock = AsyncMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.run_ai_turn", run_ai_mock,
+    )
+
+    msg = _fake_message("выпила кофе")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_free_text(msg, ctx)
+
+    handler_mock.assert_awaited_once()
+    run_ai_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_free_text_falls_through_to_ai_when_water_returns_false(
+    monkeypatch, settings,
+):
+    """try_handle_water_text=False → run_ai_turn вызывается (default route)."""
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    settings.NUTRITION_ENABLED = True
+
+    handler_mock = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.try_handle_water_text", handler_mock,
+    )
+
+    run_ai_mock = AsyncMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.run_ai_turn", run_ai_mock,
+    )
+
+    # Mock other deps along happy AI path
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    # detect_intent — None (нет intent match)
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.detect_intent",
+        lambda txt: None,
+    )
+
+    msg = _fake_message("как погода")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_free_text(msg, ctx)
+
+    handler_mock.assert_awaited_once()
+    run_ai_mock.assert_awaited_once()
