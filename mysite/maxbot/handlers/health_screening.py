@@ -195,3 +195,118 @@ async def on_breastfeeding_answer(
         text=DIABETES_TEXT,
         attachments=[keyboards.tier_b_diabetes_keyboard()],
     )
+
+
+_DIABETES_PAYLOAD_TO_TYPE = {
+    keyboards.PAYLOAD_TIER_B_DIABETES_NO: "no",
+    keyboards.PAYLOAD_TIER_B_DIABETES_T1: "t1",
+    keyboards.PAYLOAD_TIER_B_DIABETES_T2: "t2",
+    keyboards.PAYLOAD_TIER_B_DIABETES_PRE: "pre",
+}
+
+
+# ─── Screen 2 — diabetes ──────────────────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_diabetes,
+    F.callback.payload.in_(set(_DIABETES_PAYLOAD_TO_TYPE.keys())),
+)
+async def on_diabetes_answer(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    diabetes_type = _DIABETES_PAYLOAD_TO_TYPE[callback.callback.payload]
+    await sync_to_async(_persist_health_flag)(bot_user, "diabetes_type", diabetes_type)
+    await context.set_state(NutritionAnketaStates.awaiting_chronic)
+    await context.update_data(chronic_selected=[])
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=CHRONIC_TEXT,
+        attachments=[keyboards.tier_b_chronic_keyboard(selected=set())],
+    )
+
+
+# ─── Screen 2b — chronic multi-select ─────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_chronic,
+    F.callback.payload.startswith("cb:tier_b:chronic:toggle:"),
+)
+async def on_chronic_toggle(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """Toggle slug в state-stored selection. Edit message с новой keyboard."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    payload = callback.callback.payload or ""
+    parts = payload.split(":")
+    if len(parts) != 5:
+        return
+    slug = parts[4]
+    data = await context.get_data() or {}
+    selected = list(data.get("chronic_selected") or [])
+    if slug in selected:
+        selected.remove(slug)
+    else:
+        selected.append(slug)
+    await context.update_data(chronic_selected=selected)
+    # Edit existing message with rebuilt keyboard for visual feedback.
+    try:
+        await callback.bot.edit_message(
+            chat_id=chat_id,
+            message_id=callback.message.body.mid if callback.message and callback.message.body else None,
+            attachments=[keyboards.tier_b_chronic_keyboard(selected=set(selected))],
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Fallback: send new message с обновлённой keyboard
+        logger.warning("chronic_toggle.edit_failed err=%s", exc)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=CHRONIC_TEXT,
+            attachments=[keyboards.tier_b_chronic_keyboard(selected=set(selected))],
+        )
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_chronic,
+    F.callback.payload == keyboards.PAYLOAD_TIER_B_CHRONIC_DONE,
+)
+async def on_chronic_done(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    data = await context.get_data() or {}
+    selected = list(data.get("chronic_selected") or [])
+    await sync_to_async(_persist_health_flag)(bot_user, "chronic", selected)
+    await context.set_state(NutritionAnketaStates.awaiting_allergies)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=ALLERGIES_TEXT,
+        attachments=[keyboards.tier_b_allergies_choice_keyboard()],
+    )
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_chronic,
+    F.callback.payload == keyboards.PAYLOAD_TIER_B_CHRONIC_NONE,
+)
+async def on_chronic_none(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    await sync_to_async(_persist_health_flag)(bot_user, "chronic", [])
+    await context.set_state(NutritionAnketaStates.awaiting_allergies)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=ALLERGIES_TEXT,
+        attachments=[keyboards.tier_b_allergies_choice_keyboard()],
+    )
