@@ -253,3 +253,55 @@ async def test_caffeine_warning_when_pregnant_and_high_caffeine(
     text = msg.bot.send_message.await_args.kwargs["text"]
     # Caffeine warning hint
     assert "кофеин" in text.lower() or "200" in text or "пограничн" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_e2e_freetext_water_through_ai_assistant(monkeypatch, settings):
+    """E2E: «выпила стакан кофе» через on_free_text → водный handler
+    перехватывает → add_water → render. AIConcierge не вызывается."""
+    from maxbot.handlers.ai_assistant import on_free_text
+    from maxbot.services.nutrition_client import WaterEntryResponse
+
+    settings.NUTRITION_ENABLED = True
+
+    add_mock = AsyncMock(return_value=WaterEntryResponse(
+        entry_id="W-e2e", ml=250, water_ml=250, kcal=10,
+        milestone_text="Хорошо пьёшь!",
+        today_total_ml=1450, today_norm_ml=2000,
+        alcohol_recovery_hint=False, raw={},
+    ))
+    fake_client = MagicMock(add_water=add_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200, health_flags={})
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    # AIConcierge mock — should NOT be called
+    run_ai_mock = AsyncMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.run_ai_turn", run_ai_mock,
+    )
+
+    msg = _fake_message("выпила стакан кофе")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_free_text(msg, ctx)
+
+    # add_water called с beverage_slug=kofe_chernyi, ml=250 (стакан)
+    add_mock.assert_awaited_once()
+    add_kwargs = add_mock.await_args.kwargs
+    assert add_kwargs["beverage_slug"] == "kofe_chernyi"
+    assert add_kwargs["ml"] == 250
+
+    # render отправлен
+    msg.bot.send_message.assert_awaited_once()
+    text = msg.bot.send_message.await_args.kwargs["text"]
+    assert "+250" in text or "250 мл" in text
+    assert "Хорошо пьёшь" in text
+
+    # AIConcierge не вызвался
+    run_ai_mock.assert_not_awaited()
