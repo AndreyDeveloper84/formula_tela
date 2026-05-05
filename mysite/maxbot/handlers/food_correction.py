@@ -212,3 +212,42 @@ async def on_view_day(callback: MessageCallback, context: MemoryContext) -> None
 
     text = ai_ui.render_daily_summary(summary.raw)
     await callback.bot.send_message(chat_id=chat_id, text=text)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_REPORT_WEEKLY,
+)
+async def on_report_weekly_stub(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[📊 Неделя] — заглушка Phase 3.3 (требует tracking 7-day FoodEntry streak)."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "📊 Недельный отчёт Скоро добавлю — нужно собрать данные за "
+            "7 дней с записями. Продолжай вести дневник, и через неделю "
+            "покажу тренды."
+        ),
+    )
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_REPORT_TIME_SETTINGS,
+)
+async def on_report_time_settings_stub(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[⚙️ Время отчёта] — заглушка Part 2D (требует user-settings UI)."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None:
+        return
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "⚙️ Настройка времени отчёта Скоро будет — пока шлю в 21:00 "
+            "по Москве. Если неудобно — напиши, скорректируем."
+        ),
+    )

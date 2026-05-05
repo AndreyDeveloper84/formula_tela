@@ -168,3 +168,31 @@ async def test_view_day_calls_daily_summary(monkeypatch, settings):
     text = cb.bot.send_message.await_args.kwargs["text"]
     # render_daily_summary показывает ккал
     assert "1100" in text or "1450" in text
+
+
+@pytest.mark.asyncio
+async def test_report_weekly_stub_says_coming_soon():
+    """[📊 Неделя] → заглушка Phase 3.3."""
+    from maxbot.handlers.food_correction import on_report_weekly_stub
+
+    cb = _fake_callback("cb:report:weekly")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_report_weekly_stub(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Скоро" in text or "разработ" in text.lower() or "после 7" in text
+
+
+@pytest.mark.asyncio
+async def test_report_time_settings_stub_says_coming_soon():
+    """[⚙️ Время отчёта] → заглушка Part 2D."""
+    from maxbot.handlers.food_correction import on_report_time_settings_stub
+
+    cb = _fake_callback("cb:report:time")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_report_time_settings_stub(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Скоро" in text or "21" in text  # 21:00 default mention
