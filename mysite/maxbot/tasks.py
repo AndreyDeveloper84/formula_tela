@@ -422,3 +422,124 @@ async def _fetch_daily_data(client, external_user_id):
         # Water gracefully skipped — render handles None
         pass
     return summary, water_today
+
+
+# ─── Phase 3.1 Part 2D.2 T08: adaptive water reminders 4h ──────────────────
+
+
+@shared_task(name="maxbot.tasks.send_water_reminders", bind=True, max_retries=1)
+def send_water_reminders(self):
+    """Phase 3.1 Part 2D.2: adaptive water reminders каждые 4 часа.
+
+    Beat schedule: crontab(minute=0, hour="0,4,8,12,16,20") — UTC × 6/day.
+    Per-user filter:
+      - settings.NUTRITION_ENABLED == True
+      - nutrition_onboarded_at IS NOT NULL
+      - chat_id IS NOT NULL
+      - nutrition_settings["water_reminders_enabled"] == True (opt-in)
+      - НЕ quiet hours (22:00–09:00 local time)
+      - today_total_ml < 50% от proportional_norm
+
+    Sends inline keyboard [+250 мл][+500 мл][Уже пью].
+    """
+    import asyncio
+    from zoneinfo import ZoneInfo
+
+    from django.conf import settings as django_settings
+
+    from notifications.max_bot import send_max_message
+    from services_app.models import BotUser
+
+    from maxbot import keyboards
+    from maxbot.nutrition_settings_helpers import (
+        calc_proportional_norm,
+        is_quiet_hours_for_user,
+    )
+    from maxbot.services.ayla_user_proxy import external_user_id_for
+    from maxbot.services.nutrition_client import (
+        NutritionAPIError,
+        NutritionUnavailableError,
+        get_nutrition_client,
+    )
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        logger.info("water_reminders.skipped — NUTRITION_ENABLED=False")
+        return
+
+    eligible = BotUser.objects.filter(
+        nutrition_onboarded_at__isnull=False,
+        chat_id__isnull=False,
+    )
+    sent = 0
+    skipped = 0
+
+    client = get_nutrition_client()
+    now_msk = _task_now_msk()
+    now_utc = now_msk.astimezone(ZoneInfo("UTC"))
+
+    for bot_user in eligible.iterator():
+        opt_in = bool(
+            (bot_user.nutrition_settings or {}).get("water_reminders_enabled", False)
+        )
+        if not opt_in:
+            skipped += 1
+            continue
+
+        if is_quiet_hours_for_user(bot_user, now_utc=now_utc):
+            skipped += 1
+            continue
+
+        try:
+            user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            user_tz = ZoneInfo("Europe/Moscow")
+        local_hour = now_utc.astimezone(user_tz).hour
+
+        extid = external_user_id_for(bot_user)
+        try:
+            today = asyncio.run(client.get_water_today(external_user_id=extid))
+        except (NutritionUnavailableError, NutritionAPIError) as exc:
+            logger.warning(
+                "water_reminders.fetch_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "water_reminders.fetch_unexpected user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+
+        proportional = calc_proportional_norm(
+            today.norm_ml, current_local_hour=local_hour,
+        )
+        threshold = proportional * 0.5
+        if today.total_ml >= threshold:
+            skipped += 1
+            continue
+
+        # Compose reminder text — Design §7.7
+        deficit = max(0, today.norm_ml - today.total_ml)
+        text = (
+            f"💧 Сегодня выпито: {today.total_ml} / {today.norm_ml} мл.\n"
+            f"До нормы — ещё {deficit} мл."
+        )
+
+        try:
+            send_max_message(
+                bot_user.chat_id, text,
+                attachments=[keyboards.water_reminder_buttons_keyboard()],
+            )
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "water_reminders.send_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+
+    logger.info("water_reminders.done sent=%d skipped=%d", sent, skipped)
+    return {"sent": sent, "skipped": skipped}

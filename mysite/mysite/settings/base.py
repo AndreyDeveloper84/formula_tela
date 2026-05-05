@@ -315,6 +315,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "maxbot.tasks.send_daily_reports",
         "schedule": crontab(minute=0),  # каждый час в :00, per-user filter inside
     },
+    # Phase 3.1 Part 2D.2 T08: adaptive water reminders 4h × UTC, per-user filters
+    "maxbot-water-reminders-4h": {
+        "task": "maxbot.tasks.send_water_reminders",
+        "schedule": crontab(minute=0, hour="0,4,8,12,16,20"),  # UTC × 6/day
+    },
 }
 
 # === Email (SMTP) ===
