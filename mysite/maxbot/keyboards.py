@@ -90,6 +90,18 @@ PAYLOAD_WATER_UNDO_PREFIX = "cb:water:undo:"  # + entry_id
 PAYLOAD_REPORT_WEEKLY = "cb:report:weekly"
 PAYLOAD_REPORT_TIME_SETTINGS = "cb:report:time"
 
+# ─── Phase 3.1 Part 2D.2: settings + water reminders ───────────────────────
+
+PAYLOAD_REPORT_TIME_18 = "cb:report:time:18"
+PAYLOAD_REPORT_TIME_21 = "cb:report:time:21"
+PAYLOAD_REPORT_TIME_23 = "cb:report:time:23"
+PAYLOAD_REPORT_TIME_OFF = "cb:report:time:off"
+
+PAYLOAD_WATER_REMINDERS_FOOTER = "cb:water:reminders:open"  # вход из footer
+PAYLOAD_WATER_REMINDERS_TOGGLE = "cb:water:reminders:toggle"  # tap в settings menu
+
+PAYLOAD_WATER_DISMISS = "cb:water:dismiss"  # «Уже пью» в reminder card
+
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -491,15 +503,61 @@ def water_undo_keyboard(*, entry_id: str):
 
 
 def daily_report_footer_keyboard():
-    """Footer для дневного отчёта (Design §6.2): [📊 Неделя][⚙️ Время отчёта].
+    """Footer для дневного отчёта (Design §6.2 + 2D.2): 3 кнопки.
 
-    Both — stubs до Part 2D / Phase 3.3. [📊 Неделя] требует tracking 7-day
-    FoodEntry streak (weekly unlock §6.6). [⚙️ Время отчёта] требует
-    user-settings UI for daily_report_time JSON.
+    [📊 Неделя] — Phase 3.3 backlog (stub-handler).
+    [⚙️ Время] — settings: выбор времени дневного отчёта (Part 2D.2).
+    [🔔 Напоминания] — settings: toggle adaptive water reminders (Part 2D.2).
     """
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="📊 Неделя", payload=PAYLOAD_REPORT_WEEKLY),
-        CallbackButton(text="⚙️ Время отчёта", payload=PAYLOAD_REPORT_TIME_SETTINGS),
+        CallbackButton(text="⚙️ Время", payload=PAYLOAD_REPORT_TIME_SETTINGS),
+        CallbackButton(text="🔔 Напоминания", payload=PAYLOAD_WATER_REMINDERS_FOOTER),
+    )
+    return builder.as_markup()
+
+
+def daily_report_time_keyboard():
+    """Settings menu: выбор времени дневного отчёта (Design §6.1)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="🌇 18:00", payload=PAYLOAD_REPORT_TIME_18),
+        CallbackButton(text="🌙 21:00", payload=PAYLOAD_REPORT_TIME_21),
+    )
+    builder.row(
+        CallbackButton(text="🌃 23:00", payload=PAYLOAD_REPORT_TIME_23),
+        CallbackButton(text="🔕 Выкл", payload=PAYLOAD_REPORT_TIME_OFF),
+    )
+    return builder.as_markup()
+
+
+def water_reminders_settings_keyboard(*, currently_enabled: bool):
+    """Settings menu: toggle adaptive water reminders (Design §7.7).
+
+    Default OFF (opt-in). Кнопка показывает противоположный action — чтобы
+    клик вёл к change.
+    """
+    label = "🔕 Выключить" if currently_enabled else "🔔 Включить"
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text=label, payload=PAYLOAD_WATER_REMINDERS_TOGGLE),
+    )
+    return builder.as_markup()
+
+
+def water_reminder_buttons_keyboard():
+    """Inline keyboard под текстом adaptive reminder (Design §7.7).
+
+    [+250 мл][+500 мл] реюзают on_water_add_quick (Part 2B T03 PAYLOAD_WATER_AMOUNT_*).
+    [Уже пью] → on_water_dismiss_reminder — silent ack, до завтра молчим.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="+250 мл", payload=PAYLOAD_WATER_AMOUNT_250),
+        CallbackButton(text="+500 мл", payload=PAYLOAD_WATER_AMOUNT_500),
+    )
+    builder.row(
+        CallbackButton(text="Уже пью", payload=PAYLOAD_WATER_DISMISS),
     )
     return builder.as_markup()
