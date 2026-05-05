@@ -66,7 +66,9 @@ def test_render_eating_disorder_mode_skips_ai_comment():
     from maxbot.ai_ui import render_daily_full_report
     summary = _make_summary(ai_comment="Ты съел 1100 из 1450 — добавь белка.")
     text = render_daily_full_report(summary, eating_disorder=True)
-    # Eating-disorder mode hides numbers AND skips ai_comment
+    # Eating-disorder mode hides numbers AND skips ai_comment content
     assert "1100" not in text
     assert "1450" not in text
-    assert "💬" not in text
+    assert "добавь белка" not in text
+    # Supportive chat-bubble template (§6.3) intact
+    assert "Как ты сегодня" in text

@@ -975,6 +975,6 @@ def _render_eating_disorder_summary(summary, water_today) -> str:
             lines.append(f"{total_str} воды.")
 
     lines.append("")
-    lines.append("Как ты сегодня? День получился?")
+    lines.append("💬 Как ты сегодня? День получился?")
 
     return "\n".join(lines)
