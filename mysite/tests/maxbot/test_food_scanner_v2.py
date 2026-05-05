@@ -1,7 +1,9 @@
 """Phase 3.1 Part 2A T02: NUTRITION_ENABLED gate + FSM-skip в food_scanner."""
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -224,6 +226,14 @@ async def test_e2e_photo_to_log_to_view_day(monkeypatch, settings):
     )
 
     settings.NUTRITION_ENABLED = True
+
+    # Pin _now_msk to morning so on_log_meal's evening_inline trigger
+    # ([18, 22) MSK window) does NOT fire and daily_summary stays awaited
+    # exactly once (only via on_view_day in Step 3).
+    fake_now = datetime(2026, 5, 5, 9, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    monkeypatch.setattr(
+        "maxbot.handlers.food_scanner._now_msk", lambda: fake_now,
+    )
 
     # Mock Ayla calls
     scan_mock = AsyncMock(return_value=ScanResponse(
