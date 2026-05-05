@@ -238,6 +238,43 @@ async def on_water_more(callback: MessageCallback, context: MemoryContext) -> No
     )
 
 
+_CAFFEINE_BEARING_PREFIXES = ("kofe_", "chai_")
+
+
+async def _should_show_caffeine_warning(
+    client, external_user_id: str, beverage_slug: str,
+    entry, bot_user,
+) -> bool:
+    """Phase 3.1 Part 2D.1 §7.5: pregnant + caffeine ≥ 200 мг сегодня.
+
+    Conditions:
+        1. beverage_slug starts with kofe_ or chai_ (caffeine-bearing)
+        2. bot_user.health_flags["pregnant"] OR get_profile.health_flags["pregnant"]
+        3. entry.raw["today_caffeine_mg"] >= 200
+
+    Returns False (no warning) если any condition fails или Ayla не отдаёт
+    today_caffeine_mg в response.
+    """
+    if not any(beverage_slug.startswith(p) for p in _CAFFEINE_BEARING_PREFIXES):
+        return False
+
+    today_caffeine = (entry.raw or {}).get("today_caffeine_mg") or 0
+    if today_caffeine < 200:
+        return False
+
+    # Check pregnant flag — local cache OR fetch fresh
+    pregnant = bool((bot_user.health_flags or {}).get("pregnant", False))
+    if not pregnant:
+        try:
+            profile = await client.get_profile(external_user_id=external_user_id)
+            if profile is not None:
+                pregnant = bool(profile.health_flags.get("pregnant", False))
+        except (NutritionUnavailableError, NutritionAPIError):
+            return False
+
+    return pregnant
+
+
 async def try_handle_water_text(event, context: MemoryContext) -> bool:
     """Phase 3.1 Part 2D.1 T02: попытка обработать free-text как ввод напитка.
 
@@ -315,7 +352,10 @@ async def try_handle_water_text(event, context: MemoryContext) -> bool:
         )
         return True
 
-    text_render = ai_ui.render_water_added(entry)
+    caffeine_warning = await _should_show_caffeine_warning(
+        client, extid, beverage_slug, entry, bot_user,
+    )
+    text_render = ai_ui.render_water_added(entry, caffeine_warning=caffeine_warning)
     await event.bot.send_message(
         chat_id=chat_id,
         text=text_render,

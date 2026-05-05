@@ -203,3 +203,53 @@ async def test_on_free_text_falls_through_to_ai_when_water_returns_false(
 
     handler_mock.assert_awaited_once()
     run_ai_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_caffeine_warning_when_pregnant_and_high_caffeine(
+    monkeypatch, settings,
+):
+    """Беременная + кофе с накопленным caffeine_mg≥200 → render показывает
+    предостережение."""
+    from maxbot.handlers.water import try_handle_water_text
+    from maxbot.services.nutrition_client import (
+        WaterEntryResponse, ProfileResponse,
+    )
+
+    settings.NUTRITION_ENABLED = True
+
+    add_mock = AsyncMock(return_value=WaterEntryResponse(
+        entry_id="W-caf", ml=250, water_ml=250, kcal=10,
+        milestone_text=None,
+        today_total_ml=1450, today_norm_ml=2000,
+        alcohol_recovery_hint=False,
+        raw={"caffeine_mg": 95, "today_caffeine_mg": 220},  # 220 ≥ 200
+    ))
+    profile_mock = AsyncMock(return_value=ProfileResponse(
+        gender="female", age=32, height_cm=165, weight_kg=65,
+        goal="maintain", goal_pace="", activity="1.4",
+        diet_preference="none",
+        daily_kcal=1900, protein_g=110, fat_g=55, carbs_g=200,
+        water_ml=2000, bmr=1364,
+        health_flags={"pregnant": True},
+        disclaimer_acked=None, goal_overridden_by="pregnancy", raw={},
+    ))
+    fake_client = MagicMock(add_water=add_mock, get_profile=profile_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_nutrition_client", lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200, health_flags={"pregnant": True})
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    msg = _fake_message("выпила кофе")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    handled = await try_handle_water_text(msg, ctx)
+
+    assert handled is True
+    text = msg.bot.send_message.await_args.kwargs["text"]
+    # Caffeine warning hint
+    assert "кофеин" in text.lower() or "200" in text or "пограничн" in text.lower()

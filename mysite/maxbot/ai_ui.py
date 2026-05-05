@@ -676,12 +676,13 @@ def render_water_status(today) -> str:
     return f"💧 Сегодня: {total_str} / {norm_str}\n\nСколько добавить?"
 
 
-def render_water_added(entry) -> str:
-    """Phase 3.1 Part 2B: «+250 мл · 1.4 / 2.0 л · Половина нормы — отлично!».
+def render_water_added(entry, *, caffeine_warning: bool = False) -> str:
+    """Phase 3.1 Part 2B/2D.1: «+250 мл · 1.4 / 2.0 л · Половина нормы — отлично!».
 
-    `entry` — `WaterEntryResponse`. Milestone и alcohol_recovery_hint
-    добавляются inline если присутствуют. Format: «+ml · today_total /
-    norm[ · milestone_text]».
+    Args:
+        entry: WaterEntryResponse
+        caffeine_warning: bool — true если pregnant + today_caffeine_mg ≥ 200,
+            добавляет soft warning «близко к лимиту 200 мг» (Design §7.5).
     """
     ml = entry.ml
     total_ml = entry.today_total_ml
@@ -700,6 +701,12 @@ def render_water_added(entry) -> str:
         text += (
             "\n\n🍷 Алкоголь обезвоживает — "
             "стакан воды перед сном лишним не будет."
+        )
+
+    if caffeine_warning:
+        text += (
+            "\n\n☕ Кофеин сегодня близко к лимиту 200 мг — "
+            "при беременности рекомендуют не больше."
         )
 
     return text
