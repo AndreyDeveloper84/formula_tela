@@ -283,3 +283,85 @@ async def test_report_time_off_persists_off_setting(monkeypatch):
 
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "выкл" in text.lower() or "🔕" in text
+
+
+@pytest.mark.asyncio
+async def test_water_reminders_open_shows_toggle_keyboard(monkeypatch):
+    """[🔔 Напоминания] click → menu с toggle button."""
+    from unittest.mock import MagicMock
+    from maxbot.handlers.food_correction import on_water_reminders_open
+    from maxbot.keyboards import PAYLOAD_WATER_REMINDERS_TOGGLE
+
+    bot_user = MagicMock(max_user_id=200, nutrition_settings={})
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    cb = _fake_callback("cb:water:reminders:open")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_reminders_open(cb, ctx)
+
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Напоминания" in text or "вода" in text.lower()
+    atts = cb.bot.send_message.await_args.kwargs.get("attachments") or []
+    payloads = _flatten_payloads(atts[0]) if atts else set()
+    assert PAYLOAD_WATER_REMINDERS_TOGGLE in payloads
+
+
+@pytest.mark.asyncio
+async def test_water_reminders_toggle_persists_true(monkeypatch):
+    """Tap toggle когда currently OFF → persist water_reminders_enabled=True + ack."""
+    from unittest.mock import MagicMock
+    from maxbot.handlers.food_correction import on_water_reminders_toggle
+
+    bot_user = MagicMock(
+        max_user_id=200, nutrition_settings={"water_reminders_enabled": False},
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    set_mock = MagicMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.set_setting", set_mock,
+    )
+
+    cb = _fake_callback("cb:water:reminders:toggle")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_reminders_toggle(cb, ctx)
+
+    set_mock.assert_called_once()
+    args = set_mock.call_args.args
+    assert args[1] == "water_reminders_enabled"
+    assert args[2] is True
+
+
+@pytest.mark.asyncio
+async def test_water_reminders_toggle_persists_false_when_on(monkeypatch):
+    """Tap toggle когда currently ON → persist=False."""
+    from unittest.mock import MagicMock
+    from maxbot.handlers.food_correction import on_water_reminders_toggle
+
+    bot_user = MagicMock(
+        max_user_id=200, nutrition_settings={"water_reminders_enabled": True},
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    set_mock = MagicMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.set_setting", set_mock,
+    )
+
+    cb = _fake_callback("cb:water:reminders:toggle")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_reminders_toggle(cb, ctx)
+
+    args = set_mock.call_args.args
+    assert args[2] is False

@@ -21,7 +21,7 @@ from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback
 
 from maxbot import ai_ui, keyboards
-from maxbot.nutrition_settings_helpers import set_setting
+from maxbot.nutrition_settings_helpers import get_setting, set_setting
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.services.ayla_user_proxy import external_user_id_for
 from maxbot.services.nutrition_client import (
@@ -302,4 +302,60 @@ async def on_report_time_select(
     else:
         text = f"✓ Время дневного отчёта: {value}. Буду присылать каждый день."
 
+    await callback.bot.send_message(chat_id=chat_id, text=text)
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_WATER_REMINDERS_FOOTER,
+)
+async def on_water_reminders_open(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[🔔 Напоминания] из daily report footer → settings menu."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+    enabled = bool(get_setting(bot_user, "water_reminders_enabled", default=False))
+
+    status_text = "включены ✅" if enabled else "выключены 🔕"
+    text = (
+        f"💧 Напоминания о воде сейчас: {status_text}\n\n"
+        "Если включить — раз в 4 часа проверяю норму, и если ты "
+        "сильно отстаёшь, шлю мягкое напоминание (только в дневное время)."
+    )
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        attachments=[
+            keyboards.water_reminders_settings_keyboard(currently_enabled=enabled),
+        ],
+    )
+
+
+@router.message_callback(
+    F.callback.payload == keyboards.PAYLOAD_WATER_REMINDERS_TOGGLE,
+)
+async def on_water_reminders_toggle(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """Toggle water_reminders_enabled flag."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+
+    currently = bool(get_setting(bot_user, "water_reminders_enabled", default=False))
+    new_value = not currently
+    await sync_to_async(set_setting)(bot_user, "water_reminders_enabled", new_value)
+
+    text = (
+        "🔔 Напоминания включены — буду проверять каждые 4 часа."
+        if new_value
+        else "🔕 Напоминания выключены."
+    )
     await callback.bot.send_message(chat_id=chat_id, text=text)
