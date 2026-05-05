@@ -14,6 +14,12 @@ from django.utils import timezone
 
 logger = logging.getLogger("maxbot.tasks")
 
+# Module-level placeholders для send_daily_reports — позволяют тестам patch'ить
+# через `patch("maxbot.tasks.send_max_message")` / `patch("maxbot.tasks.get_nutrition_client")`.
+# Реальные функции lazy-импортятся на module-load (без circular import).
+from notifications.max_bot import send_max_message  # noqa: E402
+from maxbot.services.nutrition_client import get_nutrition_client  # noqa: E402
+
 
 @shared_task(name="maxbot.tasks.send_due_reminders", bind=True, max_retries=2)
 def send_due_reminders(self):
@@ -294,38 +300,46 @@ def send_repeat_offers(self):
 # ─── Phase 3.1 Part 2C: daily report push 21:00 МСК ────────────────────────
 
 
+def _task_now_msk():
+    """Helper для mocking в тестах. Returns current datetime в Europe/Moscow."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("Europe/Moscow"))
+
+
 @shared_task(name="maxbot.tasks.send_daily_reports", bind=True, max_retries=1)
 def send_daily_reports(self):
-    """Phase 3.1 Part 2C: push дневного отчёта в 21:00 МСК.
+    """Phase 3.1 Part 2C+2D.2: hourly push дневного отчёта.
 
-    Filter:
-      - settings.NUTRITION_ENABLED == True (global gate)
-      - BotUser.nutrition_onboarded_at IS NOT NULL (анкета пройдена)
-      - BotUser.chat_id IS NOT NULL (есть куда слать)
+    Beat schedule: crontab(minute=0) — каждый час в :00. Filter:
+      - settings.NUTRITION_ENABLED == True
+      - BotUser.nutrition_onboarded_at IS NOT NULL
+      - BotUser.chat_id IS NOT NULL
+      - nutrition_settings["daily_report_time"] == "{HH}:00" matching now's local hour
 
-    Per-user:
-      - Fetch daily_summary + get_water_today (asyncio.run bridge).
-      - Render через render_daily_full_report (eating_disorder из health_flags).
-      - send_max_message(chat_id, text, attachments=[daily_report_footer_keyboard()]).
+    Default daily_report_time = "21:00" (если key отсутствует).
+    Value "off" → не шлём.
 
-    Errors:
-      - Per-user (Ayla unavailable / API error): log + skip (next user).
-      - Глобал ошибка (DB / Redis / Celery): retry до max_retries=1.
+    Per-user TZ через bot_user.timezone (default 'Europe/Moscow').
     """
     import asyncio
+    from zoneinfo import ZoneInfo
 
     from django.conf import settings as django_settings
     from services_app.models import BotUser
 
-    # Lazy imports — consistent с send_due_reminders/post_visit_followups pattern
-    # (avoid circular imports)
-    from notifications.max_bot import send_max_message
+    # Module-attribute lookup — позволяет тестам patch'ить через
+    # `patch("maxbot.tasks.send_max_message")` / `patch("maxbot.tasks.get_nutrition_client")`.
+    # Module-level placeholders заданы внизу файла; здесь резолвим текущее значение
+    # (которое подменено `patch`) через globals().
+    import maxbot.tasks as _self
+    send_max_message = _self.send_max_message
+    get_nutrition_client = _self.get_nutrition_client
     from maxbot import ai_ui, keyboards
     from maxbot.services.ayla_user_proxy import external_user_id_for
     from maxbot.services.nutrition_client import (
         NutritionAPIError,
         NutritionUnavailableError,
-        get_nutrition_client,
     )
 
     if not getattr(django_settings, "NUTRITION_ENABLED", False):
@@ -342,6 +356,27 @@ def send_daily_reports(self):
     client = get_nutrition_client()
 
     for bot_user in eligible.iterator():
+        # Per-user time check — ТZ юзера + setting
+        time_setting = (bot_user.nutrition_settings or {}).get(
+            "daily_report_time", "21:00",
+        )
+        if time_setting == "off":
+            skipped += 1
+            continue
+        try:
+            target_hour = int(time_setting.split(":")[0])
+        except (ValueError, AttributeError):
+            target_hour = 21  # corrupt setting → default
+
+        try:
+            user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            user_tz = ZoneInfo("Europe/Moscow")
+        now_local = _task_now_msk().astimezone(user_tz)
+        if now_local.hour != target_hour:
+            skipped += 1
+            continue
+
         extid = external_user_id_for(bot_user)
         try:
             summary, water_today = asyncio.run(_fetch_daily_data(client, extid))
