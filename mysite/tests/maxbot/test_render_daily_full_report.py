@@ -58,3 +58,74 @@ def test_render_daily_full_report_without_water_omits_water_section():
     # Не должно быть "💧" или "л воды"
     assert "💧" not in text
     assert "омлет" in text
+
+
+def test_render_thin_day_with_one_entry_says_only():
+    """≤2 entries → §6.4 supportive template."""
+    from maxbot.ai_ui import render_daily_full_report
+
+    summary = MagicMock(
+        date="2026-05-04",
+        calories_total=320, calories_goal=1450,
+        protein_g=12, fat_g=8, carbs_g=40,
+        entries=[
+            {"meal_type": "breakfast", "dish_name": "каша", "calories": 320},
+        ],
+    )
+    text = render_daily_full_report(summary, water_today=None)
+
+    # Supportive template
+    assert "немного" in text.lower() or "не" in text.lower()
+    assert "каша" in text
+    # Спрашивает «как самочувствие»
+    assert "самочувств" in text.lower() or "пропустила" in text.lower()
+
+
+def test_render_thin_day_under_50_percent_calories():
+    """3+ entries но <50% от goal → thin-day template."""
+    from maxbot.ai_ui import render_daily_full_report
+
+    summary = MagicMock(
+        date="2026-05-04",
+        calories_total=600, calories_goal=1500,  # 40% — under 50
+        protein_g=30, fat_g=20, carbs_g=60,
+        entries=[
+            {"meal_type": "breakfast", "dish_name": "тост", "calories": 200},
+            {"meal_type": "lunch", "dish_name": "салат", "calories": 250},
+            {"meal_type": "snack", "dish_name": "яблоко", "calories": 150},
+        ],
+    )
+    text = render_daily_full_report(summary, water_today=None)
+
+    assert "немного" in text.lower() or "пропустила" in text.lower()
+
+
+def test_render_eating_disorder_mode_no_calories():
+    """eating_disorder=True → нет цифр калорий, supportive «как ты сегодня?»."""
+    from maxbot.ai_ui import render_daily_full_report
+
+    summary = MagicMock(
+        date="2026-05-04",
+        calories_total=1300, calories_goal=1450,
+        protein_g=80, fat_g=40, carbs_g=130,
+        entries=[
+            {"meal_type": "breakfast", "dish_name": "каша", "calories": 320},
+            {"meal_type": "lunch", "dish_name": "суп", "calories": 450},
+            {"meal_type": "dinner", "dish_name": "рыба", "calories": 380},
+            {"meal_type": "snack", "dish_name": "орехи", "calories": 150},
+        ],
+    )
+    water_today = MagicMock(total_ml=1800, norm_ml=2000)
+
+    text = render_daily_full_report(
+        summary, water_today, eating_disorder=True,
+    )
+
+    # No calorie numbers
+    assert "1300" not in text
+    assert "1450" not in text
+    assert "ккал" not in text
+    # Supportive vibe
+    assert "Как ты сегодня" in text or "День получился" in text
+    # Meal mentions без чисел
+    assert "завтрак" in text.lower() or "обед" in text.lower()
