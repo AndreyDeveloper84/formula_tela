@@ -144,20 +144,6 @@ async def test_report_weekly_stub_says_coming_soon():
 
 
 @pytest.mark.asyncio
-async def test_report_time_settings_stub_says_coming_soon():
-    """[⚙️ Время отчёта] → заглушка Part 2D."""
-    from maxbot.handlers.food_correction import on_report_time_settings_stub
-
-    cb = _fake_callback("cb:report:time")
-    ctx = MemoryContext(chat_id=100, user_id=200)
-
-    await on_report_time_settings_stub(cb, ctx)
-
-    text = cb.bot.send_message.await_args.kwargs["text"]
-    assert "Скоро" in text or "21" in text  # 21:00 default mention
-
-
-@pytest.mark.asyncio
 async def test_view_day_fetches_water_and_renders_full_report(monkeypatch, settings):
     """on_view_day теперь fetch'ит summary + water_today, render через
     render_daily_full_report. Footer-keyboard прикрепляется."""
@@ -215,3 +201,28 @@ async def test_view_day_fetches_water_and_renders_full_report(monkeypatch, setti
     payloads = _flatten_payloads(atts[0]) if atts else set()
     assert PAYLOAD_REPORT_WEEKLY in payloads
     assert PAYLOAD_REPORT_TIME_SETTINGS in payloads
+
+
+@pytest.mark.asyncio
+async def test_report_time_open_menu_shows_4_time_options():
+    """[⚙️ Время] click → settings menu с 4 вариантами времени."""
+    from maxbot.handlers.food_correction import on_report_time_open_menu
+    from maxbot.keyboards import (
+        PAYLOAD_REPORT_TIME_18, PAYLOAD_REPORT_TIME_21,
+        PAYLOAD_REPORT_TIME_23, PAYLOAD_REPORT_TIME_OFF,
+    )
+
+    cb = _fake_callback("cb:report:time")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_report_time_open_menu(cb, ctx)
+
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "Время" in text or "отчёт" in text.lower()
+    atts = cb.bot.send_message.await_args.kwargs.get("attachments") or []
+    payloads = _flatten_payloads(atts[0]) if atts else set()
+    assert {
+        PAYLOAD_REPORT_TIME_18, PAYLOAD_REPORT_TIME_21,
+        PAYLOAD_REPORT_TIME_23, PAYLOAD_REPORT_TIME_OFF,
+    } <= payloads

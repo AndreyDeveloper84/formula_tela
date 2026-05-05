@@ -255,17 +255,15 @@ async def on_report_weekly_stub(
 @router.message_callback(
     F.callback.payload == keyboards.PAYLOAD_REPORT_TIME_SETTINGS,
 )
-async def on_report_time_settings_stub(
+async def on_report_time_open_menu(
     callback: MessageCallback, context: MemoryContext,
 ) -> None:
-    """[⚙️ Время отчёта] — заглушка Part 2D (требует user-settings UI)."""
+    """[⚙️ Время] из daily report footer → menu с 4 опциями (Part 2D.2)."""
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None:
         return
     await callback.bot.send_message(
         chat_id=chat_id,
-        text=(
-            "⚙️ Настройка времени отчёта Скоро будет — пока шлю в 21:00 "
-            "по Москве. Если неудобно — напиши, скорректируем."
-        ),
+        text="🕘 Время дневного отчёта — когда удобно?",
+        attachments=[keyboards.daily_report_time_keyboard()],
     )
