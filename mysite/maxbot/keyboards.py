@@ -85,6 +85,11 @@ PAYLOAD_WATER_EXTENDED_1500 = "cb:water:add:1500"
 
 PAYLOAD_WATER_UNDO_PREFIX = "cb:water:undo:"  # + entry_id
 
+# ─── Phase 3.1 Part 2C: daily report footer ────────────────────────────────
+
+PAYLOAD_REPORT_WEEKLY = "cb:report:weekly"
+PAYLOAD_REPORT_TIME_SETTINGS = "cb:report:time"
+
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -481,5 +486,20 @@ def water_undo_keyboard(*, entry_id: str):
             text="↩️ Отменить",
             payload=f"{PAYLOAD_WATER_UNDO_PREFIX}{entry_id}",
         ),
+    )
+    return builder.as_markup()
+
+
+def daily_report_footer_keyboard():
+    """Footer для дневного отчёта (Design §6.2): [📊 Неделя][⚙️ Время отчёта].
+
+    Both — stubs до Part 2D / Phase 3.3. [📊 Неделя] требует tracking 7-day
+    FoodEntry streak (weekly unlock §6.6). [⚙️ Время отчёта] требует
+    user-settings UI for daily_report_time JSON.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📊 Неделя", payload=PAYLOAD_REPORT_WEEKLY),
+        CallbackButton(text="⚙️ Время отчёта", payload=PAYLOAD_REPORT_TIME_SETTINGS),
     )
     return builder.as_markup()
