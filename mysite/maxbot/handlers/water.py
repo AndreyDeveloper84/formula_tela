@@ -238,6 +238,92 @@ async def on_water_more(callback: MessageCallback, context: MemoryContext) -> No
     )
 
 
+async def try_handle_water_text(event, context: MemoryContext) -> bool:
+    """Phase 3.1 Part 2D.1 T02: попытка обработать free-text как ввод напитка.
+
+    Called от `on_free_text` (ai_assistant.py) ДО маршрутизации в AIConcierge.
+
+    Returns:
+        True — текст распознан как напиток, add_water вызван, юзеру отправлена
+              карточка confirmation с undo button.
+        False — текст НЕ напиток (или disabled / в анкете) — caller продолжает
+              в AI Concierge (default route).
+
+    Gates:
+        - NUTRITION_ENABLED=False → False (silent — пусть AI отвечает на текст)
+        - state ∈ NutritionAnketaStates.* → False (юзер в анкете, не парсим)
+        - parse_beverage returns None или REFUSED → False (не напиток)
+
+    Errors:
+        - add_water падает → юзер видит soft error, return True (handled).
+    """
+    from maxbot.ai_parsers import parse_beverage, REFUSED
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        return False
+
+    state = await context.get_state()
+    if state is not None and str(state).startswith("NutritionAnketaStates"):
+        return False
+
+    if event.message.sender is None:
+        return False
+    text = (event.message.body.text or "").strip() if event.message.body else ""
+    if not text:
+        return False
+
+    parsed = await parse_beverage(text)
+    if parsed is None or parsed == REFUSED:
+        return False
+
+    chat_id = event.message.recipient.chat_id
+    user_id = event.message.sender.user_id
+    full_name = event.message.sender.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+    extid = external_user_id_for(bot_user)
+
+    beverage_slug = parsed["beverage_slug"]
+    ml = parsed["ml"]
+
+    idem = str(uuid.uuid5(
+        uuid.NAMESPACE_OID,
+        f"{extid}:water_freetext:{beverage_slug}:{ml}:{int(time.time())}",
+    ))
+
+    client = get_nutrition_client()
+    try:
+        entry = await client.add_water(
+            external_user_id=extid,
+            ml=ml,
+            beverage_slug=beverage_slug,
+            idempotency_key=idem,
+        )
+    except NutritionUnavailableError:
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text="Учёт воды временно недоступен. Попробуй через минуту.",
+        )
+        return True
+    except NutritionAPIError as exc:
+        logger.exception(
+            "water.freetext.api_error user=%s slug=%s ml=%d err=%s",
+            bot_user.max_user_id, beverage_slug, ml, exc,
+        )
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text="Не получилось записать. Попробуй ещё раз.",
+        )
+        return True
+
+    text_render = ai_ui.render_water_added(entry)
+    await event.bot.send_message(
+        chat_id=chat_id,
+        text=text_render,
+        attachments=[keyboards.water_undo_keyboard(entry_id=entry.entry_id)],
+    )
+    return True
+
+
 @router.message_created(
     F.message.body.text.lower().in_(("/вода", "/water", "вода")),
 )
