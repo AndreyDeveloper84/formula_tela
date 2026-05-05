@@ -22,7 +22,14 @@ from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards
 from maxbot.ai_parsers import parse_allergies
+from maxbot.health_overrides_render import render_overrides_applied
 from maxbot.personalization import get_or_create_bot_user
+from maxbot.services.ayla_user_proxy import external_user_id_for
+from maxbot.services.nutrition_client import (
+    NutritionAPIError,
+    NutritionUnavailableError,
+    get_nutrition_client,
+)
 from maxbot.states import NutritionAnketaStates
 
 
@@ -435,7 +442,92 @@ async def on_meds_answer(
         )
 
 
-# Stub _complete_tier_b — actual impl in T07. For now: clear state + ack.
-async def _complete_tier_b(bot, *, chat_id, bot_user, context: MemoryContext) -> None:
+_MENOPAUSE_PAYLOAD_TO_VALUE = {
+    keyboards.PAYLOAD_TIER_B_MENOPAUSE_NO: "no",
+    keyboards.PAYLOAD_TIER_B_MENOPAUSE_YES: "yes",
+    keyboards.PAYLOAD_TIER_B_MENOPAUSE_UNSURE: "unsure",
+}
+
+
+# ─── Screen 4 — menopause ─────────────────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_menopause,
+    F.callback.payload.in_(
+        set(_MENOPAUSE_PAYLOAD_TO_VALUE.keys()) | {keyboards.PAYLOAD_TIER_B_SKIP}
+    ),
+)
+async def on_menopause_answer(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    payload = callback.callback.payload
+    if payload == keyboards.PAYLOAD_TIER_B_SKIP:
+        await sync_to_async(_persist_health_flag)(bot_user, "menopause_skipped", True)
+    else:
+        value = _MENOPAUSE_PAYLOAD_TO_VALUE[payload]
+        await sync_to_async(_persist_health_flag)(bot_user, "menopause", value)
+    await _complete_tier_b(
+        callback.bot, chat_id=chat_id, bot_user=bot_user, context=context,
+    )
+
+
+# ─── Complete TIER-B — Ayla upsert + render «Учла важное» ─────────────────
+
+
+_HEALTH_FLAG_KEYS_TO_AYLA = {
+    "pregnant", "breastfeeding", "diabetes_type", "chronic",
+    "allergies", "allergies_vague", "meds", "menopause",
+}
+
+
+def _build_ayla_payload(health_flags: dict) -> dict:
+    """Pick relevant keys from local health_flags → Ayla upsert payload."""
+    return {
+        k: v for k, v in (health_flags or {}).items()
+        if k in _HEALTH_FLAG_KEYS_TO_AYLA
+    }
+
+
+async def _complete_tier_b(
+    bot, *, chat_id: int, bot_user, context: MemoryContext,
+) -> None:
+    """POST /profile/ → render «Учла важное» → clear state."""
+    ext_id = external_user_id_for(bot_user)
+    payload = _build_ayla_payload(bot_user.health_flags or {})
+
+    try:
+        client = get_nutrition_client()
+        profile = await client.upsert_profile(external_user_id=ext_id, data=payload)
+    except (NutritionUnavailableError, NutritionAPIError) as exc:
+        logger.warning(
+            "tier_b.upsert_failed user=%s err=%s",
+            bot_user.max_user_id, exc,
+        )
+        await context.clear()
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Сохранила. Советы появятся чуть позже — сейчас сервис "
+                "питания недоступен."
+            ),
+        )
+        return
+
+    overrides_text = render_overrides_applied(profile)
+    if overrides_text:
+        text = (
+            "Готово ✓ Обновила советы под тебя.\n\n"
+            f"🎯 Норма: {profile.daily_kcal} ккал\n"
+            f"   Б {profile.protein_g} / Ж {profile.fat_g} / У {profile.carbs_g}\n"
+            f"   💧 {profile.water_ml} мл воды\n\n"
+            f"{overrides_text}"
+        )
+    else:
+        text = "Готово ✓ Учту при советах."
+
     await context.clear()
-    await bot.send_message(chat_id=chat_id, text="Готово ✓ Учту при советах.")
+    await bot.send_message(chat_id=chat_id, text=text)
