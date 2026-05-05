@@ -754,3 +754,195 @@ def render_daily_summary(summary: dict[str, Any]) -> str:
         f"Б {protein:.0f}г · Ж {fat:.0f}г · У {carbs:.0f}г"
     )
     return "\n".join(lines)
+
+
+# ─── Phase 3.1 Part 2C: hybrid daily report ────────────────────────────────
+
+
+def render_daily_full_report(
+    summary,
+    water_today=None,
+    *,
+    eating_disorder: bool = False,
+) -> str:
+    """Phase 3.1 Part 2C: дневной отчёт hybrid format (Design §6.2).
+
+    Args:
+        summary: SummaryResponse — обязателен (date, calories_*, protein/fat/carbs, entries)
+        water_today: WaterTodayResponse | None — если None, water раздел skipped
+        eating_disorder: bool — if True, supportive template без чисел калорий (§6.3)
+
+    Returns:
+        Multi-line text. Каллер сам прикрепляет attachments (footer keyboard).
+
+    Edge cases:
+        - <50% от daily_kcal goal или ≤2 приёма → §6.4 alternative "немного"
+        - eating_disorder=True → §6.3 supportive template, no numbers
+
+    NOT included (Part 2D backlog):
+        - AI-comment (требует Ayla `?with_comment=true` extension)
+        - Weekly unlock indicator (требует tracking 7-day FoodEntry streak)
+    """
+    if eating_disorder:
+        return _render_eating_disorder_summary(summary, water_today)
+
+    entries = list(summary.entries) if summary.entries else []
+    cals_total = float(summary.calories_total or 0)
+    cals_goal = int(summary.calories_goal or 0)
+
+    if _is_thin_day(cals_total, cals_goal, entries):
+        return _render_thin_day_summary(summary, water_today)
+
+    return _render_full_day_summary(summary, water_today)
+
+
+def _is_thin_day(
+    cals_total: float, cals_goal: int, entries: list,
+) -> bool:
+    """Design §6.4 — <50% или ≤2 приёма."""
+    if len(entries) <= 2:
+        return True
+    if cals_goal > 0 and cals_total < 0.5 * cals_goal:
+        return True
+    return False
+
+
+def _render_full_day_summary(summary, water_today) -> str:
+    """Default daily report — все приёмы + БЖУ + вода + Итого."""
+    date_str = getattr(summary, "date", "сегодня") or "сегодня"
+    cals_total = int(getattr(summary, "calories_total", 0) or 0)
+    cals_goal = int(getattr(summary, "calories_goal", 0) or 0)
+    protein = float(getattr(summary, "protein_g", 0) or 0)
+    fat = float(getattr(summary, "fat_g", 0) or 0)
+    carbs = float(getattr(summary, "carbs_g", 0) or 0)
+    entries = list(getattr(summary, "entries", []) or [])
+
+    lines = [f"🌙 Итоги дня — {date_str}", ""]
+
+    if cals_goal > 0:
+        pct = int(round(100 * cals_total / cals_goal))
+        lines.append(f"🎯 {cals_total} / {cals_goal} ккал ({pct}%)")
+    else:
+        lines.append(f"🎯 {cals_total} ккал")
+
+    lines.append(
+        f"🥩 Б {protein:.0f}  🥑 Ж {fat:.0f}  🌾 У {carbs:.0f}"
+    )
+
+    water_block = _render_water_block(water_today)
+    if water_block:
+        lines.append(water_block)
+
+    if entries:
+        lines.append("")
+        lines.append("Приёмы:")
+        for e in entries:
+            meal_type = e.get("meal_type") or "snack"
+            dish = e.get("dish_name") or "—"
+            kcal = int(e.get("calories") or 0)
+            emoji = _meal_emoji(meal_type)
+            lines.append(f"{emoji} {dish} — {kcal}")
+
+    return "\n".join(lines)
+
+
+def _meal_emoji(meal_type: str) -> str:
+    """Design §6.2: emoji per meal_type."""
+    return {
+        "breakfast": "🌅",
+        "lunch": "☀️",
+        "dinner": "🌙",
+        "snack": "🍎",
+    }.get(meal_type, "🍽")
+
+
+def _render_water_block(water_today) -> str:
+    """Format «💧 1.8 / 2.0 л» если water_today передан, иначе пустая строка."""
+    if water_today is None:
+        return ""
+    total_ml = int(getattr(water_today, "total_ml", 0) or 0)
+    norm_ml = int(getattr(water_today, "norm_ml", 0) or 0)
+    total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+    norm_str = f"{norm_ml / 1000:.1f} л" if norm_ml >= 1000 else f"{norm_ml} мл"
+    return f"💧 {total_str} / {norm_str}"
+
+
+def _render_thin_day_summary(summary, water_today) -> str:
+    """Edge case (§6.4): <50% или ≤2 приёма — supportive «немного»."""
+    date_str = getattr(summary, "date", "сегодня") or "сегодня"
+    entries = list(getattr(summary, "entries", []) or [])
+
+    lines = [f"🌙 Итоги дня — {date_str}", ""]
+
+    if entries:
+        first = entries[0]
+        first_name = first.get("dish_name") or "что-то"
+        first_kcal = int(first.get("calories") or 0)
+        if len(entries) == 1:
+            lines.append(
+                f"В дневнике сегодня немного: {first_name} "
+                f"({first_kcal} ккал)."
+            )
+        else:
+            lines.append(
+                f"В дневнике сегодня {len(entries)} приёма "
+                f"(начиная с {first_name})."
+            )
+        lines.append("Если что-то ещё ела — добавь, посчитаю.")
+    else:
+        lines.append("Сегодня записей нет.")
+        lines.append("Сфоткай еду — добавлю в дневник.")
+
+    water_block = _render_water_block(water_today)
+    if water_block:
+        lines.append("")
+        lines.append(water_block)
+
+    lines.append("")
+    lines.append("Если пропустила приёмы — как самочувствие сегодня?")
+
+    return "\n".join(lines)
+
+
+def _render_eating_disorder_summary(summary, water_today) -> str:
+    """§6.3 — supportive template без чисел калорий.
+
+    Считаем приёмы по типам, никаких ккал/БЖУ цифр.
+    """
+    date_str = getattr(summary, "date", "сегодня") or "сегодня"
+    entries = list(getattr(summary, "entries", []) or [])
+
+    lines = [f"🌙 День — {date_str}", ""]
+
+    if entries:
+        by_meal: dict[str, int] = {}
+        for e in entries:
+            mt = e.get("meal_type") or "snack"
+            by_meal[mt] = by_meal.get(mt, 0) + 1
+        meal_names = {
+            "breakfast": "завтрак", "lunch": "обед",
+            "dinner": "ужин", "snack": "перекус",
+        }
+        meal_descriptors = []
+        for key in ("breakfast", "lunch", "dinner", "snack"):
+            count = by_meal.get(key, 0)
+            if count == 0:
+                continue
+            label = meal_names[key]
+            if count > 1 and key == "snack":
+                meal_descriptors.append(f"{count} {label}а")
+            else:
+                meal_descriptors.append(label)
+        if meal_descriptors:
+            lines.append(f"Сегодня: {', '.join(meal_descriptors)}.")
+
+    if water_today is not None:
+        total_ml = int(getattr(water_today, "total_ml", 0) or 0)
+        if total_ml > 0:
+            total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+            lines.append(f"{total_str} воды.")
+
+    lines.append("")
+    lines.append("💬 Как ты сегодня? День получился?")
+
+    return "\n".join(lines)
