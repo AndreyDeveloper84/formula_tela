@@ -959,3 +959,35 @@ class FewShotExampleAdmin(admin.ModelAdmin):
         n = queryset.update(is_active=False)
         self.message_user(request, f"\u0414\u0435\u0430\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u043d\u043e: {n}")
 
+
+# Phase 3.2B T01: Nudge infrastructure admin
+from services_app.models import NudgeEvent, NudgeMute, PatternRule
+
+
+@admin.register(NudgeEvent)
+class NudgeEventAdmin(admin.ModelAdmin):
+    list_display = ("kind", "nudge_class", "priority", "bot_user",
+                    "detected_at", "sent_at", "blocked_reason")
+    list_filter = ("kind", "nudge_class", "blocked_reason")
+    search_fields = ("bot_user__display_name", "kind")
+    raw_id_fields = ("bot_user", "message")
+    date_hierarchy = "detected_at"
+    readonly_fields = ("id", "detected_at")
+
+
+@admin.register(NudgeMute)
+class NudgeMuteAdmin(admin.ModelAdmin):
+    list_display = ("bot_user", "kind", "nudge_class", "mode", "reason",
+                    "expires_at", "created_at")
+    list_filter = ("mode", "reason", "kind", "nudge_class")
+    search_fields = ("bot_user__display_name",)
+    raw_id_fields = ("bot_user",)
+
+
+@admin.register(PatternRule)
+class PatternRuleAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name_ru", "severity", "min_repeats",
+                    "min_active_days", "is_active")
+    list_filter = ("severity", "is_active")
+    search_fields = ("slug", "name_ru")
+
