@@ -14,12 +14,6 @@ from django.utils import timezone
 
 logger = logging.getLogger("maxbot.tasks")
 
-# Module-level placeholders для send_daily_reports — позволяют тестам patch'ить
-# через `patch("maxbot.tasks.send_max_message")` / `patch("maxbot.tasks.get_nutrition_client")`.
-# Реальные функции lazy-импортятся на module-load (без circular import).
-from notifications.max_bot import send_max_message  # noqa: E402
-from maxbot.services.nutrition_client import get_nutrition_client  # noqa: E402
-
 
 @shared_task(name="maxbot.tasks.send_due_reminders", bind=True, max_retries=2)
 def send_due_reminders(self):
@@ -326,20 +320,15 @@ def send_daily_reports(self):
     from zoneinfo import ZoneInfo
 
     from django.conf import settings as django_settings
+    from notifications.max_bot import send_max_message
     from services_app.models import BotUser
 
-    # Module-attribute lookup — позволяет тестам patch'ить через
-    # `patch("maxbot.tasks.send_max_message")` / `patch("maxbot.tasks.get_nutrition_client")`.
-    # Module-level placeholders заданы внизу файла; здесь резолвим текущее значение
-    # (которое подменено `patch`) через globals().
-    import maxbot.tasks as _self
-    send_max_message = _self.send_max_message
-    get_nutrition_client = _self.get_nutrition_client
     from maxbot import ai_ui, keyboards
     from maxbot.services.ayla_user_proxy import external_user_id_for
     from maxbot.services.nutrition_client import (
         NutritionAPIError,
         NutritionUnavailableError,
+        get_nutrition_client,
     )
 
     if not getattr(django_settings, "NUTRITION_ENABLED", False):

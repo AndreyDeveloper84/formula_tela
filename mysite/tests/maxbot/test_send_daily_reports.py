@@ -29,8 +29,8 @@ def test_send_daily_reports_skipped_when_nutrition_disabled(settings):
 
     settings.NUTRITION_ENABLED = False
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         baker.make(
             BotUser, max_user_id=99,
             chat_id=100, nutrition_onboarded_at="2026-04-30T12:00:00Z",
@@ -54,8 +54,8 @@ def test_send_daily_reports_skips_users_without_chat_id(settings):
         nutrition_onboarded_at="2026-04-30T12:00:00Z",
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(),
             get_water_today=AsyncMock(),
@@ -77,8 +77,8 @@ def test_send_daily_reports_skips_non_onboarded_users(settings):
         nutrition_onboarded_at=None,
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(),
             get_water_today=AsyncMock(),
@@ -121,8 +121,8 @@ def test_send_daily_reports_dispatches_to_eligible_user(settings, monkeypatch):
         total_ml=1800, norm_ml=2000, entries=[], raw={},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(return_value=summary),
             get_water_today=AsyncMock(return_value=water_today),
@@ -174,8 +174,8 @@ def test_send_daily_reports_eating_disorder_mode_omits_calories(settings, monkey
         total_ml=1800, norm_ml=2000, entries=[], raw={},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(return_value=summary),
             get_water_today=AsyncMock(return_value=water_today),
@@ -231,8 +231,8 @@ def test_send_daily_reports_continues_after_user_failure(settings, monkeypatch):
         total_ml=1500, norm_ml=2000, entries=[], raw={},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=flaky_summary,
             get_water_today=AsyncMock(return_value=water_today),
@@ -257,8 +257,8 @@ def test_send_daily_reports_skips_users_with_off_setting(settings):
         nutrition_settings={"daily_report_time": "off"},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(),
             get_water_today=AsyncMock(),
@@ -304,8 +304,8 @@ def test_send_daily_reports_filters_by_current_local_hour(settings, monkeypatch)
         "maxbot.tasks._task_now_msk", lambda: fake_now,
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(return_value=summary),
             get_water_today=AsyncMock(return_value=WaterTodayResponse(
@@ -338,8 +338,8 @@ def test_send_daily_reports_skips_user_when_hour_not_match(settings, monkeypatch
         "maxbot.tasks._task_now_msk", lambda: fake_now,
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(),
             get_water_today=AsyncMock(),
