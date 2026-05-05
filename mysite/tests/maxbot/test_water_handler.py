@@ -423,3 +423,37 @@ async def test_e2e_water_menu_to_add_to_undo(monkeypatch, settings):
     assert undo_kwargs["entry_id"] == "W-e2e"
     undo_text = cb_undo.bot.send_message.await_args.kwargs["text"]
     assert "Отмен" in undo_text or "удал" in undo_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_water_dismiss_silent_ack_and_persists_timestamp(monkeypatch):
+    """[Уже пью] click → silent ack + persist last_water_dismissed_at."""
+    from unittest.mock import MagicMock
+    from maxbot.handlers.water import on_water_dismiss_reminder
+
+    bot_user = MagicMock(max_user_id=200, nutrition_settings={})
+    monkeypatch.setattr(
+        "maxbot.handlers.water.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    set_mock = MagicMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.water.set_setting", set_mock,
+    )
+
+    cb = _fake_callback("cb:water:dismiss")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_water_dismiss_reminder(cb, ctx)
+
+    set_mock.assert_called_once()
+    args = set_mock.call_args.args
+    assert args[1] == "last_water_dismissed_at"
+    # value — ISO timestamp string
+    assert isinstance(args[2], str)
+    assert "T" in args[2]  # ISO format
+
+    # Бот шлёт мягкий ack
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "понял" in text.lower() or "ok" in text.lower() or "отдыхай" in text.lower()

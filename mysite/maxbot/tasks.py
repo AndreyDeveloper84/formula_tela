@@ -493,6 +493,24 @@ def send_water_reminders(self):
             user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
         except Exception:  # noqa: BLE001
             user_tz = ZoneInfo("Europe/Moscow")
+
+        # Same-day dismiss skip (Design §7.7 «Уже пью» → до завтра молчим)
+        last_dismissed_iso = (bot_user.nutrition_settings or {}).get(
+            "last_water_dismissed_at"
+        )
+        if last_dismissed_iso:
+            try:
+                from datetime import datetime
+                last_dismissed = datetime.fromisoformat(last_dismissed_iso)
+                # Если same-day local — skip
+                local_now = now_utc.astimezone(user_tz)
+                local_dismissed = last_dismissed.astimezone(user_tz)
+                if local_dismissed.date() == local_now.date():
+                    skipped += 1
+                    continue
+            except (ValueError, AttributeError):
+                pass  # corrupt timestamp — ignore
+
         local_hour = now_utc.astimezone(user_tz).hour
 
         extid = external_user_id_for(bot_user)

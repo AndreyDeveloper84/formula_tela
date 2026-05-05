@@ -19,11 +19,13 @@ import logging
 import time
 import uuid
 
+from asgiref.sync import sync_to_async
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_ui, keyboards
+from maxbot.nutrition_settings_helpers import set_setting
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.services.ayla_user_proxy import external_user_id_for
 from maxbot.services.nutrition_client import (
@@ -427,4 +429,32 @@ async def on_water_command(event: MessageCreated, context: MemoryContext) -> Non
         chat_id=chat_id,
         text=text,
         attachments=[keyboards.water_amount_keyboard()],
+    )
+
+
+@router.message_callback(F.callback.payload == keyboards.PAYLOAD_WATER_DISMISS)
+async def on_water_dismiss_reminder(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """[Уже пью] из adaptive reminder → silent ack + skip до завтра.
+
+    Persists `last_water_dismissed_at` ISO timestamp в nutrition_settings.
+    send_water_reminders проверяет — если same-day timestamp есть, skip.
+    """
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now_iso = datetime.now(ZoneInfo("UTC")).isoformat()
+    await sync_to_async(set_setting)(bot_user, "last_water_dismissed_at", now_iso)
+
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text="Поняла, отдыхай 🙂 — до завтра не побеспокою.",
     )

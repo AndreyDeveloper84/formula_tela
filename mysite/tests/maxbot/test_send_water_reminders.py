@@ -145,3 +145,42 @@ def test_send_water_reminders_sends_reminder_when_below_threshold(
         send_mock.assert_called_once()
         args = send_mock.call_args.args
         assert args[0] == 100  # chat_id
+
+
+def test_send_water_reminders_skips_users_with_same_day_dismiss(
+    settings, monkeypatch,
+):
+    """User тапнул [Уже пью] сегодня → reminder skipped до завтра."""
+    from maxbot.tasks import send_water_reminders
+    from maxbot.services.nutrition_client import WaterTodayResponse
+
+    settings.NUTRITION_ENABLED = True
+
+    # Same-day dismiss timestamp (МСК today 10:00)
+    today_dismiss = datetime(2026, 5, 4, 10, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    baker.make(
+        BotUser, max_user_id=99, chat_id=100,
+        nutrition_onboarded_at="2026-04-30T12:00:00Z",
+        nutrition_settings={
+            "water_reminders_enabled": True,
+            "last_water_dismissed_at": today_dismiss.astimezone(
+                ZoneInfo("UTC"),
+            ).isoformat(),
+        },
+        timezone="Europe/Moscow",
+    )
+
+    fake_now_msk = datetime(2026, 5, 4, 15, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    monkeypatch.setattr(
+        "maxbot.tasks._task_now_msk", lambda: fake_now_msk,
+    )
+
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
+        client_factory.return_value = MagicMock(
+            get_water_today=AsyncMock(return_value=WaterTodayResponse(
+                total_ml=200, norm_ml=2000, entries=[], raw={},
+            )),
+        )
+        send_water_reminders()
+        send_mock.assert_not_called()
