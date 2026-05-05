@@ -125,3 +125,73 @@ async def on_health_consent_decline(
             "общая инфа всегда доступна. Если передумаешь, напиши «настрой советы»."
         ),
     )
+
+
+# ─── Helper: read state-targeted callback ──────────────────────────────────
+
+
+async def _user_and_chat(callback: MessageCallback):
+    """Common boilerplate. Returns (chat_id, bot_user) or (None, None)."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return None, None
+    bot_user, _ = await get_or_create_bot_user(
+        callback.callback.user.user_id, callback.callback.user.full_name,
+    )
+    return chat_id, bot_user
+
+
+# ─── Screen 1 — pregnancy ──────────────────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_pregnancy,
+    F.callback.payload.in_({keyboards.PAYLOAD_TIER_B_YES, keyboards.PAYLOAD_TIER_B_NO}),
+)
+async def on_pregnancy_answer(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    is_pregnant = callback.callback.payload == keyboards.PAYLOAD_TIER_B_YES
+    await sync_to_async(_persist_health_flag)(bot_user, "pregnant", is_pregnant)
+    await context.set_state(NutritionAnketaStates.awaiting_breastfeeding)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=BREASTFEEDING_TEXT,
+        attachments=[keyboards.tier_b_yes_no_skip_keyboard()],
+    )
+
+
+# ─── Screen 1b — breastfeeding ─────────────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_breastfeeding,
+    F.callback.payload.in_({
+        keyboards.PAYLOAD_TIER_B_YES,
+        keyboards.PAYLOAD_TIER_B_NO,
+        keyboards.PAYLOAD_TIER_B_SKIP,
+    }),
+)
+async def on_breastfeeding_answer(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    payload = callback.callback.payload
+    if payload == keyboards.PAYLOAD_TIER_B_SKIP:
+        await sync_to_async(_persist_health_flag)(
+            bot_user, "breastfeeding_skipped", True,
+        )
+    else:
+        is_bf = payload == keyboards.PAYLOAD_TIER_B_YES
+        await sync_to_async(_persist_health_flag)(bot_user, "breastfeeding", is_bf)
+    await context.set_state(NutritionAnketaStates.awaiting_diabetes)
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=DIABETES_TEXT,
+        attachments=[keyboards.tier_b_diabetes_keyboard()],
+    )
