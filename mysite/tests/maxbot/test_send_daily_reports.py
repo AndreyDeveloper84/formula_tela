@@ -18,8 +18,8 @@ def test_send_daily_reports_skipped_when_nutrition_disabled(settings):
 
     settings.NUTRITION_ENABLED = False
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         baker.make(
             BotUser, max_user_id=99,
             chat_id=100, nutrition_onboarded_at="2026-04-30T12:00:00Z",
@@ -43,8 +43,8 @@ def test_send_daily_reports_skips_users_without_chat_id(settings):
         nutrition_onboarded_at="2026-04-30T12:00:00Z",
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(),
             get_water_today=AsyncMock(),
@@ -66,8 +66,8 @@ def test_send_daily_reports_skips_non_onboarded_users(settings):
         nutrition_onboarded_at=None,
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(),
             get_water_today=AsyncMock(),
@@ -109,8 +109,8 @@ def test_send_daily_reports_dispatches_to_eligible_user(settings):
         total_ml=1800, norm_ml=2000, entries=[], raw={},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(return_value=summary),
             get_water_today=AsyncMock(return_value=water_today),
@@ -120,12 +120,15 @@ def test_send_daily_reports_dispatches_to_eligible_user(settings):
 
         send_mock.assert_called_once()
         args, kwargs = send_mock.call_args
-        # send_max_message(chat_id, text, attachments=None) — позиционный chat_id
+        # send_max_message(chat_id, text, attachments=[...]) — позиционный chat_id
         assert args[0] == 12345 or kwargs.get("chat_id") == 12345
         text = args[1] if len(args) > 1 else kwargs.get("text", "")
         # Hybrid format — есть kcal + water
         assert "1380" in text or "1450" in text
         assert "1.8" in text or "1800" in text
+        # Footer keyboard прикреплён (UX consistency с /день и view_day footer button)
+        atts = args[2] if len(args) > 2 else kwargs.get("attachments")
+        assert atts, "expected footer keyboard attached в push"
 
 
 def test_send_daily_reports_eating_disorder_mode_omits_calories(settings):
@@ -158,8 +161,8 @@ def test_send_daily_reports_eating_disorder_mode_omits_calories(settings):
         total_ml=1800, norm_ml=2000, entries=[], raw={},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=AsyncMock(return_value=summary),
             get_water_today=AsyncMock(return_value=water_today),
@@ -214,8 +217,8 @@ def test_send_daily_reports_continues_after_user_failure(settings):
         total_ml=1500, norm_ml=2000, entries=[], raw={},
     )
 
-    with patch("maxbot.tasks.send_max_message") as send_mock, \
-         patch("maxbot.tasks.get_nutrition_client") as client_factory:
+    with patch("notifications.max_bot.send_max_message") as send_mock, \
+         patch("maxbot.services.nutrition_client.get_nutrition_client") as client_factory:
         client_factory.return_value = MagicMock(
             daily_summary=flaky_summary,
             get_water_today=AsyncMock(return_value=water_today),
