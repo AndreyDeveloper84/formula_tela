@@ -46,12 +46,43 @@ def get_or_create_bot_user(max_user_id: int, display_name: str = "", chat_id: in
     return user, created
 
 
-def greet_text(bot_user, *, is_new: bool) -> str:
-    """Текст приветствия — персонализированный если есть имя."""
+def greet_text(
+    bot_user,
+    *,
+    is_new: bool,
+    bookings_count: int = 0,
+    nutrition_enabled: bool = False,
+) -> str:
+    """Текст приветствия с сегментацией по 3 группам (Phase 3 T07).
+
+    Сегменты:
+    - `is_new=True` → бот представляется (про массажный салон). Феатуру дневника
+      пользователь увидит сам в главном меню.
+    - `is_new=False` + `bookings_count >= 1` (returning client) → тёплое приветствие
+      по имени + кросс-промо дневника если nutrition_enabled.
+    - `is_new=False` + `bookings_count == 0` (молчун) → подталкивание через дневник
+      как низкобарьерный entry point если nutrition_enabled, иначе обычный
+      `GREETING_RETURNING`.
+
+    `nutrition_enabled` — feature flag (`settings.NUTRITION_ENABLED`). Если выключен
+    — приветствие не упоминает дневник, чтобы не пообещать чего бот не сделает.
+    """
     if is_new:
         return texts.GREETING_NEW_USER
 
     name = bot_user.client_name or bot_user.display_name
+
+    # Returning client: есть успешные записи через бот
+    if bookings_count >= 1:
+        if nutrition_enabled and name:
+            return texts.GREETING_RETURNING_CLIENT_WITH_DIARY.format(name=name)
+        if name:
+            return texts.GREETING_RETURNING.format(name=name)
+        return texts.GREETING_NEW_USER
+
+    # Молчун: bookings_count == 0
+    if nutrition_enabled:
+        return texts.GREETING_SILENT_USER_WITH_DIARY
     if name:
         return texts.GREETING_RETURNING.format(name=name)
     return texts.GREETING_NEW_USER
