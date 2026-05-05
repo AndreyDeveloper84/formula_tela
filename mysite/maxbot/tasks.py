@@ -289,3 +289,103 @@ def send_repeat_offers(self):
 
     logger.info("send_repeat_offers: sent=%d skipped=%d", sent, skipped)
     return {"sent": sent, "skipped": skipped}
+
+
+# ─── Phase 3.1 Part 2C: daily report push 21:00 МСК ────────────────────────
+
+
+from notifications.max_bot import send_max_message
+from maxbot import ai_ui
+from maxbot.services.ayla_user_proxy import external_user_id_for
+from maxbot.services.nutrition_client import (
+    NutritionAPIError,
+    NutritionUnavailableError,
+    get_nutrition_client,
+)
+
+
+@shared_task(name="maxbot.tasks.send_daily_reports", bind=True, max_retries=1)
+def send_daily_reports(self):
+    """Phase 3.1 Part 2C: push дневного отчёта в 21:00 МСК.
+
+    Filter:
+      - settings.NUTRITION_ENABLED == True (global gate)
+      - BotUser.nutrition_onboarded_at IS NOT NULL (анкета пройдена)
+      - BotUser.chat_id IS NOT NULL (есть куда слать)
+
+    Per-user:
+      - Fetch daily_summary + get_water_today (asyncio.run bridge).
+      - Render через render_daily_full_report (eating_disorder из health_flags).
+      - send_max_message(chat_id, text, attachments=None).
+
+    Errors:
+      - Per-user (Ayla unavailable / API error): log + skip (next user).
+      - Глобал ошибка (DB / Redis / Celery): retry до max_retries=1.
+    """
+    import asyncio
+
+    from django.conf import settings as django_settings
+    from services_app.models import BotUser
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        logger.info("daily_reports.skipped — NUTRITION_ENABLED=False")
+        return
+
+    eligible = BotUser.objects.filter(
+        nutrition_onboarded_at__isnull=False,
+        chat_id__isnull=False,
+    )
+    sent = 0
+    skipped = 0
+
+    client = get_nutrition_client()
+
+    for bot_user in eligible.iterator():
+        extid = external_user_id_for(bot_user)
+        try:
+            summary, water_today = asyncio.run(_fetch_daily_data(client, extid))
+        except (NutritionUnavailableError, NutritionAPIError) as exc:
+            logger.warning(
+                "daily_reports.fetch_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "daily_reports.fetch_unexpected user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+
+        eating_disorder = bool(
+            (bot_user.health_flags or {}).get("eating_disorder", False)
+        )
+        text = ai_ui.render_daily_full_report(
+            summary, water_today, eating_disorder=eating_disorder,
+        )
+        try:
+            send_max_message(bot_user.chat_id, text, attachments=None)
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "daily_reports.send_failed user=%s chat=%s err=%s",
+                bot_user.max_user_id, bot_user.chat_id, exc,
+            )
+            skipped += 1
+
+    logger.info("daily_reports.done sent=%d skipped=%d", sent, skipped)
+    return {"sent": sent, "skipped": skipped}
+
+
+async def _fetch_daily_data(client, external_user_id):
+    """Fetch summary + water_today. Water — optional graceful skip."""
+    summary = await client.daily_summary(external_user_id=external_user_id)
+    water_today = None
+    try:
+        water_today = await client.get_water_today(external_user_id=external_user_id)
+    except (NutritionUnavailableError, NutritionAPIError):
+        # Water gracefully skipped — render handles None
+        pass
+    return summary, water_today

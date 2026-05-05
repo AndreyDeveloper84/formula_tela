@@ -310,6 +310,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "maxbot.tasks.send_repeat_offers",
         "schedule": crontab(hour=12, minute=0, day_of_week="monday"),
     },
+    # Phase 3.1 Part 2C T07: push дневного отчёта onboarded nutrition users
+    "maxbot-daily-reports-2100-msk": {
+        "task": "maxbot.tasks.send_daily_reports",
+        "schedule": crontab(hour=21, minute=0),
+    },
 }
 
 # === Email (SMTP) ===
