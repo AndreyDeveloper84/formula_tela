@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 from asgiref.sync import sync_to_async
@@ -23,7 +24,9 @@ from maxapi.enums.attachment import AttachmentType
 from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_ui, keyboards
+from maxbot.evening_inline import should_trigger_evening_inline
 from maxbot.menu_state import send_with_main_menu
+from maxbot.nutrition_settings_helpers import set_setting
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.services.ayla_user_proxy import external_user_id_for
 from maxbot.services.nutrition_client import (
@@ -41,6 +44,11 @@ router = Router()
 
 PHOTO_DOWNLOAD_TIMEOUT_S = 8.0
 MAX_PHOTO_BYTES = 10 * 1024 * 1024  # Ayla serializer caps at 10 MiB.
+
+
+def _now_msk() -> datetime:
+    """Current datetime в Europe/Moscow. Module-level for monkeypatch in tests."""
+    return datetime.now(ZoneInfo("Europe/Moscow"))
 
 
 # ─── Photo upload trigger ──────────────────────────────────────────────────
@@ -280,6 +288,82 @@ async def on_log_meal(callback: MessageCallback, context: MemoryContext) -> None
     await callback.bot.send_message(
         chat_id=chat_id, text=text, attachments=attachments,
     )
+
+    await _maybe_send_evening_inline(
+        callback.bot, chat_id=chat_id, bot_user=bot_user,
+        client=client, external_id=external_id,
+    )
+
+
+async def _maybe_send_evening_inline(
+    bot, *, chat_id: int, bot_user, client, external_id: str,
+) -> None:
+    """Phase 3.1 Part 2D.3 T05: post-log evening daily-report trigger.
+
+    Best-effort: any failure (no summary, no chat_id, etc.) silently logs
+    and returns — does not affect the primary log_meal acknowledgement.
+    """
+    try:
+        now_local_msk = _now_msk()
+        try:
+            user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            user_tz = ZoneInfo("Europe/Moscow")
+        now_local = now_local_msk.astimezone(user_tz)
+        today_iso = now_local.date().isoformat()
+
+        # Cheap pre-check using cached fields BEFORE fetching summary
+        settings_dict = bot_user.nutrition_settings or {}
+        if settings_dict.get("daily_report_time") == "off":
+            return
+        if settings_dict.get("evening_inline_shown_at") == today_iso:
+            return
+        if now_local.hour < 18 or now_local.hour >= 22:
+            return
+
+        # Fetch fresh summary (with AI comment) for entries count + render
+        try:
+            summary = await client.daily_summary(
+                external_user_id=external_id, with_comment=True,
+            )
+        except (NutritionUnavailableError, NutritionAPIError) as exc:
+            logger.warning(
+                "evening_inline.summary_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            return
+
+        if not should_trigger_evening_inline(
+            bot_user, summary=summary,
+            now_local=now_local, today_local_date=today_iso,
+        ):
+            return
+
+        try:
+            water_today = await client.get_water_today(external_user_id=external_id)
+        except (NutritionUnavailableError, NutritionAPIError):
+            water_today = None
+
+        eating_disorder = bool(
+            (bot_user.health_flags or {}).get("eating_disorder", False)
+        )
+        from maxbot import keyboards
+        text = ai_ui.render_daily_full_report(
+            summary, water_today, eating_disorder=eating_disorder,
+        )
+        await bot.send_message(
+            chat_id=chat_id, text=text,
+            attachments=[keyboards.daily_report_footer_keyboard()],
+        )
+        await sync_to_async(set_setting)(
+            bot_user, "evening_inline_shown_at", today_iso,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Never break log_meal flow.
+        logger.warning(
+            "evening_inline.unexpected user=%s err=%s",
+            getattr(bot_user, "max_user_id", "?"), exc,
+        )
 
 
 @router.message_created(F.message.body.text.lower().in_(("/дневник", "/diary", "дневник")))
