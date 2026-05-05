@@ -420,6 +420,234 @@ async def _llm_parse_allergies(text: str, *, openai_client: Any) -> dict | str:
     return {"items": items, "vague": bool(args.get("vague", False))}
 
 
+# ─── parse_beverage (Phase 3.1 Part 2D.1) ───────────────────────────────────
+
+
+# Beverage catalog — hardcoded для regex matching. 15 slugs покрывают ~80%
+# common cases в русскоязычном общении. Полный catalog (~50 slugs) — Ayla
+# server side, MVP не нуждается в них для парсинга.
+#
+# Order matters: более специфичные паттерны — раньше («зелёный чай» до «чай»).
+
+_BEVERAGE_PATTERNS: list[tuple[str, list[str], int]] = [
+    # (slug, aliases (lowercase substring match), default_serving_ml)
+
+    # Tea — specific первыми
+    ("chai_zelenyi", ["зелёный чай", "зеленый чай", "green tea"], 250),
+    ("chai_travyanoi", ["травяной чай", "ромашка", "мята", "иван-чай"], 250),
+    ("chai_chernyi", ["чёрный чай", "черный чай", "чай", "tea"], 250),
+
+    # Coffee — specific первыми
+    ("kofe_kapuchino", ["капучино", "cappuccino"], 250),
+    ("kofe_latte", ["латте", "latte"], 350),
+    ("kofe_espresso", ["эспрессо", "espresso"], 30),
+    ("kofe_chernyi", ["чёрный кофе", "черный кофе", "американо", "americano", "кофе", "coffee"], 200),
+
+    # Water
+    ("voda_mineralnaya", ["минералка", "минеральная вода", "боржоми", "ессентуки"], 250),
+    ("voda", ["воды", "вода", "water", "h2o"], 250),
+
+    # Juice
+    ("sok_apelsinovyi", ["апельсиновый сок", "апельсиновый"], 200),
+    ("sok_yablochnyi", ["яблочный сок", "яблочный"], 200),
+
+    # Other
+    ("moloko", ["молоко"], 250),
+    ("pivo", ["пиво", "beer"], 500),
+    ("vino", ["вина", "вино", "wine"], 150),
+    ("kompot", ["компот"], 250),
+]
+
+
+# Volume unit aliases → ml conversion.
+# Sorted longest-first within each base word to avoid partial matches
+# (e.g. «литра» before «литр»).
+_VOLUME_UNITS: list[tuple[str, int]] = [
+    ("мл", 1),
+    ("ml", 1),
+    ("литров", 1000),
+    ("литра", 1000),
+    ("литры", 1000),
+    ("литр", 1000),
+    ("liter", 1000),
+    ("стаканов", 250),
+    ("стакана", 250),
+    ("стакан", 250),
+    ("бутылку", 500),
+    ("бутылок", 500),
+    ("бутылки", 500),
+    ("бутылка", 500),
+    ("чашку", 200),
+    ("чашек", 200),
+    ("чашки", 200),
+    ("чашка", 200),
+    ("бокалов", 150),
+    ("бокала", 150),
+    ("бокал", 150),
+    ("кружку", 250),
+    ("кружек", 250),
+    ("кружки", 250),
+    ("кружка", 250),
+    ("банку", 330),
+    ("банок", 330),
+    ("банки", 330),
+    ("банка", 330),
+    ("порций", 30),
+    ("порции", 30),
+    ("порция", 30),
+]
+
+
+# Matches a positive integer or decimal at word boundary in text.
+# Group 1 = the number string.
+_NUM_RE = re.compile(r"(?:^|(?<=\s))(\d+(?:[.,]\d+)?)(?=\s|$)")
+
+
+async def parse_beverage(text: str, *, openai_client: Any = None) -> dict | str | None:
+    """Phase 3.1 Part 2D.1: hybrid regex+LLM beverage parser.
+
+    Returns:
+        - dict {"beverage_slug": str, "ml": int} on successful parse
+        - "REFUSED" on explicit refusal («не скажу», «не пил», etc.)
+        - None if cannot parse (let caller fall through to AI или ignore)
+
+    Strategy:
+        1. Refusal markers → REFUSED
+        2. Regex ladder over _BEVERAGE_PATTERNS — first match wins
+        3. Volume extraction (number + unit, OR unit-only, OR default serving)
+        4. LLM fallback (gpt-4o-mini) если regex не сработал И len(text)<=30
+
+    Examples:
+        «250 мл воды» → {voda, 250}
+        «выпила кофе» → {kofe_chernyi, 200}  (default serving)
+        «бутылка воды» → {voda, 500}
+        «2 чашки кофе» → {kofe_chernyi, 400}
+        «как погода» → None
+    """
+    if not text or not text.strip():
+        return None
+
+    if _is_refusal(text):
+        return REFUSED
+
+    normalized = text.lower().strip()
+
+    # 1. Beverage match — first specific pattern wins
+    found_slug: str | None = None
+    found_default_serving: int | None = None
+    for slug, aliases, default_serving in _BEVERAGE_PATTERNS:
+        for alias in aliases:
+            if alias in normalized:
+                found_slug = slug
+                found_default_serving = default_serving
+                break
+        if found_slug:
+            break
+
+    if not found_slug:
+        # 2. LLM fallback only if short text + client available
+        if len(text) <= 30 and openai_client is not None:
+            return await _llm_parse_beverage(text, openai_client=openai_client)
+        return None
+
+    # 3. Volume extraction
+    ml = _extract_volume(normalized, found_default_serving)
+    return {"beverage_slug": found_slug, "ml": ml}
+
+
+def _extract_volume(normalized: str, default_serving_ml: int) -> int:
+    """Extract volume from normalized text. Returns ml as int.
+
+    Patterns:
+        «250 мл» → 250
+        «0.5 л» → 500
+        «1 литр» → 1000
+        «2 чашки» → 2 × 200 = 400
+        «стакан» (no number) → 250
+        «» (no unit, no number) → default_serving_ml
+    """
+    # Find number (optional) — use padded string for boundary matching
+    num_match = _NUM_RE.search(normalized)
+    num: float | None = None
+    if num_match:
+        try:
+            num = float(num_match.group(1).replace(",", "."))
+        except ValueError:
+            num = None
+
+    # Find unit (optional) — pad with spaces for whole-word matching
+    padded = " " + normalized + " "
+    found_unit_ml: int | None = None
+    for unit, multiplier in _VOLUME_UNITS:
+        if f" {unit} " in padded:
+            found_unit_ml = multiplier
+            break
+
+    if num is not None and found_unit_ml is not None:
+        return int(round(num * found_unit_ml))
+    if num is not None:
+        # Number без unit — assume мл
+        return int(round(num))
+    if found_unit_ml is not None:
+        return found_unit_ml
+    return default_serving_ml
+
+
+_LLM_BEVERAGE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "parse_beverage_value",
+        "description": (
+            "Извлечь напиток и объём из свободного текста на русском. "
+            "beverage_slug должен быть из списка: voda, voda_mineralnaya, "
+            "chai_chernyi, chai_zelenyi, chai_travyanoi, kofe_chernyi, "
+            "kofe_espresso, kofe_kapuchino, kofe_latte, sok_apelsinovyi, "
+            "sok_yablochnyi, moloko, pivo, vino, kompot. ml — объём в "
+            "миллилитрах (10..3000). Если не понятно — null."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "beverage_slug": {
+                    "type": ["string", "null"],
+                    "description": "Slug из списка или null если не понятно.",
+                },
+                "ml": {
+                    "type": ["integer", "null"],
+                    "description": "Объём в мл (10..3000) или null.",
+                },
+            },
+            "required": ["beverage_slug", "ml"],
+        },
+    },
+}
+
+
+async def _llm_parse_beverage(text: str, *, openai_client: Any) -> dict | None:
+    """LLM fallback. Cost guard: вызывается только если len(text) <= 30."""
+    try:
+        completion = await openai_client.chat.completions.create(
+            model=_LLM_MODEL,
+            messages=[{"role": "user", "content": text}],
+            tools=[_LLM_BEVERAGE_TOOL],
+            tool_choice={"type": "function", "function": {"name": "parse_beverage_value"}},
+            temperature=0,
+            max_tokens=50,
+        )
+        tool_calls = completion.choices[0].message.tool_calls
+        if not tool_calls:
+            return None
+        args = json.loads(tool_calls[0].function.arguments)
+        slug = args.get("beverage_slug")
+        ml = args.get("ml")
+        if not slug or not isinstance(ml, int) or not (10 <= ml <= 3000):
+            return None
+        return {"beverage_slug": slug, "ml": ml}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("parse_beverage.llm_failed err=%s", exc)
+        return None
+
+
 async def _llm_parse_int(
     text: str,
     *,
