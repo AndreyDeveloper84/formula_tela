@@ -213,7 +213,7 @@ def test_send_daily_reports_continues_after_user_failure(settings, monkeypatch):
     )
 
     # User 99 — Ayla падает; user 100 — успех
-    async def flaky_summary(*, external_user_id):
+    async def flaky_summary(*, external_user_id, **_kwargs):
         if external_user_id == "bot:99":
             raise NutritionUnavailableError("simulated")
         return SummaryResponse(
@@ -348,3 +348,48 @@ def test_send_daily_reports_skips_user_when_hour_not_match(settings, monkeypatch
         send_daily_reports()
 
         send_mock.assert_not_called()
+
+
+def test_send_daily_reports_calls_daily_summary_with_comment(settings, monkeypatch):
+    """Part 2D.3 T03: Celery push должен запросить с ?with_comment=true."""
+    from maxbot.tasks import send_daily_reports
+    from maxbot.services.nutrition_client import (
+        SummaryResponse, WaterTodayResponse,
+    )
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    settings.NUTRITION_ENABLED = True
+
+    baker.make(
+        BotUser, max_user_id=99, chat_id=12345,
+        nutrition_onboarded_at="2026-04-30T12:00:00Z",
+        nutrition_settings={"daily_report_time": "21:00"},
+        timezone="Europe/Moscow",
+    )
+
+    fake_now = datetime(2026, 5, 4, 21, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    monkeypatch.setattr("maxbot.tasks._task_now_msk", lambda: fake_now)
+
+    captured_kwargs = {}
+
+    async def _capturing_summary(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return SummaryResponse(
+            date="2026-05-04", calories_total=1100, calories_goal=1450,
+            protein_g=65, fat_g=40, carbs_g=110, entries=[], raw={},
+        )
+
+    fake_client = MagicMock(
+        daily_summary=_capturing_summary,
+        get_water_today=AsyncMock(return_value=WaterTodayResponse(
+            total_ml=0, norm_ml=2000, entries=[], raw={},
+        )),
+    )
+
+    with patch("maxbot.services.nutrition_client.get_nutrition_client",
+               return_value=fake_client), \
+         patch("notifications.max_bot.send_max_message"):
+        send_daily_reports()
+
+    assert captured_kwargs.get("with_comment") is True

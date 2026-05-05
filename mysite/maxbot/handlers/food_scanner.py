@@ -295,7 +295,9 @@ async def on_diary_command(event: MessageCreated, context: MemoryContext) -> Non
     client = get_nutrition_client()
 
     try:
-        summary = await client.daily_summary(external_user_id=extid)
+        summary = await client.daily_summary(
+            external_user_id=extid, with_comment=True,
+        )
     except NutritionUnavailableError:
         await send_with_main_menu(
             bot=event.bot, chat_id=chat_id,

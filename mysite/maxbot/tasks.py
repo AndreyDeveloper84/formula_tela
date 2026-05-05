@@ -414,7 +414,9 @@ async def _fetch_daily_data(client, external_user_id):
         NutritionUnavailableError,
     )
 
-    summary = await client.daily_summary(external_user_id=external_user_id)
+    summary = await client.daily_summary(
+        external_user_id=external_user_id, with_comment=True,
+    )
     water_today = None
     try:
         water_today = await client.get_water_today(external_user_id=external_user_id)
