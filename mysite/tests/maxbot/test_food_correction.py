@@ -226,3 +226,60 @@ async def test_report_time_open_menu_shows_4_time_options():
         PAYLOAD_REPORT_TIME_18, PAYLOAD_REPORT_TIME_21,
         PAYLOAD_REPORT_TIME_23, PAYLOAD_REPORT_TIME_OFF,
     } <= payloads
+
+
+@pytest.mark.asyncio
+async def test_report_time_18_persists_setting(monkeypatch):
+    """Click [18:00] → set_setting('daily_report_time', '18:00') + ack."""
+    from unittest.mock import MagicMock
+    from maxbot.handlers.food_correction import on_report_time_select
+
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    set_mock = MagicMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.set_setting", set_mock,
+    )
+
+    cb = _fake_callback("cb:report:time:18")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_report_time_select(cb, ctx)
+
+    set_mock.assert_called_once()
+    args = set_mock.call_args.args
+    assert args[1] == "daily_report_time"
+    assert args[2] == "18:00"
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "18:00" in text
+
+
+@pytest.mark.asyncio
+async def test_report_time_off_persists_off_setting(monkeypatch):
+    from unittest.mock import MagicMock
+    from maxbot.handlers.food_correction import on_report_time_select
+
+    bot_user = MagicMock(max_user_id=200)
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    set_mock = MagicMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.set_setting", set_mock,
+    )
+
+    cb = _fake_callback("cb:report:time:off")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+
+    await on_report_time_select(cb, ctx)
+
+    args = set_mock.call_args.args
+    assert args[2] == "off"
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert "выкл" in text.lower() or "🔕" in text

@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import logging
 
+from asgiref.sync import sync_to_async
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.types import MessageCallback
 
 from maxbot import ai_ui, keyboards
+from maxbot.nutrition_settings_helpers import set_setting
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.services.ayla_user_proxy import external_user_id_for
 from maxbot.services.nutrition_client import (
@@ -267,3 +269,37 @@ async def on_report_time_open_menu(
         text="🕘 Время дневного отчёта — когда удобно?",
         attachments=[keyboards.daily_report_time_keyboard()],
     )
+
+
+_REPORT_TIME_PAYLOAD_TO_VALUE = {
+    keyboards.PAYLOAD_REPORT_TIME_18: "18:00",
+    keyboards.PAYLOAD_REPORT_TIME_21: "21:00",
+    keyboards.PAYLOAD_REPORT_TIME_23: "23:00",
+    keyboards.PAYLOAD_REPORT_TIME_OFF: "off",
+}
+
+
+@router.message_callback(F.callback.payload.in_(set(_REPORT_TIME_PAYLOAD_TO_VALUE.keys())))
+async def on_report_time_select(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    """Click [18:00/21:00/23:00/🔕 Выкл] → persist + ack."""
+    chat_id = callback.message.recipient.chat_id if callback.message else None
+    if chat_id is None or callback.callback.user is None:
+        return
+    payload = callback.callback.payload or ""
+    value = _REPORT_TIME_PAYLOAD_TO_VALUE.get(payload)
+    if value is None:
+        return
+
+    user_id = callback.callback.user.user_id
+    full_name = callback.callback.user.full_name
+    bot_user, _ = await get_or_create_bot_user(user_id, full_name)
+    await sync_to_async(set_setting)(bot_user, "daily_report_time", value)
+
+    if value == "off":
+        text = "🔕 Дневной отчёт выключен. Можешь открыть его в любое время через /день."
+    else:
+        text = f"✓ Время дневного отчёта: {value}. Буду присылать каждый день."
+
+    await callback.bot.send_message(chat_id=chat_id, text=text)
