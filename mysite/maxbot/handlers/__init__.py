@@ -20,6 +20,7 @@ from .reminders import router as reminders_router
 from .services import router as services_router
 from .start import router as start_router
 from .water import router as water_router
+from maxbot.nudges.mute_handlers import router as nudge_mute_router
 
 
 def get_routers():
@@ -59,6 +60,10 @@ def get_routers():
         # Регистрируется после nutrition_anketa, перед food_scanner — cb:tier_b:*
         # callbacks должны матчиться раньше generic message_created.
         health_screening_router,
+        # nudge_mute — cb:nudge:mute:off:* / cb:nudge:mute:less:* callbacks
+        # (Phase 3.2B T09). Регистрируется ПЕРЕД food_scanner/ai_assistant
+        # чтобы перехватить mute-кнопки до generic message_created.
+        nudge_mute_router,
         # food_scanner ПЕРЕД ai_assistant — оба ловят message_created, но
         # food_scanner early-return'ит если у сообщения нет фото-вложения,
         # передавая управление дальше. cb:nutrition:consent:* / cb:nutrition:log:*
