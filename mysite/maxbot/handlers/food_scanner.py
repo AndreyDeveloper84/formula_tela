@@ -22,7 +22,7 @@ from maxapi.context.context import MemoryContext
 from maxapi.enums.attachment import AttachmentType
 from maxapi.types import MessageCallback, MessageCreated
 
-from maxbot import ai_ui
+from maxbot import ai_ui, keyboards
 from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.services.ayla_user_proxy import external_user_id_for
@@ -284,18 +284,18 @@ async def on_log_meal(callback: MessageCallback, context: MemoryContext) -> None
 
 @router.message_created(F.message.body.text.lower().in_(("/дневник", "/diary", "дневник")))
 async def on_diary_command(event: MessageCreated, context: MemoryContext) -> None:
-    """`/дневник` → daily summary card (today UTC by default)."""
+    """`/дневник` → hybrid daily report (Part 2C: summary + water + render)."""
     if event.message.sender is None:
         return
     chat_id = event.message.recipient.chat_id
     sender = event.message.sender
     bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
 
+    extid = external_user_id_for(bot_user)
     client = get_nutrition_client()
+
     try:
-        summary = await client.daily_summary(
-            external_user_id=external_user_id_for(bot_user),
-        )
+        summary = await client.daily_summary(external_user_id=extid)
     except NutritionUnavailableError:
         await send_with_main_menu(
             bot=event.bot, chat_id=chat_id,
@@ -313,9 +313,23 @@ async def on_diary_command(event: MessageCreated, context: MemoryContext) -> Non
         )
         return
 
-    text = ai_ui.render_daily_summary(summary.raw)
-    await send_with_main_menu(
-        bot=event.bot, chat_id=chat_id, text=text, bot_user=bot_user,
+    water_today = None
+    try:
+        water_today = await client.get_water_today(external_user_id=extid)
+    except (NutritionUnavailableError, NutritionAPIError):
+        logger.info("food_scanner.diary water unavailable for user=%s",
+                    bot_user.max_user_id)
+
+    eating_disorder = bool(
+        (bot_user.health_flags or {}).get("eating_disorder", False)
+    )
+    text = ai_ui.render_daily_full_report(
+        summary, water_today, eating_disorder=eating_disorder,
+    )
+    await event.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        attachments=[keyboards.daily_report_footer_keyboard()],
     )
 
 

@@ -259,8 +259,13 @@ async def test_e2e_photo_to_log_to_view_day(monkeypatch, settings):
             }],
         },
     ))
+    from maxbot.services.nutrition_client import WaterTodayResponse
+    water_mock = AsyncMock(return_value=WaterTodayResponse(
+        total_ml=1000, norm_ml=2000, entries=[], raw={},
+    ))
     fake_client = MagicMock(
-        scan_photo=scan_mock, log_meal=log_mock, daily_summary=summary_mock,
+        scan_photo=scan_mock, log_meal=log_mock,
+        daily_summary=summary_mock, get_water_today=water_mock,
     )
     monkeypatch.setattr(
         "maxbot.handlers.food_scanner.get_nutrition_client",
@@ -274,7 +279,9 @@ async def test_e2e_photo_to_log_to_view_day(monkeypatch, settings):
         "maxbot.handlers.food_scanner._download_photo",
         AsyncMock(return_value=b"fake"),
     )
-    bot_user = MagicMock(food_scanner_consent_at="2026-01-01", max_user_id=200)
+    bot_user = MagicMock(
+        food_scanner_consent_at="2026-01-01", max_user_id=200, health_flags={},
+    )
     monkeypatch.setattr(
         "maxbot.handlers.food_scanner.get_or_create_bot_user",
         AsyncMock(return_value=(bot_user, False)),

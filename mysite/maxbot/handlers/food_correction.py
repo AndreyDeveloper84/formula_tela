@@ -181,8 +181,8 @@ async def on_manual_input(
     F.callback.payload == keyboards.PAYLOAD_NUTRITION_VIEW_DAY,
 )
 async def on_view_day(callback: MessageCallback, context: MemoryContext) -> None:
-    """[📊 Посмотреть день] из footer scan-карточки →
-    то же что /дневник команда: daily_summary + render."""
+    """[📊 Посмотреть день] из footer scan-карточки → hybrid daily report
+    (Part 2C: daily_summary + get_water_today + render_daily_full_report)."""
     chat_id = callback.message.recipient.chat_id if callback.message else None
     if chat_id is None or callback.callback.user is None:
         return
@@ -190,11 +190,12 @@ async def on_view_day(callback: MessageCallback, context: MemoryContext) -> None
     full_name = callback.callback.user.full_name
     bot_user, _ = await get_or_create_bot_user(user_id, full_name)
 
+    extid = external_user_id_for(bot_user)
     client = get_nutrition_client()
+
+    # Fetch both summary + water — water optional (graceful skip)
     try:
-        summary = await client.daily_summary(
-            external_user_id=external_user_id_for(bot_user),
-        )
+        summary = await client.daily_summary(external_user_id=extid)
     except NutritionUnavailableError:
         await callback.bot.send_message(
             chat_id=chat_id,
@@ -210,8 +211,25 @@ async def on_view_day(callback: MessageCallback, context: MemoryContext) -> None
         )
         return
 
-    text = ai_ui.render_daily_summary(summary.raw)
-    await callback.bot.send_message(chat_id=chat_id, text=text)
+    water_today = None
+    try:
+        water_today = await client.get_water_today(external_user_id=extid)
+    except (NutritionUnavailableError, NutritionAPIError):
+        # Water optional — silently skip раздел
+        logger.info("food_correction.view_day water unavailable for user=%s",
+                    bot_user.max_user_id)
+
+    eating_disorder = bool(
+        (bot_user.health_flags or {}).get("eating_disorder", False)
+    )
+    text = ai_ui.render_daily_full_report(
+        summary, water_today, eating_disorder=eating_disorder,
+    )
+    await callback.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        attachments=[keyboards.daily_report_footer_keyboard()],
+    )
 
 
 @router.message_callback(

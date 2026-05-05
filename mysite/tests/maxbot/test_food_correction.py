@@ -128,47 +128,6 @@ async def test_retake_stub_hints_send_photo():
     assert "Пришли" in text or "пришли" in text or "фото" in text.lower()
 
 
-@pytest.mark.asyncio
-async def test_view_day_calls_daily_summary(monkeypatch, settings):
-    """[📊 Посмотреть день] (footer) → daily_summary call → render."""
-    from maxbot.handlers.food_correction import on_view_day
-    from maxbot.services.nutrition_client import SummaryResponse
-
-    settings.NUTRITION_ENABLED = True
-
-    _entries = [{"meal_type": "lunch", "dish_name": "Суп", "calories": 1100}]
-    summary_mock = AsyncMock(return_value=SummaryResponse(
-        date="2026-05-04",
-        calories_total=1100, calories_goal=1450,
-        protein_g=65, fat_g=40, carbs_g=110,
-        entries=_entries,
-        raw={
-            "date": "2026-05-04", "calories_total": 1100,
-            "calories_goal": 1450, "protein_g": 65, "fat_g": 40,
-            "carbs_g": 110, "entries": _entries,
-        },
-    ))
-    fake_client = MagicMock(daily_summary=summary_mock)
-    monkeypatch.setattr(
-        "maxbot.handlers.food_correction.get_nutrition_client",
-        lambda: fake_client,
-    )
-    bot_user = MagicMock(max_user_id=200)
-    monkeypatch.setattr(
-        "maxbot.handlers.food_correction.get_or_create_bot_user",
-        AsyncMock(return_value=(bot_user, False)),
-    )
-
-    cb = _fake_callback("cb:nutrition:view_day")
-    ctx = MemoryContext(chat_id=100, user_id=200)
-    await on_view_day(cb, ctx)
-
-    summary_mock.assert_awaited_once()
-    cb.bot.send_message.assert_awaited_once()
-    text = cb.bot.send_message.await_args.kwargs["text"]
-    # render_daily_summary показывает ккал
-    assert "1100" in text or "1450" in text
-
 
 @pytest.mark.asyncio
 async def test_report_weekly_stub_says_coming_soon():
@@ -196,3 +155,63 @@ async def test_report_time_settings_stub_says_coming_soon():
 
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "Скоро" in text or "21" in text  # 21:00 default mention
+
+
+@pytest.mark.asyncio
+async def test_view_day_fetches_water_and_renders_full_report(monkeypatch, settings):
+    """on_view_day теперь fetch'ит summary + water_today, render через
+    render_daily_full_report. Footer-keyboard прикрепляется."""
+    from maxbot.handlers.food_correction import on_view_day
+    from maxbot.keyboards import (
+        PAYLOAD_REPORT_WEEKLY, PAYLOAD_REPORT_TIME_SETTINGS,
+    )
+    from maxbot.services.nutrition_client import (
+        SummaryResponse, WaterTodayResponse,
+    )
+
+    settings.NUTRITION_ENABLED = True
+
+    summary_mock = AsyncMock(return_value=SummaryResponse(
+        date="2026-05-04",
+        calories_total=1100, calories_goal=1450,
+        protein_g=65, fat_g=40, carbs_g=110,
+        entries=[
+            {"meal_type": "breakfast", "dish_name": "каша", "calories": 320},
+            {"meal_type": "lunch", "dish_name": "суп", "calories": 450},
+            {"meal_type": "dinner", "dish_name": "рыба", "calories": 330},
+        ],
+        raw={},
+    ))
+    water_mock = AsyncMock(return_value=WaterTodayResponse(
+        total_ml=1500, norm_ml=2000,
+        entries=[],
+        raw={},
+    ))
+    fake_client = MagicMock(daily_summary=summary_mock, get_water_today=water_mock)
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_nutrition_client",
+        lambda: fake_client,
+    )
+    bot_user = MagicMock(max_user_id=200, health_flags={})
+    monkeypatch.setattr(
+        "maxbot.handlers.food_correction.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+
+    cb = _fake_callback("cb:nutrition:view_day")
+    ctx = MemoryContext(chat_id=100, user_id=200)
+    await on_view_day(cb, ctx)
+
+    summary_mock.assert_awaited_once()
+    water_mock.assert_awaited_once()
+
+    cb.bot.send_message.assert_awaited_once()
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    # Combined render — есть и kcal и water
+    assert "1100" in text or "1450" in text
+    assert "1.5" in text or "1500" in text  # water
+
+    atts = cb.bot.send_message.await_args.kwargs.get("attachments") or []
+    payloads = _flatten_payloads(atts[0]) if atts else set()
+    assert PAYLOAD_REPORT_WEEKLY in payloads
+    assert PAYLOAD_REPORT_TIME_SETTINGS in payloads
