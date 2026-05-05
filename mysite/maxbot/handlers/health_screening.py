@@ -18,9 +18,10 @@ from zoneinfo import ZoneInfo
 from asgiref.sync import sync_to_async
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
-from maxapi.types import MessageCallback
+from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import keyboards
+from maxbot.ai_parsers import parse_allergies
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.states import NutritionAnketaStates
 
@@ -310,3 +311,131 @@ async def on_chronic_none(
         text=ALLERGIES_TEXT,
         attachments=[keyboards.tier_b_allergies_choice_keyboard()],
     )
+
+
+# ─── Helper: read TIER-A profile age + gender from BotUser ─────────────────
+
+
+async def _fetch_age_and_gender(bot_user) -> tuple[int | None, str | None]:
+    """Read age/gender from cached health_flags or fetch from Ayla profile.
+
+    Module-level for monkeypatching. Returns (None, None) if unavailable.
+    For Phase 3.2A — read from cached `health_flags` (T01 of TIER-A populates).
+    """
+    flags = bot_user.health_flags or {}
+    age = flags.get("age")
+    gender = flags.get("gender")
+    try:
+        age_int = int(age) if age else None
+    except (TypeError, ValueError):
+        age_int = None
+    return age_int, str(gender) if gender else None
+
+
+# ─── Screen 3 — allergies choice ──────────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_allergies,
+    F.callback.payload.in_({
+        keyboards.PAYLOAD_TIER_B_ALLERGIES_NONE,
+        keyboards.PAYLOAD_TIER_B_ALLERGIES_TEXT,
+        keyboards.PAYLOAD_TIER_B_ALLERGIES_VAGUE,
+    }),
+)
+async def on_allergies_choice(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    payload = callback.callback.payload
+    if payload == keyboards.PAYLOAD_TIER_B_ALLERGIES_NONE:
+        await sync_to_async(_persist_health_flag)(bot_user, "allergies", [])
+        await context.set_state(NutritionAnketaStates.awaiting_meds)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=MEDS_TEXT,
+            attachments=[keyboards.tier_b_meds_keyboard()],
+        )
+    elif payload == keyboards.PAYLOAD_TIER_B_ALLERGIES_TEXT:
+        await context.set_state(NutritionAnketaStates.awaiting_allergies_text)
+        await callback.bot.send_message(chat_id=chat_id, text=ALLERGIES_FREE_TEXT_PROMPT)
+    else:  # VAGUE
+        await sync_to_async(_persist_health_flag)(bot_user, "allergies_vague", True)
+        await context.set_state(NutritionAnketaStates.awaiting_meds)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=MEDS_TEXT,
+            attachments=[keyboards.tier_b_meds_keyboard()],
+        )
+
+
+@router.message_created(NutritionAnketaStates.awaiting_allergies_text)
+async def on_allergies_text_input(
+    event: MessageCreated, context: MemoryContext,
+) -> None:
+    """Free-text «лактоза, орехи» → parse_allergies → save."""
+    if event.message.sender is None:
+        return
+    chat_id = event.message.recipient.chat_id
+    text = (event.message.body.text or "").strip() if event.message.body else ""
+    if not text:
+        return
+    bot_user, _ = await get_or_create_bot_user(
+        event.message.sender.user_id, event.message.sender.full_name,
+    )
+    slugs = await parse_allergies(text)
+    await sync_to_async(_persist_health_flag)(bot_user, "allergies", slugs)
+    await context.set_state(NutritionAnketaStates.awaiting_meds)
+    await event.bot.send_message(
+        chat_id=chat_id,
+        text=MEDS_TEXT,
+        attachments=[keyboards.tier_b_meds_keyboard()],
+    )
+
+
+# ─── Screen 3b — meds ─────────────────────────────────────────────────────
+
+
+@router.message_callback(
+    NutritionAnketaStates.awaiting_meds,
+    F.callback.payload.in_({
+        keyboards.PAYLOAD_TIER_B_YES,
+        keyboards.PAYLOAD_TIER_B_NO,
+        keyboards.PAYLOAD_TIER_B_SKIP,
+    }),
+)
+async def on_meds_answer(
+    callback: MessageCallback, context: MemoryContext,
+) -> None:
+    chat_id, bot_user = await _user_and_chat(callback)
+    if chat_id is None:
+        return
+    payload = callback.callback.payload
+    if payload == keyboards.PAYLOAD_TIER_B_SKIP:
+        await sync_to_async(_persist_health_flag)(bot_user, "meds_skipped", True)
+    else:
+        await sync_to_async(_persist_health_flag)(
+            bot_user, "meds", payload == keyboards.PAYLOAD_TIER_B_YES,
+        )
+
+    age, gender = await _fetch_age_and_gender(bot_user)
+    if (age is not None and age >= 45) and gender == "female":
+        await context.set_state(NutritionAnketaStates.awaiting_menopause)
+        await callback.bot.send_message(
+            chat_id=chat_id,
+            text=MENOPAUSE_TEXT,
+            attachments=[keyboards.tier_b_menopause_keyboard()],
+        )
+    else:
+        # Skip menopause — go directly to complete (handler in T07)
+        await _complete_tier_b(
+            callback.bot, chat_id=chat_id, bot_user=bot_user, context=context,
+        )
+
+
+# Stub _complete_tier_b — actual impl in T07. For now: clear state + ack.
+async def _complete_tier_b(bot, *, chat_id, bot_user, context: MemoryContext) -> None:
+    await context.clear()
+    await bot.send_message(chat_id=chat_id, text="Готово ✓ Учту при советах.")
