@@ -43,3 +43,14 @@ class NutritionAnketaStates(StatesGroup):
     awaiting_gain_clarify = State()  # для goal=gain: gain/tone
     awaiting_bmi_ladder = State()    # если BMI<18.5 + goal=lose
     complete = State()               # рендер финального экрана с нормой
+
+    # ─── TIER-B (Phase 3.2A, lazy on-demand) ─────────────────────────
+    awaiting_health_consent = State()
+    awaiting_pregnancy = State()
+    awaiting_breastfeeding = State()
+    awaiting_diabetes = State()
+    awaiting_chronic = State()           # multi-select toggle
+    awaiting_allergies = State()         # 3-option choice
+    awaiting_allergies_text = State()    # free-text
+    awaiting_meds = State()
+    awaiting_menopause = State()         # conditional: ж 45+ only

@@ -561,3 +561,138 @@ def water_reminder_buttons_keyboard():
         CallbackButton(text="Уже пью", payload=PAYLOAD_WATER_DISMISS),
     )
     return builder.as_markup()
+
+
+# ─── Phase 3.2A: TIER-B health screening ───────────────────────────────────
+
+PAYLOAD_TIER_B_CONSENT_OK = "cb:tier_b:consent:ok"
+PAYLOAD_TIER_B_CONSENT_DECLINE = "cb:tier_b:consent:decline"
+
+# Универсальные yes/no/skip — handler определяет current state и значение
+PAYLOAD_TIER_B_YES = "cb:tier_b:yes"
+PAYLOAD_TIER_B_NO = "cb:tier_b:no"
+PAYLOAD_TIER_B_SKIP = "cb:tier_b:skip"
+
+PAYLOAD_TIER_B_DIABETES_NO = "cb:tier_b:diabetes:no"
+PAYLOAD_TIER_B_DIABETES_T1 = "cb:tier_b:diabetes:t1"
+PAYLOAD_TIER_B_DIABETES_T2 = "cb:tier_b:diabetes:t2"
+PAYLOAD_TIER_B_DIABETES_PRE = "cb:tier_b:diabetes:pre"
+
+PAYLOAD_TIER_B_CHRONIC_DONE = "cb:tier_b:chronic:done"
+PAYLOAD_TIER_B_CHRONIC_NONE = "cb:tier_b:chronic:none"
+
+PAYLOAD_TIER_B_ALLERGIES_NONE = "cb:tier_b:allergies:none"
+PAYLOAD_TIER_B_ALLERGIES_TEXT = "cb:tier_b:allergies:text"
+PAYLOAD_TIER_B_ALLERGIES_VAGUE = "cb:tier_b:allergies:vague"
+
+PAYLOAD_TIER_B_MENOPAUSE_NO = "cb:tier_b:menopause:no"
+PAYLOAD_TIER_B_MENOPAUSE_YES = "cb:tier_b:menopause:yes"
+PAYLOAD_TIER_B_MENOPAUSE_UNSURE = "cb:tier_b:menopause:unsure"
+
+
+CHRONIC_SLUG_LABELS: dict[str, str] = {
+    "hypertension": "Гипертония",
+    "gi_problems": "ЖКТ",
+    "thyroid": "Щитовидная",
+    "menopause": "Менопауза",
+    "eating_disorder": "РПП в прошлом или сейчас",
+}
+
+
+def tier_b_consent_keyboard():
+    """Screen 0 — consent (Design §4.5)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="✓ Понятно, продолжаем", payload=PAYLOAD_TIER_B_CONSENT_OK),
+    )
+    builder.row(
+        CallbackButton(text="Не сейчас, без советов", payload=PAYLOAD_TIER_B_CONSENT_DECLINE),
+    )
+    return builder.as_markup()
+
+
+def tier_b_yes_no_keyboard():
+    """Screen 1 — pregnancy + Screen 2 — diabetes (БЕЗ skip per Design §4.5)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="Да", payload=PAYLOAD_TIER_B_YES),
+        CallbackButton(text="Нет", payload=PAYLOAD_TIER_B_NO),
+    )
+    return builder.as_markup()
+
+
+def tier_b_yes_no_skip_keyboard():
+    """Screen 1b — breastfeeding + Screen 3b — meds."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="Да", payload=PAYLOAD_TIER_B_YES),
+        CallbackButton(text="Нет", payload=PAYLOAD_TIER_B_NO),
+    )
+    builder.row(
+        CallbackButton(text="⏭ Пропустить", payload=PAYLOAD_TIER_B_SKIP),
+    )
+    return builder.as_markup()
+
+
+def tier_b_diabetes_keyboard():
+    """Screen 2 — diabetes (4 опции, БЕЗ skip)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(CallbackButton(text="Нет", payload=PAYLOAD_TIER_B_DIABETES_NO))
+    builder.row(
+        CallbackButton(text="1 типа", payload=PAYLOAD_TIER_B_DIABETES_T1),
+        CallbackButton(text="2 типа", payload=PAYLOAD_TIER_B_DIABETES_T2),
+    )
+    builder.row(CallbackButton(text="Преддиабет", payload=PAYLOAD_TIER_B_DIABETES_PRE))
+    return builder.as_markup()
+
+
+def tier_b_chronic_keyboard(*, selected: set):
+    """Screen 2b — multi-select toggle. selected — set of chosen slugs.
+
+    Shows ✓ префикс на selected items для visual feedback. Click toggle'ит
+    the slug. «✓ Готово» → save. «Ничего» → clear + save.
+    """
+    builder = InlineKeyboardBuilder()
+    for slug, label in CHRONIC_SLUG_LABELS.items():
+        prefix = "✓ " if slug in selected else ""
+        builder.row(
+            CallbackButton(
+                text=f"{prefix}{label}",
+                payload=f"cb:tier_b:chronic:toggle:{slug}",
+            ),
+        )
+    builder.row(
+        CallbackButton(text="✓ Готово", payload=PAYLOAD_TIER_B_CHRONIC_DONE),
+        CallbackButton(text="Ничего", payload=PAYLOAD_TIER_B_CHRONIC_NONE),
+    )
+    return builder.as_markup()
+
+
+def tier_b_allergies_choice_keyboard():
+    """Screen 3 — allergies (3 опции)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(CallbackButton(text="❌ Нет", payload=PAYLOAD_TIER_B_ALLERGIES_NONE))
+    builder.row(CallbackButton(text="📝 Напишу какие", payload=PAYLOAD_TIER_B_ALLERGIES_TEXT))
+    builder.row(CallbackButton(text="🤷 Не уверена", payload=PAYLOAD_TIER_B_ALLERGIES_VAGUE))
+    return builder.as_markup()
+
+
+def tier_b_meds_keyboard():
+    """Screen 3b — meds (yes/no/skip)."""
+    return tier_b_yes_no_skip_keyboard()
+
+
+def tier_b_menopause_keyboard():
+    """Screen 4 — menopause (conditional ж 45+)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="Нет", payload=PAYLOAD_TIER_B_MENOPAUSE_NO),
+        CallbackButton(text="Да", payload=PAYLOAD_TIER_B_MENOPAUSE_YES),
+    )
+    builder.row(
+        CallbackButton(text="Не уверена", payload=PAYLOAD_TIER_B_MENOPAUSE_UNSURE),
+    )
+    builder.row(
+        CallbackButton(text="⏭ Пропустить", payload=PAYLOAD_TIER_B_SKIP),
+    )
+    return builder.as_markup()
