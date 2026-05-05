@@ -119,6 +119,7 @@ class SummaryResponse:
     carbs_g: float
     entries: list[dict[str, Any]]
     raw: dict[str, Any]
+    ai_comment: str | None = None  # Part 2D.3: server-generated <=220 chars
 
 
 @dataclass(frozen=True)
@@ -346,8 +347,14 @@ class NutritionClient:
         *,
         external_user_id: str,
         date: str | None = None,
+        with_comment: bool = False,
     ) -> SummaryResponse:
-        """GET /api/v1/nutrition/internal/summary/?date=YYYY-MM-DD."""
+        """GET /api/v1/nutrition/internal/summary/?date=YYYY-MM-DD&with_comment=true.
+
+        Args:
+            with_comment: Phase 2D.3 — request server-generated tip ≤220 chars.
+                Server may ignore (older Ayla deploy) → ai_comment will be None.
+        """
         now = time.monotonic()
         if self._circuit.is_open(now=now):
             raise NutritionUnavailableError("circuit_open")
@@ -360,6 +367,8 @@ class NutritionClient:
         params: dict[str, str] = {}
         if date:
             params["date"] = date
+        if with_comment:
+            params["with_comment"] = "true"
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout_s) as http:
@@ -413,6 +422,7 @@ class NutritionClient:
                 carbs_g=float(body.get("carbs_g") or 0.0),
                 entries=list(body.get("entries") or []),
                 raw=body,
+                ai_comment=body.get("ai_comment") or None,
             )
         if resp.status_code >= 500:
             self._circuit.record_failure(now=now)

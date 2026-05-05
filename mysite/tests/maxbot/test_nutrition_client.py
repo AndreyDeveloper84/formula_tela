@@ -384,3 +384,96 @@ async def test_weekly_deficits_sanitizes_hint_in_response():
     # Прочее не пропадает
     assert d.days_observed == 3
     assert d.protein_low_streak_days == 2
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_passes_with_comment_query_param(monkeypatch):
+    """Part 2D.3 T01: with_comment=True → ?with_comment=true в URL."""
+    from maxbot.services.nutrition_client import NutritionClient
+
+    captured: dict = {}
+
+    class _Resp:
+        status_code = 200
+        def json(self):
+            return {"data": {
+                "date": "2026-05-05", "calories_total": 1100, "calories_goal": 1450,
+                "protein_g": 65, "fat_g": 40, "carbs_g": 110, "entries": [],
+                "ai_comment": "Хороший день — белка достаточно.",
+            }}
+
+    class _AsyncClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+        async def get(self, url, headers=None, params=None):
+            captured["url"] = url
+            captured["params"] = dict(params or {})
+            return _Resp()
+
+    monkeypatch.setattr("maxbot.services.nutrition_client.httpx.AsyncClient", _AsyncClient)
+
+    client = NutritionClient(base_url="http://test", service_token="t")
+    summary = await client.daily_summary(external_user_id="ext-1", with_comment=True)
+
+    assert captured["params"].get("with_comment") == "true"
+    assert summary.ai_comment == "Хороший день — белка достаточно."
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_default_no_with_comment_param(monkeypatch):
+    """Default `with_comment=False` → query без with_comment, ai_comment = None."""
+    from maxbot.services.nutrition_client import NutritionClient
+
+    captured: dict = {}
+
+    class _Resp:
+        status_code = 200
+        def json(self):
+            return {"data": {
+                "date": "2026-05-05", "calories_total": 0, "calories_goal": 0,
+                "protein_g": 0, "fat_g": 0, "carbs_g": 0, "entries": [],
+            }}
+
+    class _AsyncClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+        async def get(self, url, headers=None, params=None):
+            captured["params"] = dict(params or {})
+            return _Resp()
+
+    monkeypatch.setattr("maxbot.services.nutrition_client.httpx.AsyncClient", _AsyncClient)
+
+    client = NutritionClient(base_url="http://test", service_token="t")
+    summary = await client.daily_summary(external_user_id="ext-1")
+
+    assert "with_comment" not in captured["params"]
+    assert summary.ai_comment is None
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_missing_ai_comment_field_is_none(monkeypatch):
+    """Server responds 200 BUT без `ai_comment` → graceful None (старый Ayla deploy)."""
+    from maxbot.services.nutrition_client import NutritionClient
+
+    class _Resp:
+        status_code = 200
+        def json(self):
+            return {"data": {
+                "date": "2026-05-05", "calories_total": 0, "calories_goal": 0,
+                "protein_g": 0, "fat_g": 0, "carbs_g": 0, "entries": [],
+            }}
+
+    class _AsyncClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+        async def get(self, url, headers=None, params=None):
+            return _Resp()
+
+    monkeypatch.setattr("maxbot.services.nutrition_client.httpx.AsyncClient", _AsyncClient)
+
+    client = NutritionClient(base_url="http://test", service_token="t")
+    summary = await client.daily_summary(external_user_id="ext-1", with_comment=True)
+    assert summary.ai_comment is None
