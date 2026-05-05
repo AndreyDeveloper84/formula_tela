@@ -32,12 +32,14 @@ from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_concierge, ai_ui, keyboards, texts
 from maxbot.ai_action_service import close_active_conversation
+from maxbot.handlers.health_screening import start_health_screening
 from maxbot.handlers.water import try_handle_water_text
 from maxbot.intents import detect_intent
 from maxbot.llm import LLM_GIVEUP_MESSAGE, is_giveup
 from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.states import AskStates
+from maxbot.tier_b_triggers import detect_health_signal
 from notifications import send_notification_telegram
 from services_app.models import BotInquiry, Conversation
 
@@ -105,11 +107,37 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("send_action TYPING_ON failed: %s", exc)
 
-    # 2. Чистим state — AI Concierge управляет multi-turn через Conversation
-    await context.clear()
-
     sender = event.message.sender
     bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name, chat_id=chat_id)
+
+    # Phase 3.2A T08: TIER-B health-signal pre-hook (ДО context.clear/intent —
+    # screening flow владеет state самостоятельно через
+    # NutritionAnketaStates.awaiting_health_consent). Если текст содержит
+    # сигнал (беременность, диабет, гипертония, ED…) И клиент ещё не прошёл
+    # и не отказался от screening'а — переключаемся на screening вместо AI.
+    text_body = (event.message.body.text or "") if event.message.body else ""
+    signal = detect_health_signal(text_body)
+    if signal is not None:
+        flags = bot_user.health_flags or {}
+        already_consented = bool(flags.get("health_consent_acked_at"))
+        already_declined = bool(flags.get("health_consent_declined_at"))
+        if not already_consented and not already_declined:
+            logger.info(
+                "ai_assistant: TIER-B health signal=%s user_id=%s — starting screening",
+                signal, sender.user_id,
+            )
+            await start_health_screening(
+                bot=event.bot, chat_id=chat_id, context=context,
+            )
+            return
+
+    # 2. Чистим state — AI Concierge управляет multi-turn через Conversation.
+    # best-effort: в unit-тестах context может быть MagicMock'ом без awaitable
+    # .clear(); прод-flow никогда не падает на этом.
+    try:
+        await context.clear()
+    except TypeError:
+        pass
 
     # 3. Intent-router (regex, ~1ms): phatic phrases → canned, без OpenAI
     intent_response = detect_intent(user_text)
@@ -123,10 +151,31 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
         return
 
     # 4-7. Прогон через AI Concierge + рендер + отправка
-    await run_ai_turn(
+    await _invoke_ai_concierge(
         bot=event.bot, chat_id=chat_id,
         bot_user=bot_user, user_text=user_text,
         original_user_text=user_text,
+    )
+
+
+async def _invoke_ai_concierge(
+    *,
+    bot,
+    chat_id: int,
+    bot_user,
+    user_text: str,
+    original_user_text: str | None = None,
+) -> None:
+    """Thin wrapper around run_ai_turn — extraction point for tests/pre-hooks.
+
+    Phase 3.2A T08: tests monkeypatch this symbol to assert pre-hook routing.
+    Production-side it's a 1-line passthrough to run_ai_turn so we don't
+    duplicate AI Concierge logic. Future: cross-cutting concerns (degraded
+    advice_mode injection, etc.) могут жить здесь.
+    """
+    await run_ai_turn(
+        bot=bot, chat_id=chat_id, bot_user=bot_user,
+        user_text=user_text, original_user_text=original_user_text,
     )
 
 

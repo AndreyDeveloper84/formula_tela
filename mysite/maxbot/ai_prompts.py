@@ -342,6 +342,7 @@ def render_system_prompt(
     master_context: MasterContext,
     last_visits: list | None = None,
     extra_hint: str = "",
+    advice_mode: str = "full",
 ) -> str:
     """Render system prompt с конкретными значениями context'а.
 
@@ -357,6 +358,10 @@ def render_system_prompt(
         composed by the caller (e.g. nutrition deficit signal). Empty string
         means no block is rendered. The block is framed as an advisory hint,
         not a rule, so unrelated questions don't get derailed.
+    advice_mode — Phase 3.2A T08: "full" (default) | "degraded".
+        В degraded mode (TIER-B health screening НЕ пройден) добавляется
+        блок «ВАЖНО (degraded-advice mode)» — запрет на персональные советы
+        по питанию/БАДам/калориям до прохождения screening.
     """
     extra_hint_text = (extra_hint or "").strip()
     extra_hint_block = (
@@ -364,15 +369,39 @@ def render_system_prompt(
         if extra_hint_text
         else ""
     )
-    return SYSTEM_PROMPT_TEMPLATE.format(
-        today=today.isoformat(),
+
+    # Type-tolerant: today/master_context могут приходить как строки
+    # (например в unit-тестах render_system_prompt), так и как полноценные
+    # объекты (date / MasterContext) в проде. Извлекаем текст безопасно.
+    if hasattr(today, "isoformat"):
+        today_text = today.isoformat()
+    else:
+        today_text = str(today)
+    if hasattr(master_context, "summary_text"):
+        masters_summary = master_context.summary_text or "(нет активных мастеров)"
+    else:
+        masters_summary = str(master_context) or "(нет активных мастеров)"
+
+    prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        today=today_text,
         client_name=client_name.strip() or "клиент",
         bookings_count=bookings_count,
-        masters_summary=master_context.summary_text or "(нет активных мастеров)",
+        masters_summary=masters_summary,
         client_history_block=_render_client_history(last_visits or []),
         fewshot_block=_render_fewshot_block(),
         extra_hint_block=extra_hint_block,
     )
+
+    if advice_mode == "degraded":
+        prompt += (
+            "\n\nВАЖНО (degraded-advice mode): пользователь ещё не прошёл "
+            "health screening (TIER-B). Не давай персональных советов по "
+            "питанию, не рекомендуй БАДы, не делай выводов про калории/БЖУ. "
+            "На health-вопросы отвечай: «Чтобы посоветовать аккуратно, нужно "
+            "пройти короткий screening — напиши «настрой советы»»."
+        )
+
+    return prompt
 
 
 def _render_fewshot_block() -> str:
