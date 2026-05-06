@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.utils import timezone
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
@@ -364,6 +365,76 @@ async def _maybe_send_evening_inline(
             "evening_inline.unexpected user=%s err=%s",
             getattr(bot_user, "max_user_id", "?"), exc,
         )
+
+    # DRF-274 (B-4): cross-domain insight surfacing — best-effort.
+    # Skip if feature flag off or user has eating_disorder flag set.
+    # Errors NEVER propagate up the log_meal flow.
+    # B-1 review fix: health_flags is a model field on BotUser, not nested in context.
+    if (
+        getattr(settings, "CROSS_DOMAIN_ENABLED", False)
+        and not (bot_user.health_flags or {}).get("eating_disorder")
+    ):
+        try:
+            await _maybe_send_cross_domain_card(
+                bot=callback.bot, chat_id=chat_id, bot_user=bot_user,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, never break log flow
+            logger.warning(
+                "cross_domain.hook_failed_silently user=%s",
+                bot_user.max_user_id,
+                exc_info=True,
+            )
+
+
+async def _maybe_send_cross_domain_card(*, bot, chat_id: int, bot_user) -> None:
+    """Fetch + render + send a cross-domain insight card. Best-effort.
+
+    Caller MUST wrap this in try/except — see `on_log_meal`. Internally we
+    also swallow API/network errors so the food log flow stays unaffected
+    even if this helper is invoked elsewhere.
+
+    Logs are PII-safe: shown_id / rule_slug only, never insight_text.
+    """
+    # Re-check the gates here so the helper itself is safe to call directly
+    # (used by tests + future entry points).
+    if not getattr(settings, "CROSS_DOMAIN_ENABLED", False):
+        return
+    # B-1 review fix: health_flags is a real model field on BotUser
+    # (services_app/models.py:1135), NOT nested in `context`. Use the field directly.
+    if (bot_user.health_flags or {}).get("eating_disorder"):
+        return
+
+    # Lazy import — handlers/cross_domain.py imports nutrition_client which
+    # imports django.conf — top-level import would create a cycle on boot.
+    from maxbot.handlers.cross_domain import render_cross_domain_card
+
+    client = get_nutrition_client()
+    try:
+        insight = await client.get_cross_domain_insights(
+            external_user_id=external_user_id_for(bot_user),
+        )
+    except (NutritionUnavailableError, NutritionAPIError):
+        # Swallow — flag-gated feature, never break log flow.
+        return
+
+    if insight is None:
+        return
+
+    text, attachments = render_cross_domain_card(insight)
+    await bot.send_message(chat_id=chat_id, text=text, attachments=attachments)
+    logger.info(
+        "cross_domain.card_sent user=%s shown_id=%s rule=%s",
+        bot_user.max_user_id, insight.shown_id, insight.rule_slug,
+    )
+
+    # Fire-and-forget telemetry: mark as seen.
+    try:
+        await client.post_cross_domain_seen(
+            external_user_id=external_user_id_for(bot_user),
+            shown_id=insight.shown_id,
+        )
+    except (NutritionUnavailableError, NutritionAPIError):
+        return
 
 
 @router.message_created(F.message.body.text.lower().in_(("/дневник", "/diary", "дневник")))

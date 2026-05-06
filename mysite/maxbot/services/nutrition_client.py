@@ -195,6 +195,25 @@ class DeficitsResponse:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class CrossDomainInsight:
+    """DRF-274 (B-4) — cross-domain insight surfaced after a food log.
+
+    Mapped from Ayla `GET /api/v1/nutrition/internal/insights/cross_domain/`
+    nested envelope: `{"data": {"has_insight": true, "insight": {...}}}`.
+
+    Fields are personalized — `insight_text` / `rationale_text` MUST NOT be
+    logged at INFO level (PII-safe convention).
+    """
+
+    shown_id: str
+    rule_slug: str
+    insight_text: str
+    rationale_text: str
+    service_category_slug: str
+    disclaimer_text: str
+
+
 class NutritionClient:
     """Async client. One instance shared by handlers; circuit state is per-instance.
 
@@ -733,6 +752,149 @@ class NutritionClient:
                 entries=list(body.get("entries") or []),
                 raw=body,
             )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+    # ── DRF-274 (B-4): cross-domain insights ───────────────────────────────
+
+    async def get_cross_domain_insights(
+        self, *, external_user_id: str,
+    ) -> CrossDomainInsight | None:
+        """GET /api/v1/nutrition/internal/insights/cross_domain/.
+
+        Returns:
+            CrossDomainInsight: when Ayla returns `has_insight=True`.
+            None: when Ayla returns `has_insight=False` OR 404.
+
+        Raises:
+            NutritionUnavailableError: circuit open, network error, 5xx, timeout.
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = (
+            f"{self._base_url}/api/v1/nutrition/internal/insights/cross_domain/"
+        )
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            logger.warning(
+                "nutrition_client.cross_domain.network ext=%s err=%s",
+                external_user_id, type(exc).__name__,
+            )
+            raise NutritionUnavailableError(
+                f"network: {type(exc).__name__}",
+            ) from exc
+
+        if resp.status_code == 404:
+            return None
+        if resp.status_code == 200:
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            if not body.get("has_insight"):
+                return None
+            insight = body.get("insight") or {}
+            return CrossDomainInsight(
+                shown_id=str(insight.get("shown_id") or ""),
+                rule_slug=str(insight.get("rule_slug") or ""),
+                insight_text=str(insight.get("insight_text") or ""),
+                rationale_text=str(insight.get("rationale_text") or ""),
+                service_category_slug=str(
+                    insight.get("service_category_slug") or "",
+                ),
+                disclaimer_text=str(insight.get("disclaimer_text") or ""),
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            logger.warning(
+                "nutrition_client.cross_domain.5xx status=%d ext=%s",
+                resp.status_code, external_user_id,
+            )
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+    async def post_cross_domain_seen(
+        self, *, external_user_id: str, shown_id: str,
+    ) -> bool:
+        """POST /insights/cross_domain/seen/{shown_id}/. Idempotent telemetry."""
+        return await self._post_cross_domain_action(
+            external_user_id=external_user_id,
+            shown_id=shown_id,
+            action="seen",
+        )
+
+    async def post_cross_domain_dismiss(
+        self, *, external_user_id: str, shown_id: str,
+    ) -> bool:
+        """POST /insights/cross_domain/dismiss/{shown_id}/."""
+        return await self._post_cross_domain_action(
+            external_user_id=external_user_id,
+            shown_id=shown_id,
+            action="dismiss",
+        )
+
+    async def post_cross_domain_convert(
+        self,
+        *,
+        external_user_id: str,
+        shown_id: str,
+        appointment_id: str,
+    ) -> bool:
+        """POST /insights/cross_domain/convert/{shown_id}/ with appointment_id."""
+        return await self._post_cross_domain_action(
+            external_user_id=external_user_id,
+            shown_id=shown_id,
+            action="convert",
+            json_body={"appointment_id": appointment_id},
+        )
+
+    async def _post_cross_domain_action(
+        self,
+        *,
+        external_user_id: str,
+        shown_id: str,
+        action: str,
+        json_body: dict[str, Any] | None = None,
+    ) -> bool:
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = (
+            f"{self._base_url}/api/v1/nutrition/internal/insights/"
+            f"cross_domain/{action}/{shown_id}/"
+        )
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.post(url, headers=headers, json=json_body or {})
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            logger.warning(
+                "nutrition_client.cross_domain.%s.network ext=%s err=%s",
+                action, external_user_id, type(exc).__name__,
+            )
+            raise NutritionUnavailableError(
+                f"network: {type(exc).__name__}",
+            ) from exc
+
+        if 200 <= resp.status_code < 300:
+            self._circuit.record_success()
+            return True
         if resp.status_code >= 500:
             self._circuit.record_failure(now=now)
             raise NutritionUnavailableError(f"http_{resp.status_code}")
