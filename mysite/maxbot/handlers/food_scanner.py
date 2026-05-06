@@ -13,17 +13,21 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.utils import timezone
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.enums.attachment import AttachmentType
 from maxapi.types import MessageCallback, MessageCreated
 
-from maxbot import ai_ui
+from maxbot import ai_ui, keyboards
+from maxbot.evening_inline import should_trigger_evening_inline
 from maxbot.menu_state import send_with_main_menu
+from maxbot.nutrition_settings_helpers import set_setting
 from maxbot.personalization import get_or_create_bot_user
 from maxbot.services.ayla_user_proxy import external_user_id_for
 from maxbot.services.nutrition_client import (
@@ -32,6 +36,8 @@ from maxbot.services.nutrition_client import (
     NutritionUnavailableError,
     get_nutrition_client,
 )
+from django.conf import settings as django_settings
+from maxbot.states import NutritionAnketaStates
 
 
 logger = logging.getLogger("maxbot.food_scanner")
@@ -39,6 +45,11 @@ router = Router()
 
 PHOTO_DOWNLOAD_TIMEOUT_S = 8.0
 MAX_PHOTO_BYTES = 10 * 1024 * 1024  # Ayla serializer caps at 10 MiB.
+
+
+def _now_msk() -> datetime:
+    """Current datetime в Europe/Moscow. Module-level for monkeypatch in tests."""
+    return datetime.now(ZoneInfo("Europe/Moscow"))
 
 
 # ─── Photo upload trigger ──────────────────────────────────────────────────
@@ -67,6 +78,34 @@ async def on_photo_message(event: MessageCreated, context: MemoryContext) -> Non
         return
 
     chat_id = event.message.recipient.chat_id
+
+    # NUTRITION_ENABLED gate — feature flag (Part 1 hotfix). До деплоя
+    # Ayla DRF-300..303 endpoints — фото не идёт в Ayla. Юзер видит
+    # «Скоро будет» (тот же UX что в nutrition_entry::COMING_SOON_TEXT).
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🍎 Дневник питания\n\n"
+                "Скоро будет — фича в разработке. Когда подключим, "
+                "посчитаю калории по фото блюда."
+            ),
+        )
+        return
+
+    # FSM-aware skip — если юзер сейчас в анкете, не запускаем scan
+    # (Design Doc v2 §5.5). Подсказываем продолжить FSM.
+    state = await context.get_state()
+    if state is not None and str(state).startswith("NutritionAnketaStates"):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Сейчас отвечаю на вопросы анкеты — "
+                "пришли число / нажми кнопку, чтобы продолжить."
+            ),
+        )
+        return
+
     sender = event.message.sender
     bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
 
@@ -99,46 +138,55 @@ async def on_photo_message(event: MessageCreated, context: MemoryContext) -> Non
     external_id = external_user_id_for(bot_user)
     client = get_nutrition_client()
 
+    # Edit-message loading pattern (Design Doc §5.1) — сразу шлём
+    # «👀 Распознаю...», потом edit'им на финал. Юзер видит мгновенный
+    # ответ что бот работает, не "висит".
+    loading_msg = await event.bot.send_message(
+        chat_id=chat_id,
+        text=ai_ui.render_loading_card(),
+    )
+    loading_msg_id = getattr(loading_msg, "message_id", None)
+
+    async def _replace(text: str, attachments=None) -> None:
+        """Edit loading-card на финал. Если message_id потерялся
+        (старая API), fallback на новый send_message."""
+        if loading_msg_id is not None:
+            try:
+                await event.bot.edit_message(
+                    message_id=loading_msg_id, text=text,
+                    attachments=attachments,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("food_scanner.edit_failed err=%s", exc)
+        # Fallback — новое сообщение
+        await event.bot.send_message(
+            chat_id=chat_id, text=text, attachments=attachments,
+        )
+
     try:
         scan = await client.scan_photo(
             external_user_id=external_id,
             image_bytes=image_bytes,
         )
     except FoodNotRecognizedError:
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
-            text="Не получилось распознать блюдо на фото. Попробуйте сделать фото получше.",
-            bot_user=bot_user,
+        await _replace(
+            "Не получилось распознать блюдо на фото. Попробуй фото получше.",
         )
         return
     except NutritionUnavailableError as exc:
         logger.warning("food_scanner.unavailable user=%s reason=%s",
                        bot_user.max_user_id, exc)
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
-            text="Сканер еды временно недоступен. Попробуйте через минуту.",
-            bot_user=bot_user,
-        )
+        await _replace("Сканер еды временно недоступен. Попробуй через минуту.")
         return
     except NutritionAPIError as exc:
         logger.exception("food_scanner.api_error user=%s err=%s",
                          bot_user.max_user_id, exc)
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id,
-            text="Что-то пошло не так со сканером. Попробуйте позже.",
-            bot_user=bot_user,
-        )
+        await _replace("Что-то пошло не так со сканером. Попробуй позже.")
         return
 
-    text, attachments = ai_ui.render_food_scan(scan.raw)
-    if attachments:
-        await event.bot.send_message(
-            chat_id=chat_id, text=text, attachments=attachments,
-        )
-    else:
-        await send_with_main_menu(
-            bot=event.bot, chat_id=chat_id, text=text, bot_user=bot_user,
-        )
+    text, attachments = ai_ui.render_food_scan_v2(scan.raw)
+    await _replace(text, attachments=attachments if attachments else None)
 
 
 # ─── Consent callbacks ─────────────────────────────────────────────────────
@@ -235,25 +283,175 @@ async def on_log_meal(callback: MessageCallback, context: MemoryContext) -> None
         "breakfast": "завтрак", "lunch": "обед",
         "dinner": "ужин", "snack": "перекус",
     }[meal_type]
-    await callback.bot.send_message(
-        chat_id=chat_id,
-        text=f"✅ Записала {meal_label}: {log.dish_name} ({int(log.calories)} ккал).",
+    text, attachments = ai_ui.render_food_logged_with_footer(
+        meal_label=meal_label, dish_name=log.dish_name, kcal=int(log.calories),
     )
+    await callback.bot.send_message(
+        chat_id=chat_id, text=text, attachments=attachments,
+    )
+
+    await _maybe_send_evening_inline(
+        callback.bot, chat_id=chat_id, bot_user=bot_user,
+        client=client, external_id=external_id,
+    )
+
+
+async def _maybe_send_evening_inline(
+    bot, *, chat_id: int, bot_user, client, external_id: str,
+) -> None:
+    """Phase 3.1 Part 2D.3 T05: post-log evening daily-report trigger.
+
+    Best-effort: any failure (no summary, no chat_id, etc.) silently logs
+    and returns — does not affect the primary log_meal acknowledgement.
+    """
+    try:
+        now_local_msk = _now_msk()
+        try:
+            user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            user_tz = ZoneInfo("Europe/Moscow")
+        now_local = now_local_msk.astimezone(user_tz)
+        today_iso = now_local.date().isoformat()
+
+        # Cheap pre-check using cached fields BEFORE fetching summary
+        settings_dict = bot_user.nutrition_settings or {}
+        if settings_dict.get("daily_report_time") == "off":
+            return
+        if settings_dict.get("evening_inline_shown_at") == today_iso:
+            return
+        if now_local.hour < 18 or now_local.hour >= 22:
+            return
+
+        # Fetch fresh summary (with AI comment) for entries count + render
+        try:
+            summary = await client.daily_summary(
+                external_user_id=external_id, with_comment=True,
+            )
+        except (NutritionUnavailableError, NutritionAPIError) as exc:
+            logger.warning(
+                "evening_inline.summary_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            return
+
+        if not should_trigger_evening_inline(
+            bot_user, summary=summary,
+            now_local=now_local, today_local_date=today_iso,
+        ):
+            return
+
+        try:
+            water_today = await client.get_water_today(external_user_id=external_id)
+        except (NutritionUnavailableError, NutritionAPIError):
+            water_today = None
+
+        eating_disorder = bool(
+            (bot_user.health_flags or {}).get("eating_disorder", False)
+        )
+        from maxbot import keyboards
+        text = ai_ui.render_daily_full_report(
+            summary, water_today, eating_disorder=eating_disorder,
+        )
+        await bot.send_message(
+            chat_id=chat_id, text=text,
+            attachments=[keyboards.daily_report_footer_keyboard()],
+        )
+        await sync_to_async(set_setting)(
+            bot_user, "evening_inline_shown_at", today_iso,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Never break log_meal flow.
+        logger.warning(
+            "evening_inline.unexpected user=%s err=%s",
+            getattr(bot_user, "max_user_id", "?"), exc,
+        )
+
+    # DRF-274 (B-4): cross-domain insight surfacing — best-effort.
+    # Skip if feature flag off or user has eating_disorder flag set.
+    # Errors NEVER propagate up the log_meal flow.
+    # B-1 review fix: health_flags is a model field on BotUser, not nested in context.
+    if (
+        getattr(settings, "CROSS_DOMAIN_ENABLED", False)
+        and not (bot_user.health_flags or {}).get("eating_disorder")
+    ):
+        try:
+            await _maybe_send_cross_domain_card(
+                bot=callback.bot, chat_id=chat_id, bot_user=bot_user,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, never break log flow
+            logger.warning(
+                "cross_domain.hook_failed_silently user=%s",
+                bot_user.max_user_id,
+                exc_info=True,
+            )
+
+
+async def _maybe_send_cross_domain_card(*, bot, chat_id: int, bot_user) -> None:
+    """Fetch + render + send a cross-domain insight card. Best-effort.
+
+    Caller MUST wrap this in try/except — see `on_log_meal`. Internally we
+    also swallow API/network errors so the food log flow stays unaffected
+    even if this helper is invoked elsewhere.
+
+    Logs are PII-safe: shown_id / rule_slug only, never insight_text.
+    """
+    # Re-check the gates here so the helper itself is safe to call directly
+    # (used by tests + future entry points).
+    if not getattr(settings, "CROSS_DOMAIN_ENABLED", False):
+        return
+    # B-1 review fix: health_flags is a real model field on BotUser
+    # (services_app/models.py:1135), NOT nested in `context`. Use the field directly.
+    if (bot_user.health_flags or {}).get("eating_disorder"):
+        return
+
+    # Lazy import — handlers/cross_domain.py imports nutrition_client which
+    # imports django.conf — top-level import would create a cycle on boot.
+    from maxbot.handlers.cross_domain import render_cross_domain_card
+
+    client = get_nutrition_client()
+    try:
+        insight = await client.get_cross_domain_insights(
+            external_user_id=external_user_id_for(bot_user),
+        )
+    except (NutritionUnavailableError, NutritionAPIError):
+        # Swallow — flag-gated feature, never break log flow.
+        return
+
+    if insight is None:
+        return
+
+    text, attachments = render_cross_domain_card(insight)
+    await bot.send_message(chat_id=chat_id, text=text, attachments=attachments)
+    logger.info(
+        "cross_domain.card_sent user=%s shown_id=%s rule=%s",
+        bot_user.max_user_id, insight.shown_id, insight.rule_slug,
+    )
+
+    # Fire-and-forget telemetry: mark as seen.
+    try:
+        await client.post_cross_domain_seen(
+            external_user_id=external_user_id_for(bot_user),
+            shown_id=insight.shown_id,
+        )
+    except (NutritionUnavailableError, NutritionAPIError):
+        return
 
 
 @router.message_created(F.message.body.text.lower().in_(("/дневник", "/diary", "дневник")))
 async def on_diary_command(event: MessageCreated, context: MemoryContext) -> None:
-    """`/дневник` → daily summary card (today UTC by default)."""
+    """`/дневник` → hybrid daily report (Part 2C: summary + water + render)."""
     if event.message.sender is None:
         return
     chat_id = event.message.recipient.chat_id
     sender = event.message.sender
     bot_user, _ = await get_or_create_bot_user(sender.user_id, sender.full_name)
 
+    extid = external_user_id_for(bot_user)
     client = get_nutrition_client()
+
     try:
         summary = await client.daily_summary(
-            external_user_id=external_user_id_for(bot_user),
+            external_user_id=extid, with_comment=True,
         )
     except NutritionUnavailableError:
         await send_with_main_menu(
@@ -272,9 +470,23 @@ async def on_diary_command(event: MessageCreated, context: MemoryContext) -> Non
         )
         return
 
-    text = ai_ui.render_daily_summary(summary.raw)
-    await send_with_main_menu(
-        bot=event.bot, chat_id=chat_id, text=text, bot_user=bot_user,
+    water_today = None
+    try:
+        water_today = await client.get_water_today(external_user_id=extid)
+    except (NutritionUnavailableError, NutritionAPIError):
+        logger.info("food_scanner.diary water unavailable for user=%s",
+                    bot_user.max_user_id)
+
+    eating_disorder = bool(
+        (bot_user.health_flags or {}).get("eating_disorder", False)
+    )
+    text = ai_ui.render_daily_full_report(
+        summary, water_today, eating_disorder=eating_disorder,
+    )
+    await event.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        attachments=[keyboards.daily_report_footer_keyboard()],
     )
 
 

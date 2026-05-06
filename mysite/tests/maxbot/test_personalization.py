@@ -74,6 +74,94 @@ def test_greet_text_fallback_to_display_name_when_no_client_name():
     assert "MAX_Display" in text
 
 
+# ─── Phase 3 T07: segmentation by bookings_count ────────────────────────────
+
+
+def test_greet_text_silent_user_no_bookings_mentions_diary_if_enabled():
+    """Молчун (был в боте, 0 записей в салон) + nutrition flag on →
+    приветствие упоминает дневник как новую возможность."""
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, client_name="", display_name="Аня")
+    text = greet_text(bu, is_new=False, bookings_count=0, nutrition_enabled=True)
+    assert "дневник" in text.lower() or "питани" in text.lower()
+
+
+def test_greet_text_returning_client_mentions_diary_if_enabled():
+    """Клиент салона (>=1 запись) + nutrition flag on →
+    тёплое приветствие по имени + кросс-промо дневника."""
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, client_name="Анна")
+    text = greet_text(bu, is_new=False, bookings_count=2, nutrition_enabled=True)
+    assert "Анна" in text
+    assert "дневник" in text.lower() or "питани" in text.lower()
+
+
+def test_greet_text_returning_client_without_nutrition_no_diary_mention():
+    """Если NUTRITION_ENABLED=False — не упоминаем дневник в приветствии."""
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, client_name="Анна")
+    text = greet_text(bu, is_new=False, bookings_count=2, nutrition_enabled=False)
+    assert "Анна" in text
+    assert "дневник" not in text.lower() and "питани" not in text.lower()
+
+
+def test_greet_text_silent_user_without_nutrition_no_diary_mention():
+    """Молчун + NUTRITION_ENABLED=False — обычное returning-приветствие, без дневника."""
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, display_name="Аня")
+    text = greet_text(bu, is_new=False, bookings_count=0, nutrition_enabled=False)
+    assert "дневник" not in text.lower() and "питани" not in text.lower()
+
+
+def test_greet_text_new_user_unchanged_by_nutrition_flag():
+    """Новый юзер видит исходное `GREETING_NEW_USER` независимо от флага.
+
+    Логика: `is_new=True` имеет приоритет — приветствие про массажный салон
+    (бот представляется), про дневник он узнаёт уже по кнопке «🍎 Дневник»
+    в главном меню.
+    """
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, client_name="", display_name="")
+    t1 = greet_text(bu, is_new=True, bookings_count=0, nutrition_enabled=True)
+    t2 = greet_text(bu, is_new=True, bookings_count=0, nutrition_enabled=False)
+    assert t1 == t2
+    assert "Здравствуйте" in t1
+
+
+def test_greet_text_returning_client_high_bookings_uses_returning_template():
+    """Возвращающийся клиент с большим числом записей — то же что и обычный returning client.
+
+    Не делаем VIP-сегмент — это переусложнение (YAGNI).
+    """
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, client_name="Тест")
+    text = greet_text(bu, is_new=False, bookings_count=42, nutrition_enabled=True)
+    assert "Тест" in text
+
+
+def test_greet_text_kwargs_optional_for_backward_compat():
+    """Старые callers не передают bookings_count/nutrition_enabled — не должно ломаться."""
+    from maxbot.personalization import greet_text
+    from services_app.models import BotUser
+
+    bu = BotUser(max_user_id=1, client_name="Иван")
+    # Старый вызов как в тестах выше: только is_new
+    text = greet_text(bu, is_new=False)
+    assert "Иван" in text
+
+
 # ─── update_context ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

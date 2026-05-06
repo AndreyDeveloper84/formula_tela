@@ -1,0 +1,108 @@
+name: Deploy DEV bot (SSH)
+
+# Auto-deploy MAX dev-бота на push в dev-ветку.
+#
+# Update-скрипт inline (как в deploy-staging.yml):
+#   git fetch + reset --hard origin/dev → pip install → migrate →
+#   systemctl restart formula-tela-maxbot-dev.
+#
+# Initial bootstrap (clone, venv setup, nginx location, sudoers, webhook subscribe)
+# делается ВРУЧНУЮ через `/tmp/deploy_dev_bot.sh` один раз — этот workflow
+# только update'ит уже-настроенный bot.
+#
+# Что НЕ затрагивается:
+#   - prod (formula-tela-maxbot.service, formula_tela/, mysite_prod DB) — другой
+#     systemd unit, другой webhook path, другой токен.
+#   - staging web (formula_tela_stg/) — отдельный workflow deploy-staging.yml.
+#   - dev .env / token — они уже на сервере, мы их не трогаем.
+#
+# Secrets берём из staging environment (те же что у deploy-staging.yml):
+#   SSH_HOST, SSH_USER, SSH_KEY — доступ к app.penza.taxi через taximeter.
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      # Триггерим только на изменения связанные с ботом — экономим минуты Actions
+      # и не дёргаем ребилд при изменении web-only файлов (templates, agents).
+      - 'mysite/maxbot/**'
+      - 'mysite/services_app/models.py'
+      - 'mysite/services_app/migrations/**'
+      - 'mysite/tests/maxbot/**'
+      - 'mysite/tests/fixtures/ayla_mock.py'
+      - 'requirements.txt'
+      - '.github/workflows/deploy-dev-bot.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  # Отдельная группа от staging — можно параллельно. cancel-in-progress=true:
+  # если 3 push'а подряд — деплой только последнего.
+  group: dev-bot-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # SSH_HOST/USER/KEY лежат в staging environment (deploy-staging.yml тоже их там
+    # берёт). Без environment: secrets возвращаются пустыми → "Error: missing server host".
+    environment:
+      name: staging
+    permissions:
+      contents: read
+
+    steps:
+      - name: Deploy dev-bot via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: 22
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 10m
+          # set -euo pipefail: ранний fail на любой ошибке (git/pip/migrate),
+          # systemctl restart выполняется только если все предыдущие шаги ОК.
+          # .env на сервере не трогаем — token там уже правильный (dev-bot).
+          script: |
+            set -euo pipefail
+            DEV_DIR=/home/taximeter/mysite/formula_tela_dev
+            cd "$DEV_DIR"
+
+            echo "═══ git fetch + reset --hard origin/dev ═══"
+            git fetch --all --prune
+            git reset --hard origin/dev
+            git log --oneline -1
+
+            echo "═══ pip install (no-op if requirements unchanged) ═══"
+            "$DEV_DIR/.venv312/bin/pip" install -q -r requirements.txt
+
+            echo "═══ migrate (mysite_stage shared с staging-web) ═══"
+            cd "$DEV_DIR/mysite"
+            DJANGO_SETTINGS_MODULE=mysite.settings.production \
+              "$DEV_DIR/.venv312/bin/python" manage.py migrate --noinput
+
+            echo "═══ systemctl restart formula-tela-maxbot-dev ═══"
+            sudo /bin/systemctl restart formula-tela-maxbot-dev
+            echo "✓ deploy done"
+
+      - name: Smoke check — bot is running
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: 22
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 1m
+          script: |
+            # `systemctl is-active --quiet` работает без sudo для всех (read-only).
+            # journalctl нужен sudo + он в NOPASSWD-списке.
+            sleep 5
+            if systemctl is-active --quiet formula-tela-maxbot-dev; then
+              echo "✓ formula-tela-maxbot-dev: active"
+            else
+              echo "❌ formula-tela-maxbot-dev not active"
+              sudo /bin/journalctl -u formula-tela-maxbot-dev --since '60 seconds ago' --no-pager | tail -30
+              exit 1
+            fi
+            cd /home/taximeter/mysite/formula_tela_dev
+            echo "Deployed SHA: $(git rev-parse HEAD)"

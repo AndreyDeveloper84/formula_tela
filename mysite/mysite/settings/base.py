@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
     "payments",
+    "maxbot",
 ]
 
 MIDDLEWARE = [
@@ -309,6 +310,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "maxbot.tasks.send_repeat_offers",
         "schedule": crontab(hour=12, minute=0, day_of_week="monday"),
     },
+    # Phase 3.1 Part 2D.2 T05: hourly trigger, per-user time filter inside task
+    "maxbot-daily-reports-hourly": {
+        "task": "maxbot.tasks.send_daily_reports",
+        "schedule": crontab(minute=0),  # каждый час в :00, per-user filter inside
+    },
+    # Phase 3.1 Part 2D.2 T08: adaptive water reminders 4h × UTC, per-user filters
+    "maxbot-water-reminders-4h": {
+        "task": "maxbot.tasks.send_water_reminders",
+        "schedule": crontab(minute=0, hour="0,4,8,12,16,20"),  # UTC × 6/day
+    },
 }
 
 # === Email (SMTP) ===
@@ -339,6 +350,17 @@ OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")  # HTTP-прокси (http://user:p
 # dev/staging/prod env; empty values disable food scanner.
 AYLA_BASE_URL = os.getenv("AYLA_BASE_URL", "")
 NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
+
+# Feature flag: показывать ли кнопку «🍎 Дневник питания» в main_menu_keyboard.
+# Default OFF — Phase 3.1 Part 1 готов code-wise, но Ayla backend ещё не
+# задеплоил DRF-300..303 internal endpoints. Когда Ayla готов — поставить
+# NUTRITION_ENABLED=1 в .env + рестартануть бота. См.
+# `docs/plans/maxbot-phase3-ayla-spec.md` §6 acceptance criteria.
+NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", default=False)
+
+# DRF-269/DRF-274 (B-4): cross-domain insights bot integration.
+# Default OFF. Production rollout blocked by DRF-271 (B-3) cumulative + DRF-275.
+CROSS_DOMAIN_ENABLED = _bool("CROSS_DOMAIN_ENABLED", default=False)
 
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")

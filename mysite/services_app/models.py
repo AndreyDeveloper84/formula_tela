@@ -1126,6 +1126,38 @@ class BotUser(models.Model):
         ),
     )
 
+    # Phase 3 — Nutrition Tracker (T10).
+    timezone = models.CharField(
+        "Timezone (IANA)",
+        max_length=64, default="Europe/Moscow", blank=True,
+        help_text="IANA timezone для quiet hours и push-времени дневного отчёта.",
+    )
+    health_flags = models.JSONField(
+        "Health flags (cache)",
+        default=dict, blank=True,
+        help_text=(
+            "Кэш health-флагов из Ayla profile для system prompt: "
+            'pregnant, breastfeeding, diabetes_t1/t2, prediabetes, hypertension, '
+            'gi_problems, thyroid, menopause, eating_disorder, meds, allergies (list), '
+            'allergies_vague, *_skipped. Sync при upsert профиля в Ayla.'
+        ),
+    )
+    nutrition_onboarded_at = models.DateTimeField(
+        "Nutrition анкета пройдена",
+        null=True, blank=True,
+        help_text="Timestamp когда пользователь успешно завершил анкету (complete=true).",
+    )
+    nutrition_settings = models.JSONField(
+        "Nutrition UI settings",
+        default=dict, blank=True,
+        help_text=(
+            'JSON: {"daily_report_time": "21:00", "daily_report_enabled": true, '
+            '"water_reminders_enabled": false, "evening_inline_shown_at": "...", '
+            '"food_disclaimer_shown_at": "...", "alcohol_hint_shown_at": "...", '
+            '"daily_report": {date, content, generated_at} cache}'
+        ),
+    )
+
     class Meta:
         verbose_name = "Пользователь MAX-бота"
         verbose_name_plural = "Пользователи MAX-бота"
@@ -1701,6 +1733,164 @@ class BookingReminder(models.Model):
 
     def __str__(self):
         return f"{self.get_kind_display()} {self.master_name} {self.visit_at:%d.%m %H:%M}"
+
+
+class NudgeEvent(models.Model):
+    """Phase 3.2B: Lifecycle event для каждого нуджа.
+
+    Создаётся диспатчером перед отправкой. message FK устанавливается после
+    успешной отправки (link с конкретным `Message`). Telemetry-поля
+    (seen_at/clicked_at/...) обновляются handler'ами при interaction.
+    """
+
+    class Status(models.TextChoices):
+        DETECTED = "detected", "Обнаружен"
+        BLOCKED = "blocked", "Заблокирован"
+        SENT = "sent", "Отправлен"
+        SEEN = "seen", "Просмотрен"
+        CLICKED = "clicked", "Кликнут"
+        IGNORED = "ignored", "Проигнорирован"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bot_user = models.ForeignKey(
+        "BotUser", on_delete=models.CASCADE, related_name="nudge_events",
+        verbose_name="Пользователь",
+    )
+    kind = models.CharField("Тип", max_length=50, db_index=True)
+    nudge_class = models.CharField("Класс", max_length=20)  # service/care/marketing
+    priority = models.IntegerField("Приоритет", default=0)
+
+    detected_at = models.DateTimeField("Обнаружен", auto_now_add=True)
+    sent_at = models.DateTimeField("Отправлен", null=True, blank=True)
+    blocked_at = models.DateTimeField("Заблокирован", null=True, blank=True)
+    blocked_reason = models.CharField(
+        "Причина блока", max_length=50, null=True, blank=True,
+    )
+    seen_at = models.DateTimeField("Просмотрен", null=True, blank=True)
+    clicked_at = models.DateTimeField("Кликнут", null=True, blank=True)
+    clicked_button = models.CharField(
+        "Кнопка", max_length=50, null=True, blank=True,
+    )
+    ignored_at = models.DateTimeField("Проигнорирован", null=True, blank=True)
+
+    message = models.OneToOneField(
+        "Message", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="nudge_event", verbose_name="Сообщение",
+    )
+    payload = models.JSONField("Payload", default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Нудж — событие"
+        verbose_name_plural = "Нуджи — события"
+        indexes = [
+            models.Index(fields=["bot_user", "kind", "-detected_at"]),
+            models.Index(fields=["bot_user", "nudge_class", "-sent_at"]),
+        ]
+        ordering = ["-detected_at"]
+
+    def __str__(self):
+        return f"{self.kind} @ {self.detected_at:%Y-%m-%d %H:%M}"
+
+
+class NudgeMute(models.Model):
+    """Phase 3.2B: Заглушка для определённого kind или класса нуджа.
+
+    XOR: либо `kind`, либо `nudge_class`, ровно один.
+    """
+
+    class Mode(models.TextChoices):
+        OFF = "off", "Не показывать"
+        LESS_OFTEN = "less_often", "Реже"
+
+    class Reason(models.TextChoices):
+        USER_EXPLICIT_OFF = "user_explicit_off", "Кнопка «Не показывай»"
+        USER_EXPLICIT_LESS = "user_explicit_less", "Кнопка «Реже»"
+        USER_SETTINGS = "user_settings", "Из настроек"
+        AUTO_IGNORED_TWICE = "auto_ignored_twice", "Дважды проигнорирован"
+
+    bot_user = models.ForeignKey(
+        "BotUser", on_delete=models.CASCADE, related_name="nudge_mutes",
+        verbose_name="Пользователь",
+    )
+    kind = models.CharField(
+        "Тип нуджа", max_length=50, null=True, blank=True, db_index=True,
+    )
+    nudge_class = models.CharField(
+        "Класс нуджа", max_length=20, null=True, blank=True,
+    )
+    mode = models.CharField(
+        "Режим", max_length=20, choices=Mode.choices, default=Mode.OFF,
+    )
+    reason = models.CharField(
+        "Причина", max_length=30, choices=Reason.choices,
+    )
+    expires_at = models.DateTimeField(
+        "Действует до", null=True, blank=True,
+        help_text="NULL = forever",
+    )
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Нудж — заглушка"
+        verbose_name_plural = "Нуджи — заглушки"
+        indexes = [
+            models.Index(fields=["bot_user", "kind"]),
+            models.Index(fields=["bot_user", "nudge_class"]),
+        ]
+        ordering = ["-created_at"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        has_kind = bool(self.kind)
+        has_class = bool(self.nudge_class)
+        if has_kind == has_class:
+            raise ValidationError(
+                "Нужно указать либо kind, либо nudge_class — но не оба сразу."
+            )
+
+    def __str__(self):
+        target = self.kind or self.nudge_class
+        return f"mute({target}, {self.mode})"
+
+
+class PatternRule(models.Model):
+    """Phase 3.2B: Конфиг для PatternDetector (реальные detectors — в 3.2C).
+
+    detector_function — FQN строка, импортируется лениво в 3.2C.
+    """
+
+    class Severity(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+
+    slug = models.SlugField("Slug", max_length=50, unique=True)
+    name_ru = models.CharField("Название", max_length=100)
+    detector_function = models.CharField(
+        "FQN детектора", max_length=200,
+        help_text="Полное имя async-функции, e.g. maxbot.nudges.detectors.evening_sweets",
+    )
+    min_repeats = models.IntegerField("Мин. повторов", default=1)
+    min_active_days = models.IntegerField("Мин. дней с активностью", default=1)
+    severity = models.CharField(
+        "Severity", max_length=10, choices=Severity.choices, default=Severity.LOW,
+    )
+    advice_template = models.TextField("Шаблон совета", blank=True)
+    requires_health_flags_absent = models.JSONField(
+        "Health-флаги, при которых пропускать",
+        default=list, blank=True,
+        help_text='Список slug-ов: ["eating_disorder", "pregnant"]',
+    )
+    is_active = models.BooleanField("Активно", default=True, db_index=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pattern rule"
+        verbose_name_plural = "Pattern rules"
+        ordering = ["slug"]
+
+    def __str__(self):
+        return f"{self.slug} ({self.severity})"
 
 
 class Message(models.Model):

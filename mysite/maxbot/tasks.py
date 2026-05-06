@@ -289,3 +289,277 @@ def send_repeat_offers(self):
 
     logger.info("send_repeat_offers: sent=%d skipped=%d", sent, skipped)
     return {"sent": sent, "skipped": skipped}
+
+
+# ─── Phase 3.1 Part 2C: daily report push 21:00 МСК ────────────────────────
+
+
+def _task_now_msk():
+    """Helper для mocking в тестах. Returns current datetime в Europe/Moscow."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("Europe/Moscow"))
+
+
+@shared_task(name="maxbot.tasks.send_daily_reports", bind=True, max_retries=1)
+def send_daily_reports(self):
+    """Phase 3.1 Part 2C+2D.2: hourly push дневного отчёта.
+
+    Beat schedule: crontab(minute=0) — каждый час в :00. Filter:
+      - settings.NUTRITION_ENABLED == True
+      - BotUser.nutrition_onboarded_at IS NOT NULL
+      - BotUser.chat_id IS NOT NULL
+      - nutrition_settings["daily_report_time"] == "{HH}:00" matching now's local hour
+
+    Default daily_report_time = "21:00" (если key отсутствует).
+    Value "off" → не шлём.
+
+    Per-user TZ через bot_user.timezone (default 'Europe/Moscow').
+    """
+    import asyncio
+    from zoneinfo import ZoneInfo
+
+    from django.conf import settings as django_settings
+    from notifications.max_bot import send_max_message
+    from services_app.models import BotUser
+
+    from maxbot import ai_ui, keyboards
+    from maxbot.services.ayla_user_proxy import external_user_id_for
+    from maxbot.services.nutrition_client import (
+        NutritionAPIError,
+        NutritionUnavailableError,
+        get_nutrition_client,
+    )
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        logger.info("daily_reports.skipped — NUTRITION_ENABLED=False")
+        return
+
+    eligible = BotUser.objects.filter(
+        nutrition_onboarded_at__isnull=False,
+        chat_id__isnull=False,
+    )
+    sent = 0
+    skipped = 0
+
+    client = get_nutrition_client()
+
+    for bot_user in eligible.iterator():
+        # Per-user time check — ТZ юзера + setting
+        time_setting = (bot_user.nutrition_settings or {}).get(
+            "daily_report_time", "21:00",
+        )
+        if time_setting == "off":
+            skipped += 1
+            continue
+        try:
+            target_hour = int(time_setting.split(":")[0])
+        except (ValueError, AttributeError):
+            target_hour = 21  # corrupt setting → default
+
+        try:
+            user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            user_tz = ZoneInfo("Europe/Moscow")
+        now_local = _task_now_msk().astimezone(user_tz)
+        if now_local.hour != target_hour:
+            skipped += 1
+            continue
+
+        extid = external_user_id_for(bot_user)
+        try:
+            summary, water_today = asyncio.run(_fetch_daily_data(client, extid))
+        except (NutritionUnavailableError, NutritionAPIError) as exc:
+            logger.warning(
+                "daily_reports.fetch_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "daily_reports.fetch_unexpected user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+
+        eating_disorder = bool(
+            (bot_user.health_flags or {}).get("eating_disorder", False)
+        )
+        text = ai_ui.render_daily_full_report(
+            summary, water_today, eating_disorder=eating_disorder,
+        )
+        try:
+            send_max_message(
+                bot_user.chat_id, text,
+                attachments=[keyboards.daily_report_footer_keyboard()],
+            )
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "daily_reports.send_failed user=%s chat=%s err=%s",
+                bot_user.max_user_id, bot_user.chat_id, exc,
+            )
+            skipped += 1
+
+    logger.info("daily_reports.done sent=%d skipped=%d", sent, skipped)
+    return {"sent": sent, "skipped": skipped}
+
+
+async def _fetch_daily_data(client, external_user_id):
+    """Fetch summary + water_today. Water — optional graceful skip."""
+    from maxbot.services.nutrition_client import (
+        NutritionAPIError,
+        NutritionUnavailableError,
+    )
+
+    summary = await client.daily_summary(
+        external_user_id=external_user_id, with_comment=True,
+    )
+    water_today = None
+    try:
+        water_today = await client.get_water_today(external_user_id=external_user_id)
+    except (NutritionUnavailableError, NutritionAPIError):
+        # Water gracefully skipped — render handles None
+        pass
+    return summary, water_today
+
+
+# ─── Phase 3.1 Part 2D.2 T08: adaptive water reminders 4h ──────────────────
+
+
+@shared_task(name="maxbot.tasks.send_water_reminders", bind=True, max_retries=1)
+def send_water_reminders(self):
+    """Phase 3.1 Part 2D.2: adaptive water reminders каждые 4 часа.
+
+    Beat schedule: crontab(minute=0, hour="0,4,8,12,16,20") — UTC × 6/day.
+    Per-user filter:
+      - settings.NUTRITION_ENABLED == True
+      - nutrition_onboarded_at IS NOT NULL
+      - chat_id IS NOT NULL
+      - nutrition_settings["water_reminders_enabled"] == True (opt-in)
+      - НЕ quiet hours (22:00–09:00 local time)
+      - today_total_ml < 50% от proportional_norm
+
+    Sends inline keyboard [+250 мл][+500 мл][Уже пью].
+    """
+    import asyncio
+    from zoneinfo import ZoneInfo
+
+    from django.conf import settings as django_settings
+
+    from notifications.max_bot import send_max_message
+    from services_app.models import BotUser
+
+    from maxbot import keyboards
+    from maxbot.nutrition_settings_helpers import (
+        calc_proportional_norm,
+        is_quiet_hours_for_user,
+    )
+    from maxbot.services.ayla_user_proxy import external_user_id_for
+    from maxbot.services.nutrition_client import (
+        NutritionAPIError,
+        NutritionUnavailableError,
+        get_nutrition_client,
+    )
+
+    if not getattr(django_settings, "NUTRITION_ENABLED", False):
+        logger.info("water_reminders.skipped — NUTRITION_ENABLED=False")
+        return
+
+    eligible = BotUser.objects.filter(
+        nutrition_onboarded_at__isnull=False,
+        chat_id__isnull=False,
+    )
+    sent = 0
+    skipped = 0
+
+    client = get_nutrition_client()
+    now_msk = _task_now_msk()
+    now_utc = now_msk.astimezone(ZoneInfo("UTC"))
+
+    for bot_user in eligible.iterator():
+        opt_in = bool(
+            (bot_user.nutrition_settings or {}).get("water_reminders_enabled", False)
+        )
+        if not opt_in:
+            skipped += 1
+            continue
+
+        if is_quiet_hours_for_user(bot_user, now_utc=now_utc):
+            skipped += 1
+            continue
+
+        try:
+            user_tz = ZoneInfo(bot_user.timezone or "Europe/Moscow")
+        except Exception:  # noqa: BLE001
+            user_tz = ZoneInfo("Europe/Moscow")
+
+        # Same-day dismiss skip (Design §7.7 «Уже пью» → до завтра молчим)
+        last_dismissed_iso = (bot_user.nutrition_settings or {}).get(
+            "last_water_dismissed_at"
+        )
+        if last_dismissed_iso:
+            try:
+                from datetime import datetime
+                last_dismissed = datetime.fromisoformat(last_dismissed_iso)
+                # Если same-day local — skip
+                local_now = now_utc.astimezone(user_tz)
+                local_dismissed = last_dismissed.astimezone(user_tz)
+                if local_dismissed.date() == local_now.date():
+                    skipped += 1
+                    continue
+            except (ValueError, AttributeError):
+                pass  # corrupt timestamp — ignore
+
+        local_hour = now_utc.astimezone(user_tz).hour
+
+        extid = external_user_id_for(bot_user)
+        try:
+            today = asyncio.run(client.get_water_today(external_user_id=extid))
+        except (NutritionUnavailableError, NutritionAPIError) as exc:
+            logger.warning(
+                "water_reminders.fetch_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "water_reminders.fetch_unexpected user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+            continue
+
+        proportional = calc_proportional_norm(
+            today.norm_ml, current_local_hour=local_hour,
+        )
+        threshold = proportional * 0.5
+        if today.total_ml >= threshold:
+            skipped += 1
+            continue
+
+        # Compose reminder text — Design §7.7
+        deficit = max(0, today.norm_ml - today.total_ml)
+        text = (
+            f"💧 Сегодня выпито: {today.total_ml} / {today.norm_ml} мл.\n"
+            f"До нормы — ещё {deficit} мл."
+        )
+
+        try:
+            send_max_message(
+                bot_user.chat_id, text,
+                attachments=[keyboards.water_reminder_buttons_keyboard()],
+            )
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "water_reminders.send_failed user=%s err=%s",
+                bot_user.max_user_id, exc,
+            )
+            skipped += 1
+
+    logger.info("water_reminders.done sent=%d skipped=%d", sent, skipped)
+    return {"sent": sent, "skipped": skipped}

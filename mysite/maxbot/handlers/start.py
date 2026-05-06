@@ -19,9 +19,15 @@ from maxapi.types import (
     MessageCreated,
 )
 
+from django.conf import settings
+
 from maxbot import keyboards
 from maxbot.menu_state import send_with_main_menu
-from maxbot.personalization import get_or_create_bot_user, greet_text
+from maxbot.personalization import (
+    get_client_history,
+    get_or_create_bot_user,
+    greet_text,
+)
 from maxbot.welcome import get_welcome_attachment
 
 
@@ -88,7 +94,21 @@ async def _send_greeting(
     """
     bot_user, created = await get_or_create_bot_user(user_id, full_name, chat_id=chat_id)
     await context.clear()
-    text = greet_text(bot_user, is_new=created)
+
+    # Phase 3 T07: сегментация по bookings_count для returning клиентов.
+    # Новым юзерам считать историю не нужно — экономим один query на hot path.
+    if created:
+        bookings_count = 0
+    else:
+        history = await get_client_history(bot_user)
+        bookings_count = history.get("bookings_count", 0)
+
+    text = greet_text(
+        bot_user,
+        is_new=created,
+        bookings_count=bookings_count,
+        nutrition_enabled=getattr(settings, "NUTRITION_ENABLED", False),
+    )
 
     extra = []
     if created:

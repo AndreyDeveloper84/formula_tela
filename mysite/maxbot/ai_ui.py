@@ -434,6 +434,14 @@ def render_ask_clarification(conv_id: str, data: dict[str, Any]) -> tuple[str, l
 # ─── food_scan (DRF-246) ──────────────────────────────────────────────────
 
 
+def render_loading_card() -> str:
+    """Loading-card text для photo scan: edit-message pattern (Design §5.1).
+
+    Сначала шлём это, получаем message_id, потом edit на финал.
+    """
+    return "👀 Распознаю..."
+
+
 def render_food_consent_request() -> tuple[str, list]:
     """152-ФЗ consent prompt — first time user tries to scan food.
 
@@ -526,6 +534,184 @@ def render_food_scan(scan: dict[str, Any]) -> tuple[str, list]:
     return ("\n".join(lines), [builder.as_markup()] if scan_id else [])
 
 
+# ─── food_scan_v2 (Phase 3.1 Part 2A T04) ────────────────────────────────
+
+
+def render_food_scan_v2(scan: dict[str, Any]) -> tuple[str, list]:
+    """Phase 3.1 Part 2A: confidence-routed render food scan.
+
+    Confidence >= 0.7  → high path: best-guess + 4 meal-type + [✏️ Поправить]
+    Confidence <  0.5  → low path: «Не разобрала 🙈» + [📸 Переснять][✏️ Напишу]
+    Confidence 0.5-0.7 → треатим как high (medium с alternatives — Phase 3.2,
+                                          требует расширения Ayla scan response)
+
+    Replaces existing `render_food_scan` (которая не имела confidence
+    routing и correct-button).
+    """
+    from maxbot.keyboards import food_scan_low_confidence_keyboard
+
+    confidence = float(scan.get("confidence") or 0.0)
+
+    if confidence < 0.5:
+        return _render_food_scan_low_confidence(scan), [
+            food_scan_low_confidence_keyboard(),
+        ]
+
+    return _render_food_scan_high_confidence(scan)
+
+
+def _render_food_scan_high_confidence(scan: dict[str, Any]) -> tuple[str, list]:
+    from maxbot.keyboards import PAYLOAD_SCAN_CORRECT_MENU
+
+    dish = scan.get("dish_name") or "Не уверена"
+    confidence = float(scan.get("confidence") or 0.0)
+    portion_g = scan.get("portion_g")
+    nutrition = scan.get("nutrition") or {}
+    scan_id = str(scan.get("id") or scan.get("scan_id") or "")
+
+    lines = [f"🍽 {dish}"]
+    if confidence:
+        lines.append(f"Уверенность: {int(confidence * 100)}%")
+    if portion_g:
+        lines.append(f"Порция: ~{int(portion_g)}г")
+
+    if nutrition:
+        kcal = nutrition.get("calories")
+        protein = nutrition.get("protein_g")
+        fat = nutrition.get("fat_g")
+        carbs = nutrition.get("carbs_g")
+        macro_parts = []
+        if kcal is not None:
+            macro_parts.append(f"≈{int(kcal)} ккал")
+        if protein is not None:
+            macro_parts.append(f"Б {protein:.0f}г")
+        if fat is not None:
+            macro_parts.append(f"Ж {fat:.0f}г")
+        if carbs is not None:
+            macro_parts.append(f"У {carbs:.0f}г")
+        if macro_parts:
+            lines.append(" · ".join(macro_parts))
+    else:
+        lines.append("(КБЖУ не определились — уточни порцию вручную)")
+
+    builder = InlineKeyboardBuilder()
+    if scan_id:
+        builder.row(
+            CallbackButton(
+                text="🍳 Завтрак",
+                payload=_payload_food_log(scan_id, "breakfast"),
+            ),
+            CallbackButton(
+                text="🍲 Обед",
+                payload=_payload_food_log(scan_id, "lunch"),
+            ),
+        )
+        builder.row(
+            CallbackButton(
+                text="🍽 Ужин",
+                payload=_payload_food_log(scan_id, "dinner"),
+            ),
+            CallbackButton(
+                text="☕ Перекус",
+                payload=_payload_food_log(scan_id, "snack"),
+            ),
+        )
+        # Correct button — открывает correction-menu (T07+)
+        builder.row(
+            CallbackButton(
+                text="✏️ Поправить",
+                payload=PAYLOAD_SCAN_CORRECT_MENU + ":" + scan_id,
+            ),
+        )
+    return ("\n".join(lines), [builder.as_markup()] if scan_id else [])
+
+
+def _render_food_scan_low_confidence(scan: dict[str, Any]) -> str:
+    """Low confidence (<0.5) — «Не разобрала, переснять или ввести»."""
+    return (
+        "🙈 Не разобрала, что на фото.\n\n"
+        "Попробуй переснять под лучшим светом или впиши блюдо текстом."
+    )
+
+
+# ─── food_logged footer (Phase 3.1 Part 2A T06) ──────────────────────────
+
+
+def render_food_logged_with_footer(
+    meal_label: str, dish_name: str, kcal: int,
+) -> tuple[str, list]:
+    """Подтверждение записи блюда + footer next-step buttons (Design §5.3).
+
+    [💧 Добавить воду] — заглушка Part 2B (handler ответит «Скоро будет»).
+    [📊 Посмотреть день] — открывает /дневник flow.
+    """
+    from maxbot.keyboards import (
+        PAYLOAD_NUTRITION_ADD_WATER,
+        PAYLOAD_NUTRITION_VIEW_DAY,
+    )
+
+    text = f"✅ Записала {meal_label}: {dish_name} ({kcal} ккал)."
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="💧 Добавить воду", payload=PAYLOAD_NUTRITION_ADD_WATER),
+        CallbackButton(text="📊 Посмотреть день", payload=PAYLOAD_NUTRITION_VIEW_DAY),
+    )
+    return (text, [builder.as_markup()])
+
+
+# ─── 💧 Water status (Phase 3.1 Part 2B) ───────────────────────────────────
+
+
+def render_water_status(today) -> str:
+    """Phase 3.1 Part 2B: «💧 Сегодня: 1.2 / 2.0 л».
+
+    `today` — `WaterTodayResponse` dataclass с полями total_ml, norm_ml.
+    Литры с одним знаком после запятой когда total_ml ≥ 1000, иначе мл.
+    """
+    total_ml = today.total_ml
+    norm_ml = today.norm_ml
+    total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+    norm_str = f"{norm_ml / 1000:.1f} л" if norm_ml >= 1000 else f"{norm_ml} мл"
+    return f"💧 Сегодня: {total_str} / {norm_str}\n\nСколько добавить?"
+
+
+def render_water_added(entry, *, caffeine_warning: bool = False) -> str:
+    """Phase 3.1 Part 2B/2D.1: «+250 мл · 1.4 / 2.0 л · Половина нормы — отлично!».
+
+    Args:
+        entry: WaterEntryResponse
+        caffeine_warning: bool — true если pregnant + today_caffeine_mg ≥ 200,
+            добавляет soft warning «близко к лимиту 200 мг» (Design §7.5).
+    """
+    ml = entry.ml
+    total_ml = entry.today_total_ml
+    norm_ml = entry.today_norm_ml
+
+    total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+    norm_str = f"{norm_ml / 1000:.1f} л" if norm_ml >= 1000 else f"{norm_ml} мл"
+
+    parts = [f"+{ml} мл · {total_str} / {norm_str}"]
+    if entry.milestone_text:
+        parts.append(entry.milestone_text)
+
+    text = "\n".join(parts)
+
+    if entry.alcohol_recovery_hint:
+        text += (
+            "\n\n🍷 Алкоголь обезвоживает — "
+            "стакан воды перед сном лишним не будет."
+        )
+
+    if caffeine_warning:
+        text += (
+            "\n\n☕ Кофеин сегодня близко к лимиту 200 мг — "
+            "при беременности рекомендуют не больше."
+        )
+
+    return text
+
+
 # ─── /дневник daily summary (DRF-247) ──────────────────────────────────────
 
 
@@ -574,4 +760,221 @@ def render_daily_summary(summary: dict[str, Any]) -> str:
         f"Итого: {int(cals_total)}/{cals_goal or '—'} ккал · "
         f"Б {protein:.0f}г · Ж {fat:.0f}г · У {carbs:.0f}г"
     )
+    return "\n".join(lines)
+
+
+# ─── Phase 3.1 Part 2C: hybrid daily report ────────────────────────────────
+
+
+def render_daily_full_report(
+    summary,
+    water_today=None,
+    *,
+    eating_disorder: bool = False,
+) -> str:
+    """Phase 3.1 Part 2C: дневной отчёт hybrid format (Design §6.2).
+
+    Args:
+        summary: SummaryResponse — обязателен (date, calories_*, protein/fat/carbs, entries)
+        water_today: WaterTodayResponse | None — если None, water раздел skipped
+        eating_disorder: bool — if True, supportive template без чисел калорий (§6.3)
+
+    Returns:
+        Multi-line text. Каллер сам прикрепляет attachments (footer keyboard).
+
+    Edge cases:
+        - <50% от daily_kcal goal или ≤2 приёма → §6.4 alternative "немного"
+        - eating_disorder=True → §6.3 supportive template, no numbers
+
+    AI-comment (Part 2D.3): rendered if summary.ai_comment is set
+    (server-generated by Ayla via `?with_comment=true`). Truncated to 220 chars
+    defensively. Omitted in eating_disorder template per §6.3.
+
+    NOT included (Phase 3.2 backlog):
+        - Weekly unlock indicator (требует tracking 7-day FoodEntry streak)
+    """
+    if eating_disorder:
+        return _render_eating_disorder_summary(summary, water_today)
+
+    entries = list(summary.entries) if summary.entries else []
+    cals_total = float(summary.calories_total or 0)
+    cals_goal = int(summary.calories_goal or 0)
+
+    if _is_thin_day(cals_total, cals_goal, entries):
+        return _render_thin_day_summary(summary, water_today)
+
+    return _render_full_day_summary(summary, water_today)
+
+
+def _is_thin_day(
+    cals_total: float, cals_goal: int, entries: list,
+) -> bool:
+    """Design §6.4 — <50% или ≤2 приёма."""
+    if len(entries) <= 2:
+        return True
+    if cals_goal > 0 and cals_total < 0.5 * cals_goal:
+        return True
+    return False
+
+
+def _render_full_day_summary(summary, water_today) -> str:
+    """Default daily report — все приёмы + БЖУ + вода + Итого."""
+    date_str = getattr(summary, "date", "сегодня") or "сегодня"
+    cals_total = int(getattr(summary, "calories_total", 0) or 0)
+    cals_goal = int(getattr(summary, "calories_goal", 0) or 0)
+    protein = float(getattr(summary, "protein_g", 0) or 0)
+    fat = float(getattr(summary, "fat_g", 0) or 0)
+    carbs = float(getattr(summary, "carbs_g", 0) or 0)
+    entries = list(getattr(summary, "entries", []) or [])
+
+    lines = [f"🌙 Итоги дня — {date_str}", ""]
+
+    if cals_goal > 0:
+        pct = int(round(100 * cals_total / cals_goal))
+        lines.append(f"🎯 {cals_total} / {cals_goal} ккал ({pct}%)")
+    else:
+        lines.append(f"🎯 {cals_total} ккал")
+
+    lines.append(
+        f"🥩 Б {protein:.0f}  🥑 Ж {fat:.0f}  🌾 У {carbs:.0f}"
+    )
+
+    water_block = _render_water_block(water_today)
+    if water_block:
+        lines.append(water_block)
+
+    if entries:
+        lines.append("")
+        lines.append("Приёмы:")
+        for e in entries:
+            meal_type = e.get("meal_type") or "snack"
+            dish = e.get("dish_name") or "—"
+            kcal = int(e.get("calories") or 0)
+            emoji = _meal_emoji(meal_type)
+            lines.append(f"{emoji} {dish} — {kcal}")
+
+    comment_line = _render_ai_comment_line(summary)
+    if comment_line:
+        lines.append("")
+        lines.append(comment_line)
+
+    return "\n".join(lines)
+
+
+def _render_ai_comment_line(summary) -> str | None:
+    """Part 2D.3 T02: render server-generated AI comment ≤220 chars.
+
+    Returns None if summary.ai_comment is missing/empty. Defensive trim
+    to 220 chars so a buggy server response cannot bloat the message.
+    """
+    raw = getattr(summary, "ai_comment", None)
+    if not raw:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if len(text) > 220:
+        text = text[:220].rstrip()
+    return f"💬 {text}"
+
+
+def _meal_emoji(meal_type: str) -> str:
+    """Design §6.2: emoji per meal_type."""
+    return {
+        "breakfast": "🌅",
+        "lunch": "☀️",
+        "dinner": "🌙",
+        "snack": "🍎",
+    }.get(meal_type, "🍽")
+
+
+def _render_water_block(water_today) -> str:
+    """Format «💧 1.8 / 2.0 л» если water_today передан, иначе пустая строка."""
+    if water_today is None:
+        return ""
+    total_ml = int(getattr(water_today, "total_ml", 0) or 0)
+    norm_ml = int(getattr(water_today, "norm_ml", 0) or 0)
+    total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+    norm_str = f"{norm_ml / 1000:.1f} л" if norm_ml >= 1000 else f"{norm_ml} мл"
+    return f"💧 {total_str} / {norm_str}"
+
+
+def _render_thin_day_summary(summary, water_today) -> str:
+    """Edge case (§6.4): <50% или ≤2 приёма — supportive «немного»."""
+    date_str = getattr(summary, "date", "сегодня") or "сегодня"
+    entries = list(getattr(summary, "entries", []) or [])
+
+    lines = [f"🌙 Итоги дня — {date_str}", ""]
+
+    if entries:
+        first = entries[0]
+        first_name = first.get("dish_name") or "что-то"
+        first_kcal = int(first.get("calories") or 0)
+        if len(entries) == 1:
+            lines.append(
+                f"В дневнике сегодня немного: {first_name} "
+                f"({first_kcal} ккал)."
+            )
+        else:
+            lines.append(
+                f"В дневнике сегодня {len(entries)} приёма "
+                f"(начиная с {first_name})."
+            )
+        lines.append("Если что-то ещё ела — добавь, посчитаю.")
+    else:
+        lines.append("Сегодня записей нет.")
+        lines.append("Сфоткай еду — добавлю в дневник.")
+
+    water_block = _render_water_block(water_today)
+    if water_block:
+        lines.append("")
+        lines.append(water_block)
+
+    lines.append("")
+    lines.append("Если пропустила приёмы — как самочувствие сегодня?")
+
+    return "\n".join(lines)
+
+
+def _render_eating_disorder_summary(summary, water_today) -> str:
+    """§6.3 — supportive template без чисел калорий.
+
+    Считаем приёмы по типам, никаких ккал/БЖУ цифр.
+    """
+    date_str = getattr(summary, "date", "сегодня") or "сегодня"
+    entries = list(getattr(summary, "entries", []) or [])
+
+    lines = [f"🌙 День — {date_str}", ""]
+
+    if entries:
+        by_meal: dict[str, int] = {}
+        for e in entries:
+            mt = e.get("meal_type") or "snack"
+            by_meal[mt] = by_meal.get(mt, 0) + 1
+        meal_names = {
+            "breakfast": "завтрак", "lunch": "обед",
+            "dinner": "ужин", "snack": "перекус",
+        }
+        meal_descriptors = []
+        for key in ("breakfast", "lunch", "dinner", "snack"):
+            count = by_meal.get(key, 0)
+            if count == 0:
+                continue
+            label = meal_names[key]
+            if count > 1 and key == "snack":
+                meal_descriptors.append(f"{count} {label}а")
+            else:
+                meal_descriptors.append(label)
+        if meal_descriptors:
+            lines.append(f"Сегодня: {', '.join(meal_descriptors)}.")
+
+    if water_today is not None:
+        total_ml = int(getattr(water_today, "total_ml", 0) or 0)
+        if total_ml > 0:
+            total_str = f"{total_ml / 1000:.1f} л" if total_ml >= 1000 else f"{total_ml} мл"
+            lines.append(f"{total_str} воды.")
+
+    lines.append("")
+    lines.append("💬 Как ты сегодня? День получился?")
+
     return "\n".join(lines)

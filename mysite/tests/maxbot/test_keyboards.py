@@ -33,18 +33,59 @@ def _texts(markup):
 
 # ─── main_menu_keyboard ─────────────────────────────────────────────────────
 
-def test_main_menu_has_six_buttons():
-    """Главное меню: 6 кнопок (5 базовых + 'Мои записи' N1)."""
+def test_main_menu_has_six_buttons_when_nutrition_disabled(settings):
+    """Главное меню без nutrition: 6 базовых кнопок (default OFF)."""
+    settings.NUTRITION_ENABLED = False
     kb = keyboards.main_menu_keyboard()
     assert len(_flatten(kb)) == 6
 
 
-def test_main_menu_payloads():
+def test_main_menu_has_seven_buttons_when_nutrition_enabled(settings):
+    """Главное меню с nutrition: 7 кнопок (6 базовых + 🍎 Дневник питания)."""
+    settings.NUTRITION_ENABLED = True
+    kb = keyboards.main_menu_keyboard()
+    assert len(_flatten(kb)) == 7
+
+
+def test_main_menu_payloads_when_nutrition_disabled(settings):
+    """Default OFF — payload nutrition отсутствует."""
+    settings.NUTRITION_ENABLED = False
     kb = keyboards.main_menu_keyboard()
     payloads = set(_payloads(kb))
     assert payloads == {
         "cb:menu:book", "cb:menu:services", "cb:menu:contacts",
         "cb:menu:faq", "cb:menu:ask", "cb:menu:my_bookings",
+    }
+
+
+def test_main_menu_payloads_when_nutrition_enabled(settings):
+    settings.NUTRITION_ENABLED = True
+    kb = keyboards.main_menu_keyboard()
+    payloads = set(_payloads(kb))
+    assert payloads == {
+        "cb:menu:book", "cb:menu:services", "cb:menu:contacts",
+        "cb:menu:faq", "cb:menu:ask", "cb:menu:my_bookings",
+        "cb:menu:nutrition",
+    }
+
+
+def test_main_menu_includes_nutrition_button_when_enabled(settings):
+    """NUTRITION_ENABLED=True → '🍎 Дневник питания' видна в текстах кнопок."""
+    settings.NUTRITION_ENABLED = True
+    kb = keyboards.main_menu_keyboard()
+    texts = _texts(kb)
+    nutrition_buttons = [t for t in texts if "Дневник питания" in t]
+    assert len(nutrition_buttons) == 1, f"expected 1 nutrition button, got {nutrition_buttons}"
+
+
+def test_nutrition_welcome_keyboard_has_three_buttons():
+    """Phase 3 T01: welcome дневника = 'Попробовать сразу' / 'Настроить' / 'Назад'."""
+    kb = keyboards.nutrition_welcome_keyboard()
+    payloads = set(_payloads(kb))
+    assert payloads == {
+        "cb:nutrition:try_now",
+        "cb:nutrition:start_anketa",
+        "cb:back",
     }
 
 

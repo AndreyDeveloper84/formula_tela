@@ -119,6 +119,68 @@ class SummaryResponse:
     carbs_g: float
     entries: list[dict[str, Any]]
     raw: dict[str, Any]
+    ai_comment: str | None = None  # Part 2D.3: server-generated <=220 chars
+
+
+@dataclass(frozen=True)
+class ProfileResponse:
+    """Phase 3 T03: nutrition profile + computed BMR/norms.
+
+    Server-side calculations (bmr, daily_kcal, p/f/c, water_ml) считаются Ayla'ой —
+    бот их только показывает. `goal_overridden_by` ∈ {None, "pregnancy", "breastfeeding",
+    "eating_disorder", "bmi_floor"} — Ayla сообщает что цель переопределена при
+    health_screening / BMI floor ladder.
+    """
+
+    gender: str  # "male" | "female" | ""
+    age: int
+    height_cm: int
+    weight_kg: int
+    goal: str  # "lose" | "maintain" | "gain" | "tone" | ""
+    daily_kcal: int
+    protein_g: int
+    fat_g: int
+    carbs_g: int
+    water_ml: int
+    bmr: int
+    health_flags: dict[str, Any]
+    disclaimer_acked: dict[str, Any] | None
+    goal_pace: str = ""  # "slow" | "balanced" | ""
+    activity: str = ""
+    diet_preference: str = ""
+    goal_overridden_by: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WaterEntryResponse:
+    """Phase 3 T03: водомер — Ayla применяет water_coefficient на стороне сервера.
+
+    `water_ml` ≤ `ml` для напитков с coef < 1 (кофе 0.95, чай 1.0, алкоголь 0.0).
+    `milestone_text` — текст «Половина нормы — отлично!» / «Норма! 💧» / null.
+    `alcohol_recovery_hint` — true для категорий wine/beer/spirits → бот добавляет
+    UX-блок «Может выпьешь воды?».
+    """
+
+    entry_id: str
+    ml: int
+    water_ml: int
+    kcal: int
+    milestone_text: str | None
+    today_total_ml: int
+    today_norm_ml: int
+    alcohol_recovery_hint: bool
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WaterTodayResponse:
+    """Список water entries за день — для undo-UI и daily report."""
+
+    total_ml: int
+    norm_ml: int
+    entries: list[dict[str, Any]]
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -131,6 +193,25 @@ class DeficitsResponse:
     hint: str  # may be empty — caller checks before passing to prompt
     fired_keys: list[str]
     raw: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class CrossDomainInsight:
+    """DRF-274 (B-4) — cross-domain insight surfaced after a food log.
+
+    Mapped from Ayla `GET /api/v1/nutrition/internal/insights/cross_domain/`
+    nested envelope: `{"data": {"has_insight": true, "insight": {...}}}`.
+
+    Fields are personalized — `insight_text` / `rationale_text` MUST NOT be
+    logged at INFO level (PII-safe convention).
+    """
+
+    shown_id: str
+    rule_slug: str
+    insight_text: str
+    rationale_text: str
+    service_category_slug: str
+    disclaimer_text: str
 
 
 class NutritionClient:
@@ -285,8 +366,14 @@ class NutritionClient:
         *,
         external_user_id: str,
         date: str | None = None,
+        with_comment: bool = False,
     ) -> SummaryResponse:
-        """GET /api/v1/nutrition/internal/summary/?date=YYYY-MM-DD."""
+        """GET /api/v1/nutrition/internal/summary/?date=YYYY-MM-DD&with_comment=true.
+
+        Args:
+            with_comment: Phase 2D.3 — request server-generated tip ≤220 chars.
+                Server may ignore (older Ayla deploy) → ai_comment will be None.
+        """
         now = time.monotonic()
         if self._circuit.is_open(now=now):
             raise NutritionUnavailableError("circuit_open")
@@ -299,6 +386,8 @@ class NutritionClient:
         params: dict[str, str] = {}
         if date:
             params["date"] = date
+        if with_comment:
+            params["with_comment"] = "true"
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout_s) as http:
@@ -352,6 +441,7 @@ class NutritionClient:
                 carbs_g=float(body.get("carbs_g") or 0.0),
                 entries=list(body.get("entries") or []),
                 raw=body,
+                ai_comment=body.get("ai_comment") or None,
             )
         if resp.status_code >= 500:
             self._circuit.record_failure(now=now)
@@ -392,6 +482,419 @@ class NutritionClient:
                 fired_keys=list(body.get("fired_keys") or []),
                 raw=body,
             )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+
+    # ─── Phase 3 T03: profile ──────────────────────────────────────────────
+
+    async def get_profile(
+        self,
+        *,
+        external_user_id: str,
+    ) -> ProfileResponse | None:
+        """GET /api/v1/nutrition/internal/profile/.
+
+        Returns:
+            ProfileResponse: профиль найден.
+            None: 404 PROFILE_NOT_FOUND (анкета ещё не пройдена).
+
+        Raises:
+            NutritionUnavailableError: circuit open / 5xx / network error.
+            NutritionAPIError: иные 4xx.
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/profile/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        return self._parse_profile_response(resp)
+
+    async def upsert_profile(
+        self,
+        *,
+        external_user_id: str,
+        data: dict[str, Any],
+    ) -> ProfileResponse:
+        """POST /api/v1/nutrition/internal/profile/.
+
+        Принимает full или partial dict — Ayla на стороне сервера применяет ladder
+        (pregnancy → maintain, BMI floor) и возвращает рассчитанные нормы +
+        `goal_overridden_by` для UX-блока «Учла важное».
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/profile/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.post(url, headers=headers, json=data)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        result = self._parse_profile_response(resp, allow_404=False)
+        # _parse_profile_response с allow_404=False бросит ошибку до возврата None,
+        # так что assert защита от type-checker'а — Pylance видит Optional.
+        assert result is not None
+        return result
+
+    def _parse_profile_response(
+        self, resp: httpx.Response, *, allow_404: bool = True,
+    ) -> ProfileResponse | None:
+        now = time.monotonic()
+        if resp.status_code in (200, 201):
+            self._circuit.record_success()
+            # Ayla оборачивает ответ в {"data": ...} — это корректно.
+            body = resp.json().get("data", {})
+            # DRF-270 (B-1): GET /profile/ может вернуть 200 с `exists=false`
+            # вместо 404 — обработаем как «нет профиля».
+            if body.get("exists") is False:
+                return None
+            # Norms живут strictly под `data.norms.*` с `daily_` префиксом
+            # per Ayla spec §1.1. DRF-270: убрали flat top-level fallback —
+            # старая схема больше не поддерживается.
+            norms = body.get("norms") or {}
+            return ProfileResponse(
+                gender=str(body.get("gender") or ""),
+                age=int(body.get("age") or 0),
+                height_cm=int(body.get("height_cm") or 0),
+                weight_kg=int(body.get("weight_kg") or 0),
+                goal=str(body.get("goal") or ""),
+                # Ayla spec использует "pace"; "goal_pace" — fallback для обратной совместимости.
+                goal_pace=str(body.get("pace") or body.get("goal_pace") or ""),
+                # Ayla spec использует "activity_coefficient" (число), не "activity" (строка).
+                activity=str(body.get("activity_coefficient") or body.get("activity") or ""),
+                diet_preference=str(body.get("diet_preference") or ""),
+                daily_kcal=int(norms.get("daily_kcal") or 0),
+                protein_g=int(norms.get("daily_protein_g") or 0),
+                fat_g=int(norms.get("daily_fat_g") or 0),
+                carbs_g=int(norms.get("daily_carbs_g") or 0),
+                water_ml=int(norms.get("daily_water_ml") or 0),
+                bmr=int(norms.get("bmr") or 0),
+                health_flags=dict(body.get("health_flags") or {}),
+                disclaimer_acked=body.get("disclaimer_acked"),
+                goal_overridden_by=body.get("goal_overridden_by"),
+                raw=body,
+            )
+
+        if resp.status_code == 404 and allow_404:
+            self._circuit.record_success()  # 404 = валидный «нет профиля» для GET
+            return None
+
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+
+        try:
+            err_code = (resp.json().get("error") or {}).get("code", "")
+        except ValueError:
+            err_code = ""
+        raise NutritionAPIError(f"http_{resp.status_code}_{err_code or 'unknown'}")
+
+
+    # ─── Phase 3 T03: water ────────────────────────────────────────────────
+
+    async def add_water(
+        self,
+        *,
+        external_user_id: str,
+        ml: int,
+        beverage_slug: str | None = None,
+        ts: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> WaterEntryResponse:
+        """POST /api/v1/nutrition/internal/water/.
+
+        Body: `{ml, beverage_slug?, ts?}`. Ayla server-side применяет
+        `water_coefficient` из Beverage-каталога и возвращает фактический `water_ml`.
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/water/"
+        headers: dict[str, str] = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+        body: dict[str, Any] = {"ml": ml}
+        if beverage_slug:
+            body["beverage_slug"] = beverage_slug
+        if ts:
+            body["ts"] = ts
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.post(url, headers=headers, json=body)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        return self._parse_water_entry_response(resp)
+
+    def _parse_water_entry_response(self, resp: httpx.Response) -> WaterEntryResponse:
+        now = time.monotonic()
+        if resp.status_code in (200, 201):
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            return WaterEntryResponse(
+                entry_id=str(body.get("entry_id") or ""),
+                ml=int(body.get("ml") or 0),
+                water_ml=int(body.get("water_ml") or 0),
+                kcal=int(body.get("kcal") or 0),
+                milestone_text=body.get("milestone_text"),
+                today_total_ml=int(body.get("today_total_ml") or 0),
+                today_norm_ml=int(body.get("today_norm_ml") or 0),
+                alcohol_recovery_hint=bool(body.get("alcohol_recovery_hint") or False),
+                raw=body,
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        try:
+            err_code = (resp.json().get("error") or {}).get("code", "")
+        except ValueError:
+            err_code = ""
+        raise NutritionAPIError(f"http_{resp.status_code}_{err_code or 'unknown'}")
+
+
+    async def undo_water(
+        self,
+        *,
+        external_user_id: str,
+        entry_id: str,
+    ) -> bool:
+        """DELETE /api/v1/nutrition/internal/water/{entry_id}/.
+
+        Returns:
+            True: 204 — soft-delete успешно (запись восстановима в restore window).
+            False: 404 — restore window истёк или entry уже не существует.
+
+        Raises:
+            NutritionUnavailableError: circuit / 5xx / network.
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/water/{entry_id}/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.delete(url, headers=headers)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        if resp.status_code == 204:
+            self._circuit.record_success()
+            return True
+        if resp.status_code == 404:
+            self._circuit.record_success()
+            return False
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+    async def get_water_today(
+        self,
+        *,
+        external_user_id: str,
+    ) -> WaterTodayResponse:
+        """GET /api/v1/nutrition/internal/water/today/."""
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = f"{self._base_url}/api/v1/nutrition/internal/water/today/"
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
+
+        if resp.status_code == 200:
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            return WaterTodayResponse(
+                total_ml=int(body.get("total_ml") or 0),
+                norm_ml=int(body.get("norm_ml") or 0),
+                entries=list(body.get("entries") or []),
+                raw=body,
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+    # ── DRF-274 (B-4): cross-domain insights ───────────────────────────────
+
+    async def get_cross_domain_insights(
+        self, *, external_user_id: str,
+    ) -> CrossDomainInsight | None:
+        """GET /api/v1/nutrition/internal/insights/cross_domain/.
+
+        Returns:
+            CrossDomainInsight: when Ayla returns `has_insight=True`.
+            None: when Ayla returns `has_insight=False` OR 404.
+
+        Raises:
+            NutritionUnavailableError: circuit open, network error, 5xx, timeout.
+        """
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = (
+            f"{self._base_url}/api/v1/nutrition/internal/insights/cross_domain/"
+        )
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.get(url, headers=headers)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            logger.warning(
+                "nutrition_client.cross_domain.network ext=%s err=%s",
+                external_user_id, type(exc).__name__,
+            )
+            raise NutritionUnavailableError(
+                f"network: {type(exc).__name__}",
+            ) from exc
+
+        if resp.status_code == 404:
+            return None
+        if resp.status_code == 200:
+            self._circuit.record_success()
+            body = resp.json().get("data", {})
+            if not body.get("has_insight"):
+                return None
+            insight = body.get("insight") or {}
+            return CrossDomainInsight(
+                shown_id=str(insight.get("shown_id") or ""),
+                rule_slug=str(insight.get("rule_slug") or ""),
+                insight_text=str(insight.get("insight_text") or ""),
+                rationale_text=str(insight.get("rationale_text") or ""),
+                service_category_slug=str(
+                    insight.get("service_category_slug") or "",
+                ),
+                disclaimer_text=str(insight.get("disclaimer_text") or ""),
+            )
+        if resp.status_code >= 500:
+            self._circuit.record_failure(now=now)
+            logger.warning(
+                "nutrition_client.cross_domain.5xx status=%d ext=%s",
+                resp.status_code, external_user_id,
+            )
+            raise NutritionUnavailableError(f"http_{resp.status_code}")
+        raise NutritionAPIError(f"http_{resp.status_code}")
+
+    async def post_cross_domain_seen(
+        self, *, external_user_id: str, shown_id: str,
+    ) -> bool:
+        """POST /insights/cross_domain/seen/{shown_id}/. Idempotent telemetry."""
+        return await self._post_cross_domain_action(
+            external_user_id=external_user_id,
+            shown_id=shown_id,
+            action="seen",
+        )
+
+    async def post_cross_domain_dismiss(
+        self, *, external_user_id: str, shown_id: str,
+    ) -> bool:
+        """POST /insights/cross_domain/dismiss/{shown_id}/."""
+        return await self._post_cross_domain_action(
+            external_user_id=external_user_id,
+            shown_id=shown_id,
+            action="dismiss",
+        )
+
+    async def post_cross_domain_convert(
+        self,
+        *,
+        external_user_id: str,
+        shown_id: str,
+        appointment_id: str,
+    ) -> bool:
+        """POST /insights/cross_domain/convert/{shown_id}/ with appointment_id."""
+        return await self._post_cross_domain_action(
+            external_user_id=external_user_id,
+            shown_id=shown_id,
+            action="convert",
+            json_body={"appointment_id": appointment_id},
+        )
+
+    async def _post_cross_domain_action(
+        self,
+        *,
+        external_user_id: str,
+        shown_id: str,
+        action: str,
+        json_body: dict[str, Any] | None = None,
+    ) -> bool:
+        now = time.monotonic()
+        if self._circuit.is_open(now=now):
+            raise NutritionUnavailableError("circuit_open")
+
+        url = (
+            f"{self._base_url}/api/v1/nutrition/internal/insights/"
+            f"cross_domain/{action}/{shown_id}/"
+        )
+        headers = {
+            "X-Service-Token": self._token,
+            "X-External-User-ID": external_user_id,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as http:
+                resp = await http.post(url, headers=headers, json=json_body or {})
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._circuit.record_failure(now=now)
+            logger.warning(
+                "nutrition_client.cross_domain.%s.network ext=%s err=%s",
+                action, external_user_id, type(exc).__name__,
+            )
+            raise NutritionUnavailableError(
+                f"network: {type(exc).__name__}",
+            ) from exc
+
+        if 200 <= resp.status_code < 300:
+            self._circuit.record_success()
+            return True
         if resp.status_code >= 500:
             self._circuit.record_failure(now=now)
             raise NutritionUnavailableError(f"http_{resp.status_code}")

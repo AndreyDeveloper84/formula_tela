@@ -304,6 +304,14 @@ async def send_message(
     # down or misconfigured. Empty hint is the common case (no signal yet).
     extra_hint = await _fetch_deficit_hint(bot_user)
 
+    # Phase 3.2A T08: degraded-advice mode для пользователей без TIER-B consent.
+    # Не блокирует общение — просто запрещает LLM давать персональные nutrition-
+    # советы пока screening не пройден. Если acked → "full" (нормальный prompt).
+    health_flags = bot_user.health_flags or {}
+    advice_mode = (
+        "full" if health_flags.get("health_consent_acked_at") else "degraded"
+    )
+
     system_prompt = render_system_prompt(
         today=timezone.localdate(),
         client_name=bot_user.client_name or bot_user.display_name or "",
@@ -311,6 +319,7 @@ async def send_message(
         master_context=master_context,
         last_visits=last_visits,
         extra_hint=extra_hint,
+        advice_mode=advice_mode,
     )
 
     # 6. Compose for OpenAI
