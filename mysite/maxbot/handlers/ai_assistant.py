@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 
 from asgiref.sync import sync_to_async
+from django.conf import settings as django_settings
 from maxapi import F, Router
 from maxapi.context.context import MemoryContext
 from maxapi.enums.sender_action import SenderAction
@@ -115,21 +116,27 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     # NutritionAnketaStates.awaiting_health_consent). Если текст содержит
     # сигнал (беременность, диабет, гипертония, ED…) И клиент ещё не прошёл
     # и не отказался от screening'а — переключаемся на screening вместо AI.
-    text_body = (event.message.body.text or "") if event.message.body else ""
-    signal = detect_health_signal(text_body)
-    if signal is not None:
-        flags = bot_user.health_flags or {}
-        already_consented = bool(flags.get("health_consent_acked_at"))
-        already_declined = bool(flags.get("health_consent_declined_at"))
-        if not already_consented and not already_declined:
-            logger.info(
-                "ai_assistant: TIER-B health signal=%s user_id=%s — starting screening",
-                signal, sender.user_id,
-            )
-            await start_health_screening(
-                bot=event.bot, chat_id=chat_id, context=context,
-            )
-            return
+    #
+    # NUTRITION_ENABLED gate (PR #135 pre-flight fix): screening upsert'ит
+    # профиль в Ayla на финале. Без AYLA_BASE_URL это ValueError, которого
+    # `_complete_tier_b` не ловит. Если nutrition выключен на проде — skip
+    # pre-hook полностью, AI ответит как обычно.
+    if getattr(django_settings, "NUTRITION_ENABLED", False):
+        text_body = (event.message.body.text or "") if event.message.body else ""
+        signal = detect_health_signal(text_body)
+        if signal is not None:
+            flags = bot_user.health_flags or {}
+            already_consented = bool(flags.get("health_consent_acked_at"))
+            already_declined = bool(flags.get("health_consent_declined_at"))
+            if not already_consented and not already_declined:
+                logger.info(
+                    "ai_assistant: TIER-B health signal=%s user_id=%s — starting screening",
+                    signal, sender.user_id,
+                )
+                await start_health_screening(
+                    bot=event.bot, chat_id=chat_id, context=context,
+                )
+                return
 
     # 2. Чистим state — AI Concierge управляет multi-turn через Conversation.
     await context.clear()

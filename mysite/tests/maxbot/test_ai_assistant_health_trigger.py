@@ -12,8 +12,9 @@ from maxbot.ai_context import MasterContext
 
 
 @pytest.mark.asyncio
-async def test_health_signal_triggers_screening_when_not_consented(monkeypatch):
+async def test_health_signal_triggers_screening_when_not_consented(monkeypatch, settings):
     """Free-text «беременная» → bot предлагает screening, AI Concierge НЕ запускается."""
+    settings.NUTRITION_ENABLED = True
     from maxbot.handlers.ai_assistant import on_free_text
 
     bot_user = MagicMock(
@@ -46,8 +47,9 @@ async def test_health_signal_triggers_screening_when_not_consented(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_health_signal_skipped_when_already_consented(monkeypatch):
+async def test_health_signal_skipped_when_already_consented(monkeypatch, settings):
     """User уже прошёл health screening → free-text идёт в AI Concierge как обычно."""
+    settings.NUTRITION_ENABLED = True
     from maxbot.handlers.ai_assistant import on_free_text
 
     bot_user = MagicMock(
@@ -81,8 +83,9 @@ async def test_health_signal_skipped_when_already_consented(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_health_signal_skipped_when_declined(monkeypatch):
+async def test_health_signal_skipped_when_declined(monkeypatch, settings):
     """User declined health screening → не предлагать снова, идти в degraded AI."""
+    settings.NUTRITION_ENABLED = True
     from maxbot.handlers.ai_assistant import on_free_text
 
     bot_user = MagicMock(
@@ -104,6 +107,43 @@ async def test_health_signal_skipped_when_declined(monkeypatch):
 
     event = MagicMock()
     event.message.body.text = "беременная"
+    event.message.recipient.chat_id = 100
+    event.message.sender = MagicMock(user_id=200, full_name="Аня")
+    event.bot = MagicMock(send_message=AsyncMock())
+
+    ctx = MemoryContext(chat_id=100, user_id=200)
+    await on_free_text(event, ctx)
+
+    start_mock.assert_not_called()
+    concierge_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_health_signal_skipped_when_nutrition_disabled(monkeypatch, settings):
+    """PR #135 pre-flight fix: NUTRITION_ENABLED=False → skip TIER-B trigger
+    полностью, AI отвечает на запрос как обычно. Защищает прод-окружение
+    с пустым AYLA_BASE_URL от ValueError в _complete_tier_b."""
+    settings.NUTRITION_ENABLED = False
+    from maxbot.handlers.ai_assistant import on_free_text
+
+    bot_user = MagicMock(
+        max_user_id=200, nutrition_onboarded_at=None, health_flags={},
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.get_or_create_bot_user",
+        AsyncMock(return_value=(bot_user, False)),
+    )
+    start_mock = AsyncMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant.start_health_screening", start_mock,
+    )
+    concierge_mock = AsyncMock()
+    monkeypatch.setattr(
+        "maxbot.handlers.ai_assistant._invoke_ai_concierge", concierge_mock,
+    )
+
+    event = MagicMock()
+    event.message.body.text = "Я беременная"
     event.message.recipient.chat_id = 100
     event.message.sender = MagicMock(user_id=200, full_name="Аня")
     event.bot = MagicMock(send_message=AsyncMock())
