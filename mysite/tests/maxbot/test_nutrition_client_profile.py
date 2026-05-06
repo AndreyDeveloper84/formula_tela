@@ -59,7 +59,7 @@ def _err_envelope(status: int, code: str) -> httpx.Response:
 
 
 async def test_get_profile_success_returns_profile_response():
-    """200 with full profile data → ProfileResponse populated."""
+    """200 with full profile data → ProfileResponse populated. Norms nested per Ayla spec §1.1."""
     transport = httpx.MockTransport(
         lambda r: _ok_envelope({
             "gender": "female",
@@ -72,12 +72,14 @@ async def test_get_profile_success_returns_profile_response():
             "health_flags": {"pregnant": False, "eating_disorder": False},
             "diet_preference": "any",
             "disclaimer_acked": {"ts": "2026-05-03T10:00:00Z", "version": 1},
-            "daily_kcal": 1850,
-            "protein_g": 90,
-            "fat_g": 60,
-            "carbs_g": 220,
-            "water_ml": 2000,
-            "bmr": 1450,
+            "norms": {
+                "daily_kcal": 1850,
+                "daily_protein_g": 90,
+                "daily_fat_g": 60,
+                "daily_carbs_g": 220,
+                "daily_water_ml": 2000,
+                "bmr": 1450,
+            },
             "goal_overridden_by": None,
         })
     )
@@ -131,8 +133,12 @@ async def test_get_profile_sends_service_token_and_external_id():
         captured["url"] = str(request.url)
         return _ok_envelope({
             "gender": "male", "age": 30, "height_cm": 180, "weight_kg": 80,
-            "goal": "maintain", "daily_kcal": 2400, "protein_g": 120,
-            "fat_g": 80, "carbs_g": 280, "water_ml": 2500, "bmr": 1800,
+            "goal": "maintain",
+            "norms": {
+                "daily_kcal": 2400, "daily_protein_g": 120,
+                "daily_fat_g": 80, "daily_carbs_g": 280,
+                "daily_water_ml": 2500, "bmr": 1800,
+            },
             "health_flags": {}, "disclaimer_acked": None,
         })
 
@@ -167,8 +173,11 @@ async def test_upsert_profile_201_returns_profile_with_calculated_norms():
         lambda r: httpx.Response(201, json={"data": {
             "gender": "female", "age": 32, "height_cm": 168, "weight_kg": 65,
             "goal": "lose", "goal_pace": "slow", "activity": "moderate",
-            "daily_kcal": 1650, "protein_g": 100, "fat_g": 55, "carbs_g": 180,
-            "water_ml": 2000, "bmr": 1450,
+            "norms": {
+                "daily_kcal": 1650, "daily_protein_g": 100,
+                "daily_fat_g": 55, "daily_carbs_g": 180,
+                "daily_water_ml": 2000, "bmr": 1450,
+            },
             "health_flags": {"pregnant": False},
             "disclaimer_acked": {"ts": "2026-05-03T10:00:00Z", "version": 1},
             "goal_overridden_by": None,
@@ -197,8 +206,12 @@ async def test_upsert_profile_200_on_update():
     transport = httpx.MockTransport(
         lambda r: _ok_envelope({
             "gender": "female", "age": 32, "height_cm": 168, "weight_kg": 60,
-            "goal": "lose", "daily_kcal": 1500, "protein_g": 90, "fat_g": 50,
-            "carbs_g": 170, "water_ml": 1900, "bmr": 1380,
+            "goal": "lose",
+            "norms": {
+                "daily_kcal": 1500, "daily_protein_g": 90,
+                "daily_fat_g": 50, "daily_carbs_g": 170,
+                "daily_water_ml": 1900, "bmr": 1380,
+            },
             "health_flags": {}, "disclaimer_acked": None,
         })
     )
@@ -216,8 +229,11 @@ async def test_upsert_profile_pregnancy_overrides_goal():
         lambda r: httpx.Response(201, json={"data": {
             "gender": "female", "age": 30, "height_cm": 165, "weight_kg": 70,
             "goal": "maintain",  # бот отправил "lose", Ayla переопределила
-            "daily_kcal": 2200, "protein_g": 100, "fat_g": 70, "carbs_g": 250,
-            "water_ml": 2200, "bmr": 1500,
+            "norms": {
+                "daily_kcal": 2200, "daily_protein_g": 100,
+                "daily_fat_g": 70, "daily_carbs_g": 250,
+                "daily_water_ml": 2200, "bmr": 1500,
+            },
             "health_flags": {"pregnant": True}, "disclaimer_acked": None,
             "goal_overridden_by": "pregnancy",
         }})
@@ -244,8 +260,12 @@ async def test_upsert_profile_sends_data_as_json_body():
         captured["headers"] = dict(request.headers)
         return _ok_envelope({
             "gender": "male", "age": 28, "height_cm": 175, "weight_kg": 70,
-            "goal": "maintain", "daily_kcal": 2200, "protein_g": 110,
-            "fat_g": 75, "carbs_g": 260, "water_ml": 2300, "bmr": 1600,
+            "goal": "maintain",
+            "norms": {
+                "daily_kcal": 2200, "daily_protein_g": 110,
+                "daily_fat_g": 75, "daily_carbs_g": 260,
+                "daily_water_ml": 2300, "bmr": 1600,
+            },
             "health_flags": {}, "disclaimer_acked": None,
         })
 
@@ -281,3 +301,55 @@ async def test_upsert_profile_validation_4xx_raises_api_error():
             await client.upsert_profile(external_user_id="bot:1", data={"age": 200})
     finally:
         client._reset_httpx()
+
+
+# ─── DRF-270 (B-1): Ayla nested norms schema ────────────────────────────────
+
+
+async def test_get_profile_exists_false_returns_none():
+    """200 with `{"data": {"exists": false}}` → None (анкета ещё не пройдена)."""
+    transport = httpx.MockTransport(lambda r: _ok_envelope({"exists": False}))
+    client = _make_client(transport)
+    try:
+        resp = await client.get_profile(external_user_id="bot:1")
+    finally:
+        client._reset_httpx()
+    assert resp is None
+
+
+async def test_upsert_profile_reads_nested_norms():
+    """201 with nested `data.norms.daily_kcal` etc. → ProfileResponse populated.
+
+    Ayla spec §1.1: norms живут под `data.norms.*` с `daily_` префиксом.
+    Strict — никаких flat fallback'ов больше нет.
+    """
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(201, json={"data": {
+            "gender": "female", "age": 32, "height_cm": 168, "weight_kg": 65,
+            "goal": "lose", "goal_pace": "balanced",
+            "norms": {
+                "daily_kcal": 1850,
+                "daily_protein_g": 110,
+                "daily_fat_g": 60,
+                "daily_carbs_g": 200,
+                "daily_water_ml": 2100,
+                "bmr": 1450,
+            },
+            "health_flags": {}, "disclaimer_acked": None,
+        }})
+    )
+    client = _make_client(transport)
+    try:
+        resp = await client.upsert_profile(
+            external_user_id="bot:1",
+            data={"gender": "female", "age": 32, "height_cm": 168, "weight_kg": 65},
+        )
+    finally:
+        client._reset_httpx()
+
+    assert resp.daily_kcal == 1850
+    assert resp.protein_g == 110
+    assert resp.fat_g == 60
+    assert resp.carbs_g == 200
+    assert resp.water_ml == 2100
+    assert resp.bmr == 1450
