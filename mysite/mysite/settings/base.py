@@ -358,6 +358,10 @@ NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
 # `docs/plans/maxbot-phase3-ayla-spec.md` §6 acceptance criteria.
 NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", default=False)
 
+# DRF-269/DRF-274 (B-4): cross-domain insights bot integration.
+# Default OFF. Production rollout blocked by DRF-271 (B-3) cumulative + DRF-275.
+CROSS_DOMAIN_ENABLED = _bool("CROSS_DOMAIN_ENABLED", default=False)
+
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
 YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")

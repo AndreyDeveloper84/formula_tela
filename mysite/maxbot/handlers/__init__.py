@@ -9,6 +9,7 @@ from .ai_assistant import router as ai_assistant_router
 from .ai_callbacks import router as ai_callbacks_router
 from .booking import router as booking_router
 from .contacts import router as contacts_router
+from .cross_domain import router as cross_domain_router
 from .fallback import router as fallback_router
 from .faq import router as faq_router
 from .food_correction import router as food_correction_router
@@ -77,6 +78,10 @@ def get_routers():
         # food_correction — обработка cb:scan:correct:* callbacks из
         # render_food_scan_v2 [✏️ Поправить] (Part 2A T07-T11).
         food_correction_router,
+        # cross_domain ПОСЛЕ food_scanner (его hook вызывает render отсюда)
+        # и ПЕРЕД ai_assistant — cb:cross:* callbacks должны матчиться
+        # раньше generic message_created (DRF-274).
+        cross_domain_router,
         ai_assistant_router,
         fallback_router,
     ]
