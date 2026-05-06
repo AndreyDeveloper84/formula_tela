@@ -546,10 +546,13 @@ class NutritionClient:
             self._circuit.record_success()
             # Ayla оборачивает ответ в {"data": ...} — это корректно.
             body = resp.json().get("data", {})
-            # Norms живут под "norms" по Ayla spec §1.1, с daily_ префиксом.
-            # Раньше читали flat top-level daily_kcal/protein_g/... — на mock_transport
-            # в E2E daily_kcal=0 и юзер видел «Готово ✓ Норма: 0 ккал». Спека не врёт.
-            # Fallback на flat top-level для обратной совместимости со старыми клиентами.
+            # DRF-270 (B-1): GET /profile/ может вернуть 200 с `exists=false`
+            # вместо 404 — обработаем как «нет профиля».
+            if body.get("exists") is False:
+                return None
+            # Norms живут strictly под `data.norms.*` с `daily_` префиксом
+            # per Ayla spec §1.1. DRF-270: убрали flat top-level fallback —
+            # старая схема больше не поддерживается.
             norms = body.get("norms") or {}
             return ProfileResponse(
                 gender=str(body.get("gender") or ""),
@@ -562,12 +565,12 @@ class NutritionClient:
                 # Ayla spec использует "activity_coefficient" (число), не "activity" (строка).
                 activity=str(body.get("activity_coefficient") or body.get("activity") or ""),
                 diet_preference=str(body.get("diet_preference") or ""),
-                daily_kcal=int(norms.get("daily_kcal") or body.get("daily_kcal") or 0),
-                protein_g=int(norms.get("daily_protein_g") or body.get("protein_g") or 0),
-                fat_g=int(norms.get("daily_fat_g") or body.get("fat_g") or 0),
-                carbs_g=int(norms.get("daily_carbs_g") or body.get("carbs_g") or 0),
-                water_ml=int(norms.get("daily_water_ml") or body.get("water_ml") or 0),
-                bmr=int(norms.get("bmr") or body.get("bmr") or 0),
+                daily_kcal=int(norms.get("daily_kcal") or 0),
+                protein_g=int(norms.get("daily_protein_g") or 0),
+                fat_g=int(norms.get("daily_fat_g") or 0),
+                carbs_g=int(norms.get("daily_carbs_g") or 0),
+                water_ml=int(norms.get("daily_water_ml") or 0),
+                bmr=int(norms.get("bmr") or 0),
                 health_flags=dict(body.get("health_flags") or {}),
                 disclaimer_acked=body.get("disclaimer_acked"),
                 goal_overridden_by=body.get("goal_overridden_by"),
