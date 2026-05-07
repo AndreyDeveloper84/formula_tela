@@ -483,3 +483,131 @@ async def test_cross_domain_router_registered_between_food_scanner_and_ai():
     cd_idx = routers.index(cross_domain_router)
     ai_idx = routers.index(ai_assistant_router)
     assert fs_idx < cd_idx < ai_idx
+
+
+# ─── DRF-288 (B9): per-user internal-only gate ─────────────────────────────
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_cross_domain_internal_visible(settings):
+    """B9: max_user_id in CROSS_DOMAIN_INTERNAL_ACCOUNTS, global flag off → card sent."""
+    from model_bakery import baker
+    from asgiref.sync import sync_to_async
+
+    from maxbot.handlers.food_scanner import _maybe_send_cross_domain_card
+
+    settings.CROSS_DOMAIN_ENABLED = False
+    settings.CROSS_DOMAIN_INTERNAL_ACCOUNTS = [70010]
+    bot_user = await sync_to_async(baker.make)(
+        "services_app.BotUser", max_user_id=70010, context={},
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.get_cross_domain_insights = AsyncMock(return_value=_make_insight())
+    fake_client.post_cross_domain_seen = AsyncMock(return_value=True)
+
+    with patch("maxbot.handlers.food_scanner.get_nutrition_client",
+               return_value=fake_client):
+        await _maybe_send_cross_domain_card(
+            bot=bot, chat_id=100, bot_user=bot_user,
+        )
+
+    assert fake_client.get_cross_domain_insights.await_count == 1
+    assert bot.send_message.await_count == 1
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_cross_domain_internal_hidden(settings):
+    """B9: max_user_id NOT in list, global flag off → no client call."""
+    from model_bakery import baker
+    from asgiref.sync import sync_to_async
+
+    from maxbot.handlers.food_scanner import _maybe_send_cross_domain_card
+
+    settings.CROSS_DOMAIN_ENABLED = False
+    settings.CROSS_DOMAIN_INTERNAL_ACCOUNTS = [70010]
+    bot_user = await sync_to_async(baker.make)(
+        "services_app.BotUser", max_user_id=70011, context={},
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.get_cross_domain_insights = AsyncMock()
+
+    with patch("maxbot.handlers.food_scanner.get_nutrition_client",
+               return_value=fake_client):
+        await _maybe_send_cross_domain_card(
+            bot=bot, chat_id=100, bot_user=bot_user,
+        )
+
+    fake_client.get_cross_domain_insights.assert_not_awaited()
+    bot.send_message.assert_not_awaited()
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_cross_domain_global_flag_overrides(settings):
+    """B9: CROSS_DOMAIN_ENABLED=True + empty internal list → all users get cards."""
+    from model_bakery import baker
+    from asgiref.sync import sync_to_async
+
+    from maxbot.handlers.food_scanner import _maybe_send_cross_domain_card
+
+    settings.CROSS_DOMAIN_ENABLED = True
+    settings.CROSS_DOMAIN_INTERNAL_ACCOUNTS = []
+    bot_user = await sync_to_async(baker.make)(
+        "services_app.BotUser", max_user_id=70012, context={},
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.get_cross_domain_insights = AsyncMock(return_value=_make_insight())
+    fake_client.post_cross_domain_seen = AsyncMock(return_value=True)
+
+    with patch("maxbot.handlers.food_scanner.get_nutrition_client",
+               return_value=fake_client):
+        await _maybe_send_cross_domain_card(
+            bot=bot, chat_id=100, bot_user=bot_user,
+        )
+
+    assert fake_client.get_cross_domain_insights.await_count == 1
+    assert bot.send_message.await_count == 1
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_cross_domain_internal_eating_disorder_still_skipped(settings):
+    """B9: eating_disorder takes priority over internal-list — never send card."""
+    from model_bakery import baker
+    from asgiref.sync import sync_to_async
+
+    from maxbot.handlers.food_scanner import _maybe_send_cross_domain_card
+
+    settings.CROSS_DOMAIN_ENABLED = False
+    settings.CROSS_DOMAIN_INTERNAL_ACCOUNTS = [70013]
+    bot_user = await sync_to_async(baker.make)(
+        "services_app.BotUser",
+        max_user_id=70013,
+        health_flags={"eating_disorder": True},
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.get_cross_domain_insights = AsyncMock()
+
+    with patch("maxbot.handlers.food_scanner.get_nutrition_client",
+               return_value=fake_client):
+        await _maybe_send_cross_domain_card(
+            bot=bot, chat_id=100, bot_user=bot_user,
+        )
+
+    fake_client.get_cross_domain_insights.assert_not_awaited()
+    bot.send_message.assert_not_awaited()
+
+
+async def test_cross_domain_no_bot_user_hidden(settings):
+    """B9: bot_user=None — safe default no card, even with internal list."""
+    from maxbot.handlers.food_scanner import _cross_domain_visible_for
+
+    settings.CROSS_DOMAIN_ENABLED = False
+    settings.CROSS_DOMAIN_INTERNAL_ACCOUNTS = [12345]
+    assert _cross_domain_visible_for(None) is False

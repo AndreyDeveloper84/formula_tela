@@ -367,12 +367,13 @@ async def _maybe_send_evening_inline(
         )
 
     # DRF-274 (B-4): cross-domain insight surfacing — best-effort.
-    # Skip if feature flag off or user has eating_disorder flag set.
+    # Skip if user has eating_disorder flag set OR per-user gate is closed.
     # Errors NEVER propagate up the log_meal flow.
     # B-1 review fix: health_flags is a model field on BotUser, not nested in context.
+    # DRF-288 (B9): visibility gate — global CROSS_DOMAIN_ENABLED OR internal list.
     if (
-        getattr(settings, "CROSS_DOMAIN_ENABLED", False)
-        and not (bot_user.health_flags or {}).get("eating_disorder")
+        not (bot_user.health_flags or {}).get("eating_disorder")
+        and _cross_domain_visible_for(bot_user)
     ):
         try:
             await _maybe_send_cross_domain_card(
@@ -386,6 +387,22 @@ async def _maybe_send_evening_inline(
             )
 
 
+def _cross_domain_visible_for(bot_user) -> bool:
+    """Per-user gate (DRF-288 / B9). Global CROSS_DOMAIN_ENABLED overrides.
+
+    Returns True if user should see Track E cross-domain insight cards.
+    - Global flag on → everyone visible (preserves B-4 behavior).
+    - Global flag off → only max_user_ids in CROSS_DOMAIN_INTERNAL_ACCOUNTS.
+    - bot_user is None → False (safe default).
+    """
+    if getattr(settings, "CROSS_DOMAIN_ENABLED", False):
+        return True
+    if bot_user is None:
+        return False
+    internal = getattr(settings, "CROSS_DOMAIN_INTERNAL_ACCOUNTS", [])
+    return bot_user.max_user_id in internal
+
+
 async def _maybe_send_cross_domain_card(*, bot, chat_id: int, bot_user) -> None:
     """Fetch + render + send a cross-domain insight card. Best-effort.
 
@@ -395,13 +412,14 @@ async def _maybe_send_cross_domain_card(*, bot, chat_id: int, bot_user) -> None:
 
     Logs are PII-safe: shown_id / rule_slug only, never insight_text.
     """
-    # Re-check the gates here so the helper itself is safe to call directly
-    # (used by tests + future entry points).
-    if not getattr(settings, "CROSS_DOMAIN_ENABLED", False):
-        return
     # B-1 review fix: health_flags is a real model field on BotUser
     # (services_app/models.py:1135), NOT nested in `context`. Use the field directly.
+    # Eating-disorder gate must come BEFORE the per-user gate so that
+    # internal-list accounts with eating_disorder=True still get nothing.
     if (bot_user.health_flags or {}).get("eating_disorder"):
+        return
+    # DRF-288 (B9): per-user gate — global flag on OR max_user_id in internal list.
+    if not _cross_domain_visible_for(bot_user):
         return
 
     # Lazy import — handlers/cross_domain.py imports nutrition_client which
