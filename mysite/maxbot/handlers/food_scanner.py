@@ -359,11 +359,14 @@ async def _maybe_send_evening_inline(
         await sync_to_async(set_setting)(
             bot_user, "evening_inline_shown_at", today_iso,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        # B-19 (DRF-298): catch-all best-effort → logger.exception для
+        # traceback в Sentry. Inner typed-exception блоки выше используют
+        # logger.warning (NutritionUnavailable/API error без stack нужен).
         # Never break log_meal flow.
-        logger.warning(
-            "evening_inline.unexpected user=%s err=%s",
-            getattr(bot_user, "max_user_id", "?"), exc,
+        logger.exception(
+            "evening_inline.unexpected user=%s",
+            getattr(bot_user, "max_user_id", "?"),
         )
 
     # DRF-274 (B-4): cross-domain insight surfacing — best-effort.
