@@ -144,6 +144,13 @@ def main_menu_keyboard():
         builder.row(
             CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
         )
+        # B24: «💧 Вода» — quick-access peer кнопка под тем же gate.
+        # Reuse existing PAYLOAD_NUTRITION_ADD_WATER (handlers/water.py уже
+        # подписан). Без отдельного payload — клик ведёт в тот же flow что
+        # и footer-кнопка после food_scanner.
+        builder.row(
+            CallbackButton(text="💧 Вода", payload=PAYLOAD_NUTRITION_ADD_WATER),
+        )
     builder.row(
         CallbackButton(text="📞 Контакты", payload=PAYLOAD_MENU_CONTACTS),
         CallbackButton(text="❓ Вопросы", payload=PAYLOAD_MENU_FAQ),
