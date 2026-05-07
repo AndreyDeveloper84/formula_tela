@@ -362,6 +362,13 @@ NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", default=False)
 # Default OFF. Production rollout blocked by DRF-271 (B-3) cumulative + DRF-275.
 CROSS_DOMAIN_ENABLED = _bool("CROSS_DOMAIN_ENABLED", default=False)
 
+# DRF-288 (B9): per-user gate for Track E (cross-domain insights).
+# When CROSS_DOMAIN_ENABLED is False, only listed max_user_ids получают cards.
+# Comma-separated list of MAX user IDs (BigInt). Empty by default → no internal users.
+CROSS_DOMAIN_INTERNAL_ACCOUNTS = [
+    int(x) for x in os.getenv("CROSS_DOMAIN_INTERNAL_ACCOUNTS", "").split(",") if x
+]
+
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
 YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")
