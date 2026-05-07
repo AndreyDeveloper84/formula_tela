@@ -55,7 +55,11 @@ def _err_envelope(status: int, code: str) -> httpx.Response:
 
 
 async def test_add_water_201_returns_water_entry_response():
-    """POST 201 with full water-entry payload → WaterEntryResponse."""
+    """POST 201 with full water-entry payload → WaterEntryResponse.
+
+    Body keys follow Ayla actual shape: `today_total_water_ml` / `today_norm_water_ml`
+    (DRF-301 / B22 — sister bug to PR #133's nested norms fix).
+    """
     transport = httpx.MockTransport(
         lambda r: _ok_envelope(
             {
@@ -64,8 +68,8 @@ async def test_add_water_201_returns_water_entry_response():
                 "water_ml": 250,  # plain water → coefficient 1.0
                 "kcal": 0,
                 "milestone_text": None,
-                "today_total_ml": 250,
-                "today_norm_ml": 2000,
+                "today_total_water_ml": 250,
+                "today_norm_water_ml": 2000,
                 "alcohol_recovery_hint": False,
             },
             status=201,
@@ -94,7 +98,7 @@ async def test_add_water_with_beverage_coffee_applies_coefficient():
             {
                 "entry_id": "water-uuid-2", "ml": 200, "water_ml": 190,
                 "kcal": 5, "milestone_text": None,
-                "today_total_ml": 1190, "today_norm_ml": 2000,
+                "today_total_water_ml": 1190, "today_norm_water_ml": 2000,
                 "alcohol_recovery_hint": False,
             },
             status=201,
@@ -119,7 +123,7 @@ async def test_add_water_milestone_50pct():
                 "entry_id": "water-uuid-3", "ml": 500, "water_ml": 500,
                 "kcal": 0,
                 "milestone_text": "Половина нормы — отлично! 💧",
-                "today_total_ml": 1000, "today_norm_ml": 2000,
+                "today_total_water_ml": 1000, "today_norm_water_ml": 2000,
                 "alcohol_recovery_hint": False,
             },
             status=201,
@@ -140,7 +144,7 @@ async def test_add_water_alcohol_returns_recovery_hint():
             {
                 "entry_id": "water-uuid-4", "ml": 150, "water_ml": 0,
                 "kcal": 130, "milestone_text": None,
-                "today_total_ml": 1000, "today_norm_ml": 2000,
+                "today_total_water_ml": 1000, "today_norm_water_ml": 2000,
                 "alcohol_recovery_hint": True,
             },
             status=201,
@@ -167,7 +171,8 @@ async def test_add_water_forwards_idempotency_header():
         return _ok_envelope(
             {
                 "entry_id": "water-uuid-x", "ml": 250, "water_ml": 250, "kcal": 0,
-                "milestone_text": None, "today_total_ml": 250, "today_norm_ml": 2000,
+                "milestone_text": None,
+                "today_total_water_ml": 250, "today_norm_water_ml": 2000,
                 "alcohol_recovery_hint": False,
             },
             status=201,
@@ -197,7 +202,8 @@ async def test_add_water_forwards_ts_when_provided():
         return _ok_envelope(
             {
                 "entry_id": "x", "ml": 250, "water_ml": 250, "kcal": 0,
-                "milestone_text": None, "today_total_ml": 250, "today_norm_ml": 2000,
+                "milestone_text": None,
+                "today_total_water_ml": 250, "today_norm_water_ml": 2000,
                 "alcohol_recovery_hint": False,
             },
             status=201,
@@ -296,11 +302,15 @@ async def test_undo_water_5xx_raises_unavailable():
 
 
 async def test_get_water_today_returns_entries_and_totals():
-    """GET /water/today/ → WaterTodayResponse {entries, total_ml, norm_ml}."""
+    """GET /water/today/ → WaterTodayResponse {entries, total_ml, norm_ml}.
+
+    Body keys follow Ayla actual shape: `today_total_water_ml` / `today_norm_water_ml`
+    (DRF-301 / B22).
+    """
     transport = httpx.MockTransport(
         lambda r: _ok_envelope({
-            "total_ml": 1500,
-            "norm_ml": 2000,
+            "today_total_water_ml": 1500,
+            "today_norm_water_ml": 2000,
             "entries": [
                 {"entry_id": "e1", "ml": 500, "water_ml": 500, "ts": "2026-05-03T08:00:00Z"},
                 {"entry_id": "e2", "ml": 200, "water_ml": 190, "ts": "2026-05-03T10:30:00Z",
@@ -325,7 +335,9 @@ async def test_get_water_today_returns_entries_and_totals():
 async def test_get_water_today_empty_day():
     """Пустой день — entries=[], total_ml=0, norm_ml > 0 (есть профиль)."""
     transport = httpx.MockTransport(
-        lambda r: _ok_envelope({"total_ml": 0, "norm_ml": 2000, "entries": []})
+        lambda r: _ok_envelope(
+            {"today_total_water_ml": 0, "today_norm_water_ml": 2000, "entries": []}
+        )
     )
     client = _make_client(transport)
     try:
@@ -345,3 +357,47 @@ async def test_get_water_today_5xx_raises_unavailable():
             await client.get_water_today(external_user_id="bot:1")
     finally:
         client._reset_httpx()
+
+
+async def test_get_water_today_reads_actual_ayla_shape():
+    """B22 regression: GET /water/today/ parses actual Ayla envelope keys.
+
+    Live evidence (2026-05-07, bot:66368800):
+        {
+          "today_total_water_ml": 0,
+          "today_norm_water_ml": 2000,
+          "today_kcal_from_beverages": 0.0,
+          "today_caffeine_mg": 0.0,
+          "today_total_coffee_cups": 0,
+          "today_total_tea_cups": 0,
+          ...
+        }
+
+    Ensures all 6 fields populate correctly on WaterTodayResponse.
+    """
+    transport = httpx.MockTransport(
+        lambda r: _ok_envelope({
+            "date": "2026-05-07",
+            "entries": [],
+            "today_total_water_ml": 1500,
+            "today_norm_water_ml": 2000,
+            "today_kcal_from_beverages": 120.5,
+            "today_caffeine_mg": 85.0,
+            "today_total_coffee_cups": 2,
+            "today_total_tea_cups": 1,
+        })
+    )
+    client = _make_client(transport)
+    try:
+        resp = await client.get_water_today(external_user_id="bot:66368800")
+    finally:
+        client._reset_httpx()
+
+    # Backward-compat fields (Ayla key → DTO field rename)
+    assert resp.total_ml == 1500
+    assert resp.norm_ml == 2000
+    # New fields exposed for daily report + caffeine warnings
+    assert resp.kcal_from_beverages == 120.5
+    assert resp.caffeine_mg == 85.0
+    assert resp.coffee_cups == 2
+    assert resp.tea_cups == 1

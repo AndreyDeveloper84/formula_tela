@@ -175,11 +175,23 @@ class WaterEntryResponse:
 
 @dataclass(frozen=True)
 class WaterTodayResponse:
-    """Список water entries за день — для undo-UI и daily report."""
+    """Список water entries за день — для undo-UI и daily report.
+
+    Field naming: DTO keeps `total_ml` / `norm_ml` for backward compat with
+    callers (ai_ui.render_water_today, tasks.send_water_reminders). Parser
+    reads Ayla's actual envelope keys `today_total_water_ml` /
+    `today_norm_water_ml` (DRF-301 / B22 — sister bug to PR #133's nested
+    norms fix). Optional fields (kcal/caffeine/coffee_cups/tea_cups) are
+    extracted from `today_*` keys for daily report + caffeine warnings.
+    """
 
     total_ml: int
     norm_ml: int
     entries: list[dict[str, Any]]
+    kcal_from_beverages: float = 0.0
+    caffeine_mg: float = 0.0
+    coffee_cups: int = 0
+    tea_cups: int = 0
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -664,8 +676,10 @@ class NutritionClient:
                 water_ml=int(body.get("water_ml") or 0),
                 kcal=int(body.get("kcal") or 0),
                 milestone_text=body.get("milestone_text"),
-                today_total_ml=int(body.get("today_total_ml") or 0),
-                today_norm_ml=int(body.get("today_norm_ml") or 0),
+                # Ayla actual envelope keys (DRF-301 / B22) — see WaterTodayResponse
+                # docstring for naming rationale.
+                today_total_ml=int(body.get("today_total_water_ml") or 0),
+                today_norm_ml=int(body.get("today_norm_water_ml") or 0),
                 alcohol_recovery_hint=bool(body.get("alcohol_recovery_hint") or False),
                 raw=body,
             )
@@ -747,9 +761,14 @@ class NutritionClient:
             self._circuit.record_success()
             body = resp.json().get("data", {})
             return WaterTodayResponse(
-                total_ml=int(body.get("total_ml") or 0),
-                norm_ml=int(body.get("norm_ml") or 0),
+                # Ayla actual envelope keys (DRF-301 / B22) — see DTO docstring.
+                total_ml=int(body.get("today_total_water_ml") or 0),
+                norm_ml=int(body.get("today_norm_water_ml") or 0),
                 entries=list(body.get("entries") or []),
+                kcal_from_beverages=float(body.get("today_kcal_from_beverages") or 0.0),
+                caffeine_mg=float(body.get("today_caffeine_mg") or 0.0),
+                coffee_cups=int(body.get("today_total_coffee_cups") or 0),
+                tea_cups=int(body.get("today_total_tea_cups") or 0),
                 raw=body,
             )
         if resp.status_code >= 500:
