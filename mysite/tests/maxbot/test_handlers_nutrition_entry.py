@@ -290,3 +290,66 @@ async def test_nutrition_enabled_shows_welcome_screen(monkeypatch, settings):
     text = cb.bot.send_message.await_args.kwargs["text"]
     assert "30 сек" in text or "Сфоткай" in text
     assert cb.bot.send_message.await_args.kwargs.get("attachments") is not None
+
+
+# ─── B24: RESUME-экран должен иметь back-кнопку (DRF-303) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_resume_screen_attaches_back_keyboard(monkeypatch, settings):
+    """B24: для onboarded-юзера RESUME-экран отправляется с
+    back_to_menu_keyboard() — иначе экран был тупиком без выхода."""
+    from maxbot import keyboards
+    from maxbot.handlers.nutrition_entry import on_show_nutrition_welcome
+
+    settings.NUTRITION_ENABLED = True
+    bot_user = MagicMock(
+        nutrition_onboarded_at="2026-05-03T12:00:00Z",
+        max_user_id=42,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
+
+    cb = _make_callback(payload="cb:menu:nutrition", user_id=42)
+    ctx = MemoryContext(chat_id=100, user_id=42)
+
+    await on_show_nutrition_welcome(cb, ctx)
+
+    kwargs = cb.bot.send_message.await_args.kwargs
+    attachments = kwargs.get("attachments")
+    assert attachments is not None and len(attachments) == 1, (
+        "RESUME-экран обязан прийти с back-keyboard, иначе тупик"
+    )
+
+    # Проверяем что в keyboard есть payload «cb:back»
+    rows = attachments[0].payload.buttons
+    payloads = [getattr(b, "payload", None) for row in rows for b in row]
+    assert keyboards.PAYLOAD_BACK in payloads
+
+
+@pytest.mark.asyncio
+async def test_resume_screen_text_unchanged(monkeypatch, settings):
+    """B24 regression guard: контент RESUME_TEXT не изменился — фикс только
+    добавляет attachments, не трогает текст. Если кто-то отрефакторит RESUME_TEXT,
+    тест упадёт и заставит обновить ожидания осознанно."""
+    from maxbot.handlers.nutrition_entry import RESUME_TEXT, on_show_nutrition_welcome
+
+    settings.NUTRITION_ENABLED = True
+    bot_user = MagicMock(
+        nutrition_onboarded_at="2026-05-03T12:00:00Z",
+        max_user_id=43,
+    )
+    monkeypatch.setattr(
+        "maxbot.handlers.nutrition_entry._resolve_bot_user_for_entry",
+        AsyncMock(return_value=bot_user),
+    )
+
+    cb = _make_callback(payload="cb:menu:nutrition", user_id=43)
+    ctx = MemoryContext(chat_id=100, user_id=43)
+
+    await on_show_nutrition_welcome(cb, ctx)
+
+    text = cb.bot.send_message.await_args.kwargs["text"]
+    assert text == RESUME_TEXT

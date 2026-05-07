@@ -40,11 +40,11 @@ def test_main_menu_has_six_buttons_when_nutrition_disabled(settings):
     assert len(_flatten(kb)) == 6
 
 
-def test_main_menu_has_seven_buttons_when_nutrition_enabled(settings):
-    """Главное меню с nutrition: 7 кнопок (6 базовых + 🍎 Дневник питания)."""
+def test_main_menu_has_eight_buttons_when_nutrition_enabled(settings):
+    """Главное меню с nutrition: 8 кнопок (6 базовых + 🍎 Дневник + 💧 Вода — B24)."""
     settings.NUTRITION_ENABLED = True
     kb = keyboards.main_menu_keyboard()
-    assert len(_flatten(kb)) == 7
+    assert len(_flatten(kb)) == 8
 
 
 def test_main_menu_payloads_when_nutrition_disabled(settings):
@@ -59,6 +59,7 @@ def test_main_menu_payloads_when_nutrition_disabled(settings):
 
 
 def test_main_menu_payloads_when_nutrition_enabled(settings):
+    """B24: с включённым nutrition — также появляется 💧 Вода (peer кнопка)."""
     settings.NUTRITION_ENABLED = True
     kb = keyboards.main_menu_keyboard()
     payloads = set(_payloads(kb))
@@ -66,6 +67,7 @@ def test_main_menu_payloads_when_nutrition_enabled(settings):
         "cb:menu:book", "cb:menu:services", "cb:menu:contacts",
         "cb:menu:faq", "cb:menu:ask", "cb:menu:my_bookings",
         "cb:menu:nutrition",
+        "cb:nutrition:water:add",  # B24: quick-access water
     }
 
 
@@ -127,6 +129,27 @@ def test_nutrition_welcome_keyboard_has_three_buttons():
         "cb:nutrition:start_anketa",
         "cb:back",
     }
+
+
+# ─── B24: Quick-access 💧 Вода в main_menu (DRF-303) ───────────────────────
+
+
+def test_main_menu_water_button_visible_when_nutrition_enabled(settings):
+    """B24: при включённом nutrition в main_menu есть И «🍎 Дневник», И «💧 Вода»."""
+    settings.NUTRITION_ENABLED = True
+    kb = keyboards.main_menu_keyboard()
+    payloads = set(_payloads(kb))
+    assert keyboards.PAYLOAD_MENU_NUTRITION in payloads
+    assert keyboards.PAYLOAD_NUTRITION_ADD_WATER in payloads
+
+
+def test_main_menu_water_button_hidden_when_nutrition_disabled(settings):
+    """B24: при выключенном nutrition обе кнопки скрыты — quick-access идёт под общим gate."""
+    settings.NUTRITION_ENABLED = False
+    kb = keyboards.main_menu_keyboard()
+    payloads = set(_payloads(kb))
+    assert keyboards.PAYLOAD_MENU_NUTRITION not in payloads
+    assert keyboards.PAYLOAD_NUTRITION_ADD_WATER not in payloads
 
 
 # ─── services_keyboard ──────────────────────────────────────────────────────
