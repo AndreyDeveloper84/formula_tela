@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from django.conf import settings
 from maxapi.types import CallbackButton
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
@@ -22,6 +23,7 @@ PAYLOAD_MENU_FAQ = "cb:menu:faq"
 PAYLOAD_BACK = "cb:back"
 PAYLOAD_MENU_ASK = "cb:menu:ask"  # Кнопка «❓ Задать вопрос» (T-06c)
 PAYLOAD_MENU_MY_BOOKINGS = "cb:menu:my_bookings"  # Кнопка «📋 Мои записи»
+PAYLOAD_MENU_NUTRITION = "cb:menu:nutrition"  # Кнопка «🍎 Дневник питания» (Phase 3)
 PAYLOAD_CONFIRM_YES = "cb:confirm:yes"
 PAYLOAD_CONFIRM_NO = "cb:confirm:no"
 PAYLOAD_CONFIRM_OTHER = "cb:confirm:other"  # «Указать другие данные» — сбросить FSM
@@ -40,8 +42,17 @@ PAYLOAD_REM_CANCEL_PREFIX = "cb:rem:cancel:"
 MAX_KEYBOARD_ROWS = 29
 
 
-def main_menu_keyboard():
-    """Главное меню — 6 кнопок в 4 ряда."""
+def main_menu_keyboard(*, bot_user=None):
+    """Главное меню — 6 базовых кнопок + опциональный «Дневник питания» (Phase 3).
+
+    Phase 3 gate (DRF-287 B8): кнопка «🍎 Дневник питания» появляется только если:
+    - `settings.NUTRITION_ENABLED=True` (global override — все видят), либо
+    - `bot_user.max_user_id` присутствует в `settings.PHASE3_INTERNAL_ACCOUNTS`
+      (whitelist 5 внутренних тестеров).
+
+    bot_user=None — defensive default; кнопка скрывается, чтобы вызов из
+    edge-case'ов (тесты, fallback handler без bot_user в scope) не падал.
+    """
     builder = InlineKeyboardBuilder()
     builder.row(
         CallbackButton(text="📅 Записаться", payload=PAYLOAD_MENU_BOOK),
@@ -57,7 +68,26 @@ def main_menu_keyboard():
     builder.row(
         CallbackButton(text="💬 Задать вопрос", payload=PAYLOAD_MENU_ASK),
     )
+    if _nutrition_visible_for(bot_user):
+        builder.row(
+            CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
+        )
     return builder.as_markup()
+
+
+def _nutrition_visible_for(bot_user) -> bool:
+    """Phase 3 feature gate (DRF-287 B8).
+
+    True если:
+    - global override `NUTRITION_ENABLED=True` (раскатка на всех), либо
+    - `bot_user.max_user_id` ∈ `PHASE3_INTERNAL_ACCOUNTS` (5 внутренних).
+    """
+    if getattr(settings, "NUTRITION_ENABLED", False):
+        return True
+    if bot_user is None:
+        return False
+    internal = getattr(settings, "PHASE3_INTERNAL_ACCOUNTS", []) or []
+    return getattr(bot_user, "max_user_id", None) in internal
 
 
 def categories_keyboard(categories: Iterable) -> object:

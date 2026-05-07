@@ -340,6 +340,17 @@ OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")  # HTTP-прокси (http://user:p
 AYLA_BASE_URL = os.getenv("AYLA_BASE_URL", "")
 NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
 
+# === Phase 3 nutrition feature gate (DRF-287 B8) ===
+# NUTRITION_ENABLED — global override: когда True, кнопка «🍎 Дневник питания»
+# в главном меню видна всем. Default False — гейт активен.
+# PHASE3_INTERNAL_ACCOUNTS — list[int] из 5 max_user_id внутренних тестеров;
+# им кнопка показывается даже при NUTRITION_ENABLED=False. CSV в env-var:
+#   PHASE3_INTERNAL_ACCOUNTS=12345,67890,11111
+NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", False)
+PHASE3_INTERNAL_ACCOUNTS = [
+    int(x) for x in os.getenv("PHASE3_INTERNAL_ACCOUNTS", "").split(",") if x.strip()
+]
+
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")
 YANDEX_METRIKA_COUNTER_ID = os.getenv("YANDEX_METRIKA_COUNTER_ID", "")

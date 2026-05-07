@@ -118,3 +118,52 @@ def test_confirm_booking_has_yes_and_no():
     kb = keyboards.confirm_booking_keyboard()
     payloads = set(_payloads(kb))
     assert payloads == {"cb:confirm:yes", "cb:confirm:no"}
+
+
+# ─── DRF-287 B8: Phase 3 per-user internal gate ─────────────────────────────
+
+
+@pytest.mark.django_db
+def test_keyboard_phase3_internal_visible(settings):
+    """Внутренний тестер (max_user_id в PHASE3_INTERNAL_ACCOUNTS) видит кнопку."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    bot_user = baker.make("services_app.BotUser", max_user_id=12345)
+
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+
+    assert keyboards.PAYLOAD_MENU_NUTRITION in _payloads(kb)
+
+
+@pytest.mark.django_db
+def test_keyboard_phase3_internal_hidden(settings):
+    """Не-внутренний user (id отсутствует в whitelist) кнопку не видит."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    bot_user = baker.make("services_app.BotUser", max_user_id=99999)
+
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+
+    assert keyboards.PAYLOAD_MENU_NUTRITION not in _payloads(kb)
+
+
+@pytest.mark.django_db
+def test_keyboard_phase3_global_flag_overrides(settings):
+    """NUTRITION_ENABLED=True перебивает gate — кнопка видна всем, даже при пустом списке."""
+    settings.NUTRITION_ENABLED = True
+    settings.PHASE3_INTERNAL_ACCOUNTS = []
+    bot_user = baker.make("services_app.BotUser", max_user_id=99999)
+
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+
+    assert keyboards.PAYLOAD_MENU_NUTRITION in _payloads(kb)
+
+
+def test_keyboard_phase3_no_bot_user_hidden(settings):
+    """Defensive: bot_user=None + global flag off → кнопку скрываем."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+
+    kb = keyboards.main_menu_keyboard(bot_user=None)
+
+    assert keyboards.PAYLOAD_MENU_NUTRITION not in _payloads(kb)

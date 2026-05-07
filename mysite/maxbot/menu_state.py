@@ -92,7 +92,9 @@ async def send_with_main_menu(
     # внизу чата, фокус там). Если send упадёт — RuntimeError вверх,
     # старое меню НЕ трогаем (state preserved для retry).
     attachments = list(extra_attachments) if extra_attachments else []
-    attachments.append(keyboards.main_menu_keyboard())
+    # Phase 3 gate (DRF-287 B8): передаём bot_user, чтобы main_menu_keyboard
+    # мог показать кнопку «🍎 Дневник питания» только внутренним тестерам.
+    attachments.append(keyboards.main_menu_keyboard(bot_user=bot_user))
     sent = await bot.send_message(
         chat_id=chat_id,
         text=text,
