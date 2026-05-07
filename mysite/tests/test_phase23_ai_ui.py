@@ -105,6 +105,101 @@ def test_render_show_masters_empty_list_graceful():
     assert "не нашёл" in text.lower() or "нет" in text.lower()
 
 
+# ─── DRF-354: photo attachments (B26) ─────────────────────────────────────
+
+
+def test_render_show_masters_with_attachments():
+    """master_attachments dict → photo attachments идут в результат
+    ПЕРЕД клавиатурой (Option A: один send_message с N image + 1 keyboard)."""
+    from maxapi.enums.attachment import AttachmentType
+    from maxapi.types.attachments.attachment import Attachment
+    from maxapi.types.attachments.upload import (
+        AttachmentPayload, AttachmentUpload,
+    )
+    from maxapi.enums.upload_type import UploadType
+
+    from maxbot.ai_ui import render_action
+
+    def _att(token: str) -> Attachment:
+        return Attachment(
+            type=AttachmentType.IMAGE,
+            payload=AttachmentUpload(
+                type=UploadType.IMAGE,
+                payload=AttachmentPayload(token=token),
+            ),
+        )
+
+    conv_id = _conv_id()
+    action_data = {
+        "explanation": "Топ-3 под ваш запрос:",
+        "masters": [
+            {"master": {"id": 42, "name": "Анна"}, "match_score": 90},
+            {"master": {"id": 43, "name": "Денис"}, "match_score": 85},
+            {"master": {"id": 44, "name": "Олег"}, "match_score": 80},
+        ],
+    }
+    master_attachments = {
+        42: _att("ANNA_IMG"),
+        43: _att("DENIS_IMG"),
+        # 44 без фото — просто пропускается, не падает
+    }
+
+    text, atts = render_action(
+        conversation_id=conv_id, action_type="show_masters",
+        action_data=action_data,
+        master_attachments=master_attachments,
+    )
+
+    # Фото идут перед keyboard, в порядке мастеров
+    image_atts = [a for a in atts if a.type == "image"]
+    keyboard_atts = [a for a in atts if a.type == "inline_keyboard"]
+    assert len(image_atts) == 2  # 42 + 43, 44 пропущен
+    assert len(keyboard_atts) == 1
+    # Изображения сохраняют порядок мастеров (42 раньше 43)
+    tokens = [a.payload.payload.token for a in image_atts]
+    assert tokens == ["ANNA_IMG", "DENIS_IMG"]
+    # Текст и keyboard не сломались
+    assert "Анна" in text
+    assert "Денис" in text
+
+
+def test_render_show_masters_no_attachments_backwards_compat():
+    """master_attachments=None и {} → render как раньше: только keyboard,
+    никаких image-attachments. Нужно для backwards-compat с вызовами
+    render_action без нового аргумента."""
+    from maxbot.ai_ui import render_action
+
+    conv_id = _conv_id()
+    action_data = {
+        "explanation": "Подходят:",
+        "masters": [
+            {"master": {"id": 42, "name": "Анна"}, "match_score": 90},
+        ],
+    }
+
+    # Вариант 1: master_attachments=None (default)
+    text1, atts1 = render_action(
+        conversation_id=conv_id, action_type="show_masters",
+        action_data=action_data,
+    )
+    # Вариант 2: master_attachments={} (явно пустой)
+    text2, atts2 = render_action(
+        conversation_id=conv_id, action_type="show_masters",
+        action_data=action_data,
+        master_attachments={},
+    )
+
+    for text, atts in [(text1, atts1), (text2, atts2)]:
+        assert "Анна" in text
+        # Только keyboard, никаких image
+        assert all(a.type == "inline_keyboard" for a in atts), (
+            f"expected only keyboard atts, got: {[a.type for a in atts]}"
+        )
+        # Кнопка мастера сохранилась
+        payloads = _kb_payloads(atts)
+        assert any(f"cb:ai:pick_master:{conv_id}:42" in p for p in payloads)
+
+
 # ─── show_slots ───────────────────────────────────────────────────────────
 
 
