@@ -437,7 +437,11 @@ async def _maybe_send_cross_domain_card(*, bot, chat_id: int, bot_user) -> None:
         return
 
 
-@router.message_created(F.message.body.text.lower().in_(("/дневник", "/diary", "дневник")))
+@router.message_created(
+    F.message.body.text.lower().in_(
+        ("/день", "/дневник", "/diary", "день", "дневник"),
+    ),
+)
 async def on_diary_command(event: MessageCreated, context: MemoryContext) -> None:
     """`/дневник` → hybrid daily report (Part 2C: summary + water + render)."""
     if event.message.sender is None:

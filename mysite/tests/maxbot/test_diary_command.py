@@ -1,9 +1,75 @@
-"""Phase 3.1 Part 2D.3 T03: /дневник opts in to with_comment=True."""
+"""Phase 3.1 Part 2D.3 T03: /дневник opts in to with_comment=True.
+
+B25 (DRF-305): /день also routes to on_diary_command (case-insensitive).
+"""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+def _diary_filter():
+    """Return the magic_filter used by `on_diary_command` decorator.
+
+    Uses the exact same expression as the decorator in food_scanner.py so the
+    test stays in sync if the tuple changes.
+    """
+    from maxapi.filters import F
+    return F.message.body.text.lower().in_(
+        ("/день", "/дневник", "/diary", "день", "дневник"),
+    )
+
+
+def _fake_event_with_text(text: str) -> MagicMock:
+    event = MagicMock()
+    event.message.body.text = text
+    return event
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["/день", "/День", "/ДЕНЬ"],
+    ids=["lowercase", "capitalized", "uppercase"],
+)
+def test_diary_command_accepts_den_command(text):
+    """B25: `/день` (any case) triggers on_diary_command filter."""
+    flt = _diary_filter()
+    assert flt.resolve(_fake_event_with_text(text)) is True
+
+
+def test_diary_command_accepts_den_no_slash():
+    """B25: bare `день` (without slash) triggers on_diary_command filter."""
+    flt = _diary_filter()
+    assert flt.resolve(_fake_event_with_text("день")) is True
+
+
+def test_diary_command_case_insensitive_den():
+    """B25: `/ДЕНЬ` uppercase triggers on_diary_command filter."""
+    flt = _diary_filter()
+    assert flt.resolve(_fake_event_with_text("/ДЕНЬ")) is True
+
+
+def test_diary_command_dnevnik_still_works():
+    """Regression: `/дневник` still triggers (existing behaviour)."""
+    flt = _diary_filter()
+    assert flt.resolve(_fake_event_with_text("/дневник")) is True
+    assert flt.resolve(_fake_event_with_text("/Дневник")) is True
+    assert flt.resolve(_fake_event_with_text("дневник")) is True
+
+
+def test_diary_command_diary_english_still_works():
+    """Regression: `/diary` (English) still triggers (existing behaviour)."""
+    flt = _diary_filter()
+    assert flt.resolve(_fake_event_with_text("/diary")) is True
+    assert flt.resolve(_fake_event_with_text("/Diary")) is True
+
+
+def test_diary_command_unrelated_text_does_not_match():
+    """Negative: arbitrary message must NOT trigger diary filter."""
+    flt = _diary_filter()
+    assert flt.resolve(_fake_event_with_text("привет")) is False
+    assert flt.resolve(_fake_event_with_text("/start")) is False
 
 
 @pytest.mark.asyncio
