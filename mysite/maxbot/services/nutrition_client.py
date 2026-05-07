@@ -702,7 +702,10 @@ class NutritionClient:
         """DELETE /api/v1/nutrition/internal/water/{entry_id}/.
 
         Returns:
-            True: 204 — soft-delete успешно (запись восстановима в restore window).
+            True: 200/204 — soft-delete успешно (запись восстановима
+                в restore window). Live Ayla `InternalWaterDeleteView`
+                отдаёт 200 с aggregate body; spec допускал 204. Принимаем
+                оба варианта (B29 / DRF-357).
             False: 404 — restore window истёк или entry уже не существует.
 
         Raises:
@@ -724,7 +727,7 @@ class NutritionClient:
             self._circuit.record_failure(now=now)
             raise NutritionUnavailableError(f"network: {type(exc).__name__}") from exc
 
-        if resp.status_code == 204:
+        if resp.status_code in (200, 204):
             self._circuit.record_success()
             return True
         if resp.status_code == 404:
