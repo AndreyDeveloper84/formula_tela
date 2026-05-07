@@ -257,6 +257,29 @@ async def test_undo_water_204_returns_true():
     assert ok is True
 
 
+async def test_undo_water_200_returns_true():
+    """Live Ayla DELETE возвращает 200 с aggregate body (DRF-302
+    InternalWaterDeleteView::success_response default), не 204.
+    Bot должен принимать оба статуса как success — иначе клик
+    «Отменить» падает в NutritionAPIError → «Не получилось отменить».
+    Regression: B29 / DRF-357.
+    """
+    body = {
+        "data": {
+            "entry_id": "abc-123",
+            "today_total_water_ml": 450,
+            "today_norm_water_ml": 2900,
+        }
+    }
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json=body))
+    client = _make_client(transport)
+    try:
+        ok = await client.undo_water(external_user_id="bot:1", entry_id="abc-123")
+    finally:
+        client._reset_httpx()
+    assert ok is True
+
+
 async def test_undo_water_uses_correct_url():
     captured: dict = {}
 
