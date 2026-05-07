@@ -120,17 +120,24 @@ PAYLOAD_REM_CANCEL_PREFIX = "cb:rem:cancel:"
 MAX_KEYBOARD_ROWS = 29
 
 
-def main_menu_keyboard():
+def main_menu_keyboard(*, bot_user=None):
     """Главное меню — 6-7 кнопок в 4-5 рядов.
 
-    Кнопка «🍎 Дневник питания» появляется только если `NUTRITION_ENABLED=1`
-    в env (Phase 3.1 Part 1 + Ayla DRF-300..303 endpoints готовы). Default
-    OFF — Ayla backend пока не задеплоил internal endpoints, кнопка скрыта
-    чтобы не показывать заведомо-сломанный flow. Inline keyboard через
-    `attachments=` в каждом ответе — «floating menu» паттерн.
-    Persistent reply-keyboard в MAX SDK не поддерживается — только inline.
+    Кнопка «🍎 Дневник питания» появляется через
+    ``maxbot.segmentation.in_phase3_segment(bot_user)`` (DRF-287 + DRF-292).
+    Decision tree:
+
+      - ``NUTRITION_ENABLED=True``                      → button shown
+      - ``bot_user.max_user_id ∈ PHASE3_INTERNAL_ACCOUNTS`` → shown
+      - ``PHASE3_AB_ENABLED=True`` + segment A           → shown
+      - всё остальное (включая ``bot_user=None``)        → hidden
+
+    ``bot_user=None`` default keeps backward compatibility for callers
+    that don't have a resolved user yet — fail-closed (button hidden).
+    Inline keyboard через ``attachments=`` в каждом ответе — «floating
+    menu» паттерн. Persistent reply-keyboard в MAX SDK не поддерживается.
     """
-    from django.conf import settings
+    from maxbot.segmentation import in_phase3_segment
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -140,7 +147,7 @@ def main_menu_keyboard():
     builder.row(
         CallbackButton(text="📋 Мои записи", payload=PAYLOAD_MENU_MY_BOOKINGS),
     )
-    if getattr(settings, "NUTRITION_ENABLED", False):
+    if in_phase3_segment(bot_user):
         builder.row(
             CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
         )

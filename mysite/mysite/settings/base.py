@@ -358,6 +358,21 @@ NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
 # `docs/plans/maxbot-phase3-ayla-spec.md` §6 acceptance criteria.
 NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", default=False)
 
+# DRF-287 (B-8): per-user gate для Phase 3 — пока NUTRITION_ENABLED=False,
+# только перечисленные max_user_id видят «🍎 Дневник питания» в main_menu.
+# Comma-separated list of MAX user IDs (BigInt). Empty default → нулевая
+# internal-cohort. Пример: PHASE3_INTERNAL_ACCOUNTS=12345,67890,11111
+PHASE3_INTERNAL_ACCOUNTS = [
+    int(x) for x in os.getenv("PHASE3_INTERNAL_ACCOUNTS", "").split(",") if x
+]
+
+# DRF-292 (B-13): 50/50 A/B middleware. Когда PHASE3_AB_ENABLED=True (а
+# NUTRITION_ENABLED=False), public users разделены детерминированно по
+# `bot_user.id % 100 < 50` — segment A видит кнопку, segment B нет.
+# Internal accounts всегда в segment A независимо от этого флага.
+# Default OFF — A/B activates только когда B-10 internal smoke прошёл.
+PHASE3_AB_ENABLED = _bool("PHASE3_AB_ENABLED", default=False)
+
 # DRF-269/DRF-274 (B-4): cross-domain insights bot integration.
 # Default OFF. Production rollout blocked by DRF-271 (B-3) cumulative + DRF-275.
 CROSS_DOMAIN_ENABLED = _bool("CROSS_DOMAIN_ENABLED", default=False)

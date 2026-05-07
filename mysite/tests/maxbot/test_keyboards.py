@@ -78,6 +78,46 @@ def test_main_menu_includes_nutrition_button_when_enabled(settings):
     assert len(nutrition_buttons) == 1, f"expected 1 nutrition button, got {nutrition_buttons}"
 
 
+# ─── DRF-287 (B-8) — per-user internal-list gate ────────────────────────────
+# Мы передаём `bot_user=` в keyboard factory, оно делегирует в
+# `maxbot.segmentation.in_phase3_segment`. Здесь только integration —
+# unit-tests на segmentation сами в test_segmentation.py.
+
+
+@pytest.mark.django_db
+def test_main_menu_internal_account_sees_nutrition_button(settings):
+    """`bot_user.max_user_id` ∈ PHASE3_INTERNAL_ACCOUNTS → кнопка видна."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_AB_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    bot_user = baker.make("services_app.BotUser", max_user_id=12345)
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+    assert "cb:menu:nutrition" in set(_payloads(kb))
+
+
+@pytest.mark.django_db
+def test_main_menu_non_internal_account_no_nutrition_button(settings):
+    """Не-internal user + AB OFF → кнопка скрыта."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_AB_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    bot_user = baker.make("services_app.BotUser", max_user_id=99999)
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+    assert "cb:menu:nutrition" not in set(_payloads(kb))
+
+
+def test_main_menu_no_bot_user_hides_nutrition_button(settings):
+    """`bot_user=None` (default) + global flag OFF → fail-closed, кнопка скрыта.
+
+    Защищает code paths, у которых нет resolved BotUser к моменту рендера
+    (early /start before persist), от случайной утечки фичи.
+    """
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    kb = keyboards.main_menu_keyboard()
+    assert "cb:menu:nutrition" not in set(_payloads(kb))
+
+
 def test_nutrition_welcome_keyboard_has_three_buttons():
     """Phase 3 T01: welcome дневника = 'Попробовать сразу' / 'Настроить' / 'Назад'."""
     kb = keyboards.nutrition_welcome_keyboard()

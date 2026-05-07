@@ -92,7 +92,7 @@ async def send_with_main_menu(
     # внизу чата, фокус там). Если send упадёт — RuntimeError вверх,
     # старое меню НЕ трогаем (state preserved для retry).
     attachments = list(extra_attachments) if extra_attachments else []
-    attachments.append(keyboards.main_menu_keyboard())
+    attachments.append(keyboards.main_menu_keyboard(bot_user=bot_user))
     sent = await bot.send_message(
         chat_id=chat_id,
         text=text,
