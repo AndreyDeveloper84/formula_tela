@@ -12,6 +12,7 @@ from .contacts import router as contacts_router
 from .cross_domain import router as cross_domain_router
 from .fallback import router as fallback_router
 from .faq import router as faq_router
+from .food_clarify import router as food_clarify_router
 from .food_correction import router as food_correction_router
 from .food_scanner import router as food_scanner_router
 from .health_screening import router as health_screening_router
@@ -65,6 +66,11 @@ def get_routers():
         # (Phase 3.2B T09). Регистрируется ПЕРЕД food_scanner/ai_assistant
         # чтобы перехватить mute-кнопки до generic message_created.
         nudge_mute_router,
+        # food_clarify — DRF-358 friendly food/drink fallback card callbacks
+        # (cb:ux:food_to_diary / cb:ux:food_typo). Регистрируется ПЕРЕД
+        # food_scanner чтобы перехватить специфичные cb:ux:food_* раньше
+        # widе food_scanner-фильтров.
+        food_clarify_router,
         # food_scanner ПЕРЕД ai_assistant — оба ловят message_created, но
         # food_scanner early-return'ит если у сообщения нет фото-вложения,
         # передавая управление дальше. cb:nutrition:consent:* / cb:nutrition:log:*
