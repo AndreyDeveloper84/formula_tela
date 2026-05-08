@@ -62,6 +62,20 @@ def test_no_corporate_apology_phrases_encouraged():
     assert "к сожалению" in lower or "извин" in lower or "избегай" in lower
 
 
+def test_pain_examples_rendered_in_prompt():
+    """T04 fix: DIAGNOSTIC_FIRST_PAIN_EXAMPLES должны actually render
+    в prompt — иначе rule без few-shot reinforcement (dead code in prod)."""
+    from maxbot.ai_prompts import render_system_prompt
+    prompt = render_system_prompt(
+        today=date(2026, 5, 8), client_name="Аня", bookings_count=0,
+        master_context=_make_ctx(), last_visits=[],
+    )
+    # First pain example user line должен быть в prompt
+    assert "Шея болит" in prompt or "Спина устаёт" in prompt
+    # Diagnostic-first assistant pattern (вопрос «где конкретно» / numbered list)
+    assert "?" in prompt
+
+
 def test_voice_examples_includes_diagnostic_first_pain():
     """voice_examples.EXAMPLES содержит ≥3 pain-consultation diagnostic-first
     examples."""

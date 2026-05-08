@@ -139,7 +139,7 @@ SYSTEM_PROMPT_TEMPLATE = """\
 включён) → «Не курьер 😄 Хочешь, занесу в дневник?». Когда NUTRITION
 выключен → «Я бот салона — могу подсказать про массаж и записать.»
 
-{fewshot_block}ПРАВИЛА:
+{pain_examples_block}{fewshot_block}ПРАВИЛА:
 0. ТЁПЛАЯ ПРЕАМБУЛА **+ tool_call** В ОДНОМ ОТВЕТЕ. Перед вызовом
    ask_clarification / recommend_services / show_masters / show_slots
    пиши ОДНО короткое предложение в content. Это клеится перед карточкой
@@ -414,6 +414,7 @@ def render_system_prompt(
         masters_summary=master_context.summary_text or "(нет активных мастеров)",
         client_history_block=_render_client_history(last_visits or []),
         fewshot_block=_render_fewshot_block(),
+        pain_examples_block=_render_pain_examples_block(),
         extra_hint_block=extra_hint_block,
     )
 
@@ -427,6 +428,23 @@ def render_system_prompt(
         )
 
     return prompt
+
+
+def _render_pain_examples_block() -> str:
+    """DRF-358: компактный few-shot block для diagnostic-first pain rule.
+
+    Источник — `voice_examples.DIAGNOSTIC_FIRST_PAIN_EXAMPLES` (5 examples).
+    Рендерится как «# ПРИМЕРЫ — diagnostic-first для жалоб» с pair user/AI.
+    Усиливает text rule про эмпатию+вопросы перед tool-call.
+    """
+    from maxbot.voice_examples import DIAGNOSTIC_FIRST_PAIN_EXAMPLES
+    if not DIAGNOSTIC_FIRST_PAIN_EXAMPLES:
+        return ""
+    lines = ["# ПРИМЕРЫ — diagnostic-first для жалоб на здоровье"]
+    for ex in DIAGNOSTIC_FIRST_PAIN_EXAMPLES:
+        lines.append(f"\nUser: {ex.user}")
+        lines.append(f"Assistant: {ex.assistant}")
+    return "\n".join(lines) + "\n\n"
 
 
 def _render_fewshot_block() -> str:
