@@ -710,3 +710,26 @@ def tier_b_menopause_keyboard():
         CallbackButton(text="⏭ Пропустить", payload=PAYLOAD_TIER_B_SKIP),
     )
     return builder.as_markup()
+
+
+# ─── DRF-358: food/drink clarification card ────────────────────────────────
+
+PAYLOAD_FOOD_TO_DIARY = "cb:ux:food_to_diary"
+PAYLOAD_FOOD_TYPO = "cb:ux:food_typo"
+
+
+def food_drink_clarify_keyboard():
+    """DRF-358: 2-button card для friendly food/drink fallback.
+
+    Used когда parse_beverage miss но text похож на еду/напиток
+    (looks_like_food_drink → True). Показывается ВМЕСТО передачи в AI
+    Concierge (экономит $0.0001 + ~1.5s latency).
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📝 В дневник", payload=PAYLOAD_FOOD_TO_DIARY),
+    )
+    builder.row(
+        CallbackButton(text="Это была опечатка", payload=PAYLOAD_FOOD_TYPO),
+    )
+    return builder.as_markup()

@@ -33,9 +33,11 @@ from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_concierge, ai_ui, keyboards, texts
 from maxbot.ai_action_service import close_active_conversation
+from maxbot.food_drink_hints import looks_like_food_drink
 from maxbot.handlers.health_screening import start_health_screening
 from maxbot.handlers.water import try_handle_water_text
 from maxbot.intents import detect_intent
+from maxbot.keyboards import food_drink_clarify_keyboard
 from maxbot.llm import LLM_GIVEUP_MESSAGE, is_giveup
 from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
@@ -95,6 +97,25 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     # Если parse_beverage hit → try_handle_water_text возвращает True,
     # AI не вызывается (water-handler владеет всем UX-flow).
     if await try_handle_water_text(event, context):
+        return
+
+    # DRF-358: friendly food/drink fallback. Когда text похож на еду/напиток
+    # но parse_beverage его не поймал — рендерим clarification card вместо
+    # передачи в AI Concierge (где юзер получает корпоративный «не могу
+    # с заказом» ответ — диалог 2026-05-08 09:10/09:11/09:11:47).
+    # Gated на NUTRITION_ENABLED — на salon-only mode card неприменим.
+    if (
+        getattr(django_settings, "NUTRITION_ENABLED", False)
+        and looks_like_food_drink(user_text)
+    ):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "😄 Я не курьер из доставки! Но если ты хотел записать "
+                f"«{user_text}» в дневник питания — могу занести."
+            ),
+            attachments=[food_drink_clarify_keyboard()],
+        )
         return
 
     # 1. MARK_SEEN + TYPING_ON (best-effort, порядок важен — typing должен

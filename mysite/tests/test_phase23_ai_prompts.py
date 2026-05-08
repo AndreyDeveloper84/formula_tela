@@ -134,19 +134,20 @@ def test_prompt_handles_empty_client_name():
 
 
 def test_prompt_short_enough_for_gpt4o_mini():
-    """Целимся в <2000 токенов — gpt-4o-mini лучше следует коротким prompt'ам.
+    """Guard rail против бесконтрольного prompt bloat.
 
-    Грубая оценка: 1 токен ≈ 4 символа для русского. 2000 токенов ≈ 8000 char.
+    Грубая оценка: 1 токен ≈ 4 символа для русского. 5000 токенов ≈ 20000 char.
     """
     from maxbot.ai_prompts import render_system_prompt
     prompt = render_system_prompt(
         today=date(2026, 4, 27), client_name="X" * 100,
         bookings_count=99, master_context=_ctx("х" * 1000),
     )
-    # Грубая оценка: 1 токен ≈ 4 символа для русского. <4000 токенов ≈ <16000 char.
-    # После Sprint 1+2 (T01-T05) + drill-down clarification rules бюджет ~14700 chars
-    # (~3700 токенов). 128k context у gpt-4o-mini — лимит чисто чтобы не разрастаться.
-    assert len(prompt) < 18000
+    # Грубая оценка: 1 токен ≈ 4 символа для русского. <5000 токенов ≈ <20000 char.
+    # 128k context у gpt-4o-mini — лимит чисто guard rail чтобы prompt не разрастался.
+    # DRF-358: bumped 18000 → 20000 для diagnostic-first / red-flags / anti-corporate
+    # rules + 5 pain examples block — это реальное behavioral наполнение, нельзя сжимать.
+    assert len(prompt) < 20000
 
 
 # ─── DRF-248 extra_hint kwarg ──────────────────────────────────────────────
