@@ -120,3 +120,4 @@ async def _send_greeting(
         bot=bot, chat_id=chat_id, text=text, bot_user=bot_user,
         extra_attachments=extra or None,
     )
+# DRF-411 C9 probe — to be reverted
