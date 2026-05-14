@@ -106,9 +106,12 @@ async def on_show_nutrition_welcome(
 
     bot_user = await _resolve_bot_user_for_entry(callback)
     if bot_user.nutrition_onboarded_at is not None:
+        # B24: attach «← Назад в меню» — RESUME-экран без kb был тупиком,
+        # юзеры жаловались что некуда вернуться.
         await callback.bot.send_message(
             chat_id=chat_id,
             text=RESUME_TEXT,
+            attachments=[keyboards.back_to_menu_keyboard()],
         )
         return
 

@@ -35,11 +35,23 @@ ADMIN_NOTIFICATION_EMAIL = os.environ.get('ADMIN_NOTIFICATION_EMAIL', '')
 # MAX-бот (для admin-action push-back BotInquiry → bot.send_message в MAX)
 MAX_BOT_TOKEN = os.environ.get('MAX_BOT_TOKEN', '')
 
+# Shared secret used by the ai-bot-platform sync layer to authenticate against
+# /api/v1/catalog/* (Sprint 8 / DRF-725). Empty default → catalog endpoints
+# return 401 for every request (deny-by-default). Production must set this in
+# .env — settings/production.py fails fast on boot if it's missing.
+AI_BOT_PLATFORM_TOKEN = os.environ.get('AI_BOT_PLATFORM_TOKEN', '')
+
 INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.sitemaps",
+    # Sprint 8 / DRF-724 (M1): DRF for /api/v1/catalog/* read-only endpoints
+    # consumed by the ai-bot-platform. Listed already in requirements.txt
+    # (djangorestframework==3.16.1) — adding here so its admin / browsable
+    # API are discoverable. Default permission classes intentionally not
+    # overridden globally; per-view auth is wired in M2 (DRF-725).
+    "rest_framework",
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
@@ -58,6 +70,12 @@ MIDDLEWARE = [
     "django.middleware.locale.LocaleMiddleware",
     # CSP — включаем, если используешь django-csp:
     "csp.middleware.CSPMiddleware",
+    # Sprint 8 / DRF-725 (M2): X-Service-Token gate for /api/v1/catalog/*
+    # endpoints consumed by the ai-bot-platform sync layer. Runs after
+    # CommonMiddleware (path normalised) and before Ratelimit so unauth
+    # traffic doesn't consume rate-limit budget. Scoped strictly to the
+    # catalog prefix — all other routes pass through unchanged.
+    "services_app.api.v1.catalog.middleware.ServiceTokenAuthMiddleware",
     # Превращает django_ratelimit Ratelimited в 429 JSON для booking API
     "website.middleware.RatelimitMiddleware",
     # Ловит FileNotFoundError от отсутствующих медиа-файлов в admin (свежий
@@ -358,9 +376,31 @@ NUTRITION_SERVICE_TOKEN = os.getenv("NUTRITION_SERVICE_TOKEN", "")
 # `docs/plans/maxbot-phase3-ayla-spec.md` §6 acceptance criteria.
 NUTRITION_ENABLED = _bool("NUTRITION_ENABLED", default=False)
 
+# DRF-287 (B-8): per-user gate для Phase 3 — пока NUTRITION_ENABLED=False,
+# только перечисленные max_user_id видят «🍎 Дневник питания» в main_menu.
+# Comma-separated list of MAX user IDs (BigInt). Empty default → нулевая
+# internal-cohort. Пример: PHASE3_INTERNAL_ACCOUNTS=12345,67890,11111
+PHASE3_INTERNAL_ACCOUNTS = [
+    int(x) for x in os.getenv("PHASE3_INTERNAL_ACCOUNTS", "").split(",") if x
+]
+
+# DRF-292 (B-13): 50/50 A/B middleware. Когда PHASE3_AB_ENABLED=True (а
+# NUTRITION_ENABLED=False), public users разделены детерминированно по
+# `bot_user.id % 100 < 50` — segment A видит кнопку, segment B нет.
+# Internal accounts всегда в segment A независимо от этого флага.
+# Default OFF — A/B activates только когда B-10 internal smoke прошёл.
+PHASE3_AB_ENABLED = _bool("PHASE3_AB_ENABLED", default=False)
+
 # DRF-269/DRF-274 (B-4): cross-domain insights bot integration.
 # Default OFF. Production rollout blocked by DRF-271 (B-3) cumulative + DRF-275.
 CROSS_DOMAIN_ENABLED = _bool("CROSS_DOMAIN_ENABLED", default=False)
+
+# DRF-288 (B9): per-user gate for Track E (cross-domain insights).
+# When CROSS_DOMAIN_ENABLED is False, only listed max_user_ids получают cards.
+# Comma-separated list of MAX user IDs (BigInt). Empty by default → no internal users.
+CROSS_DOMAIN_INTERNAL_ACCOUNTS = [
+    int(x) for x in os.getenv("CROSS_DOMAIN_INTERNAL_ACCOUNTS", "").split(",") if x
+]
 
 # === Яндекс.Метрика ===
 YANDEX_METRIKA_TOKEN      = os.getenv("YANDEX_METRIKA_TOKEN", "")

@@ -1,0 +1,58 @@
+# CODEOWNERS for mysite/ — formula_tela.ru
+#
+# Format: <pattern> <owner1> <owner2> ...
+# GitHub uses the LAST matching pattern that applies.
+# See: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner — all files
+* @AndreyDeveloper84
+
+# ============================================================================
+# FROZEN ZONE — mysite/maxbot/
+# ============================================================================
+# This directory is frozen as migration source-of-truth for ai-bot-platform.
+# All PRs require tech-lead approval. New features go to ai-bot-platform repo.
+# See: mysite/maxbot/.FROZEN and mysite/maxbot/README.md
+# Linear project: https://linear.app/drfproject/project/ai-bot-platform-phase-0
+# Effective: 2026-05-09 → ~Sprint 10 cutover (week 21-22)
+
+mysite/maxbot/                   @AndreyDeveloper84
+mysite/maxbot/**                 @AndreyDeveloper84
+mysite/maxbot/.FROZEN            @AndreyDeveloper84
+mysite/maxbot/README.md          @AndreyDeveloper84
+
+# ============================================================================
+# Architecture / migration documentation
+# ============================================================================
+# All architecture decisions require tech-lead approval to keep design coherent.
+
+mysite/docs/arch/                @AndreyDeveloper84
+mysite/docs/arch/**              @AndreyDeveloper84
+mysite/docs/plans/               @AndreyDeveloper84
+mysite/docs/plans/**             @AndreyDeveloper84
+
+# ============================================================================
+# Sensitive ops files
+# ============================================================================
+# Deploy / CI / settings changes need careful review.
+
+.github/                         @AndreyDeveloper84
+.github/**                       @AndreyDeveloper84
+mysite/mysite/settings/          @AndreyDeveloper84
+mysite/mysite/settings/**        @AndreyDeveloper84
+infra/                           @AndreyDeveloper84
+infra/**                         @AndreyDeveloper84
+.env.example                     @AndreyDeveloper84
+Dockerfile                       @AndreyDeveloper84
+docker-compose.yml               @AndreyDeveloper84
+requirements.txt                 @AndreyDeveloper84
+Makefile                         @AndreyDeveloper84
+
+# ============================================================================
+# Database migrations — protect from accidental conflicts
+# ============================================================================
+
+mysite/services_app/migrations/  @AndreyDeveloper84
+mysite/services_app/migrations/** @AndreyDeveloper84
+mysite/agents/migrations/        @AndreyDeveloper84
+mysite/agents/migrations/**      @AndreyDeveloper84

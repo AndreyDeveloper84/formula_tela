@@ -40,11 +40,11 @@ def test_main_menu_has_six_buttons_when_nutrition_disabled(settings):
     assert len(_flatten(kb)) == 6
 
 
-def test_main_menu_has_seven_buttons_when_nutrition_enabled(settings):
-    """Главное меню с nutrition: 7 кнопок (6 базовых + 🍎 Дневник питания)."""
+def test_main_menu_has_eight_buttons_when_nutrition_enabled(settings):
+    """Главное меню с nutrition: 8 кнопок (6 базовых + 🍎 Дневник + 💧 Вода — B24)."""
     settings.NUTRITION_ENABLED = True
     kb = keyboards.main_menu_keyboard()
-    assert len(_flatten(kb)) == 7
+    assert len(_flatten(kb)) == 8
 
 
 def test_main_menu_payloads_when_nutrition_disabled(settings):
@@ -59,6 +59,7 @@ def test_main_menu_payloads_when_nutrition_disabled(settings):
 
 
 def test_main_menu_payloads_when_nutrition_enabled(settings):
+    """B24: с включённым nutrition — также появляется 💧 Вода (peer кнопка)."""
     settings.NUTRITION_ENABLED = True
     kb = keyboards.main_menu_keyboard()
     payloads = set(_payloads(kb))
@@ -66,6 +67,7 @@ def test_main_menu_payloads_when_nutrition_enabled(settings):
         "cb:menu:book", "cb:menu:services", "cb:menu:contacts",
         "cb:menu:faq", "cb:menu:ask", "cb:menu:my_bookings",
         "cb:menu:nutrition",
+        "cb:nutrition:water:add",  # B24: quick-access water
     }
 
 
@@ -78,6 +80,46 @@ def test_main_menu_includes_nutrition_button_when_enabled(settings):
     assert len(nutrition_buttons) == 1, f"expected 1 nutrition button, got {nutrition_buttons}"
 
 
+# ─── DRF-287 (B-8) — per-user internal-list gate ────────────────────────────
+# Мы передаём `bot_user=` в keyboard factory, оно делегирует в
+# `maxbot.segmentation.in_phase3_segment`. Здесь только integration —
+# unit-tests на segmentation сами в test_segmentation.py.
+
+
+@pytest.mark.django_db
+def test_main_menu_internal_account_sees_nutrition_button(settings):
+    """`bot_user.max_user_id` ∈ PHASE3_INTERNAL_ACCOUNTS → кнопка видна."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_AB_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    bot_user = baker.make("services_app.BotUser", max_user_id=12345)
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+    assert "cb:menu:nutrition" in set(_payloads(kb))
+
+
+@pytest.mark.django_db
+def test_main_menu_non_internal_account_no_nutrition_button(settings):
+    """Не-internal user + AB OFF → кнопка скрыта."""
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_AB_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    bot_user = baker.make("services_app.BotUser", max_user_id=99999)
+    kb = keyboards.main_menu_keyboard(bot_user=bot_user)
+    assert "cb:menu:nutrition" not in set(_payloads(kb))
+
+
+def test_main_menu_no_bot_user_hides_nutrition_button(settings):
+    """`bot_user=None` (default) + global flag OFF → fail-closed, кнопка скрыта.
+
+    Защищает code paths, у которых нет resolved BotUser к моменту рендера
+    (early /start before persist), от случайной утечки фичи.
+    """
+    settings.NUTRITION_ENABLED = False
+    settings.PHASE3_INTERNAL_ACCOUNTS = [12345]
+    kb = keyboards.main_menu_keyboard()
+    assert "cb:menu:nutrition" not in set(_payloads(kb))
+
+
 def test_nutrition_welcome_keyboard_has_three_buttons():
     """Phase 3 T01: welcome дневника = 'Попробовать сразу' / 'Настроить' / 'Назад'."""
     kb = keyboards.nutrition_welcome_keyboard()
@@ -87,6 +129,27 @@ def test_nutrition_welcome_keyboard_has_three_buttons():
         "cb:nutrition:start_anketa",
         "cb:back",
     }
+
+
+# ─── B24: Quick-access 💧 Вода в main_menu (DRF-303) ───────────────────────
+
+
+def test_main_menu_water_button_visible_when_nutrition_enabled(settings):
+    """B24: при включённом nutrition в main_menu есть И «🍎 Дневник», И «💧 Вода»."""
+    settings.NUTRITION_ENABLED = True
+    kb = keyboards.main_menu_keyboard()
+    payloads = set(_payloads(kb))
+    assert keyboards.PAYLOAD_MENU_NUTRITION in payloads
+    assert keyboards.PAYLOAD_NUTRITION_ADD_WATER in payloads
+
+
+def test_main_menu_water_button_hidden_when_nutrition_disabled(settings):
+    """B24: при выключенном nutrition обе кнопки скрыты — quick-access идёт под общим gate."""
+    settings.NUTRITION_ENABLED = False
+    kb = keyboards.main_menu_keyboard()
+    payloads = set(_payloads(kb))
+    assert keyboards.PAYLOAD_MENU_NUTRITION not in payloads
+    assert keyboards.PAYLOAD_NUTRITION_ADD_WATER not in payloads
 
 
 # ─── services_keyboard ──────────────────────────────────────────────────────

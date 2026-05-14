@@ -17,6 +17,10 @@ _REQUIRED_ENV_VARS = (
     "YCLIENTS_PARTNER_TOKEN",
     "YCLIENTS_USER_TOKEN",
     "YCLIENTS_COMPANY_ID",
+    # Sprint 8 / DRF-725 — ai-bot-platform sync layer shared secret. Empty
+    # value means the catalog API is open; we refuse to boot rather than
+    # silently expose tenant catalog data.
+    "AI_BOT_PLATFORM_TOKEN",
 )
 _missing = [v for v in _REQUIRED_ENV_VARS if not os.getenv(v)]
 if _missing:
@@ -60,6 +64,35 @@ if DEBUG:
     raise ImproperlyConfigured("Production: DEBUG must be False")
 if not ALLOWED_HOSTS:
     raise ImproperlyConfigured("Production: ALLOWED_HOSTS must be set")
+
+# ─── Sentry (B-19 / DRF-298) ─────────────────────────────────────────────────
+# Opt-in: подключается только если SENTRY_DSN установлен в .env. Без DSN
+# init не вызывается — graceful skip. LoggingIntegration ловит logger.exception
+# вызовы из всего кода как Sentry events автоматически (см.
+# docs/runbooks/sentry-coverage.md).
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    import sentry_sdk  # noqa: E402 — opt-in, импорт только при наличии DSN
+    from sentry_sdk.integrations.django import DjangoIntegration  # noqa: E402
+    from sentry_sdk.integrations.celery import CeleryIntegration  # noqa: E402
+    from sentry_sdk.integrations.logging import LoggingIntegration  # noqa: E402
+    import logging  # noqa: E402
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        release=os.getenv("SENTRY_RELEASE") or None,
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+        send_default_pii=False,  # 152-ФЗ: не отправляем PII
+        integrations=[
+            DjangoIntegration(),
+            CeleryIntegration(),
+            LoggingIntegration(
+                level=logging.INFO,         # breadcrumbs from INFO+
+                event_level=logging.ERROR,  # send to Sentry from ERROR+
+            ),
+        ],
+    )
 
 import logging as _logging
 _logging.getLogger(__name__).info("Загружены настройки PRODUCTION")

@@ -33,9 +33,11 @@ from maxapi.types import MessageCallback, MessageCreated
 
 from maxbot import ai_concierge, ai_ui, keyboards, texts
 from maxbot.ai_action_service import close_active_conversation
+from maxbot.food_drink_hints import looks_like_food_drink
 from maxbot.handlers.health_screening import start_health_screening
 from maxbot.handlers.water import try_handle_water_text
 from maxbot.intents import detect_intent
+from maxbot.keyboards import food_drink_clarify_keyboard
 from maxbot.llm import LLM_GIVEUP_MESSAGE, is_giveup
 from maxbot.menu_state import send_with_main_menu
 from maxbot.personalization import get_or_create_bot_user
@@ -95,6 +97,25 @@ async def on_free_text(event: MessageCreated, context: MemoryContext) -> None:
     # Если parse_beverage hit → try_handle_water_text возвращает True,
     # AI не вызывается (water-handler владеет всем UX-flow).
     if await try_handle_water_text(event, context):
+        return
+
+    # DRF-358: friendly food/drink fallback. Когда text похож на еду/напиток
+    # но parse_beverage его не поймал — рендерим clarification card вместо
+    # передачи в AI Concierge (где юзер получает корпоративный «не могу
+    # с заказом» ответ — диалог 2026-05-08 09:10/09:11/09:11:47).
+    # Gated на NUTRITION_ENABLED — на salon-only mode card неприменим.
+    if (
+        getattr(django_settings, "NUTRITION_ENABLED", False)
+        and looks_like_food_drink(user_text)
+    ):
+        await event.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "😄 Я не курьер из доставки! Но если ты хотел записать "
+                f"«{user_text}» в дневник питания — могу занести."
+            ),
+            attachments=[food_drink_clarify_keyboard()],
+        )
         return
 
     # 1. MARK_SEEN + TYPING_ON (best-effort, порядок важен — typing должен
@@ -181,6 +202,52 @@ async def _invoke_ai_concierge(
     )
 
 
+# ─── DRF-354 master photos resolver (used for show_masters card) ──────────
+
+
+async def _resolve_master_attachments(bot, action_data: dict) -> dict[int, object]:
+    """Async-fetch master photos для show_masters.action_data.masters.
+
+    Возвращает {master_id: Attachment} (только non-None). Кэш в Redis,
+    повторные показы тех же мастеров — без upload-round-trip.
+
+    Best-effort: любая ошибка загрузки одного фото → пропускаем мастера,
+    остальные карточки рендерятся нормально (см. master_image.get_master_attachment).
+    """
+    from maxbot.master_image import get_master_attachment
+    from services_app.models import Master
+
+    masters_items = action_data.get("masters") or []
+    master_ids = [
+        item.get("master", {}).get("id")
+        for item in masters_items
+        if item.get("master", {}).get("id") is not None
+    ]
+    if not master_ids:
+        return {}
+
+    masters_qs = await sync_to_async(list)(
+        Master.objects.filter(id__in=master_ids, is_active=True)
+    )
+    masters_by_id = {m.id: m for m in masters_qs}
+
+    result: dict[int, object] = {}
+    # Резолвим по одному (не gather), чтобы один failing upload не убил
+    # остальные через future.cancellation. Latency не критична — кэш hot.
+    for mid in master_ids:
+        master_obj = masters_by_id.get(mid)
+        if master_obj is None:
+            continue
+        try:
+            att = await get_master_attachment(bot, master_obj)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("master photo resolve failed master=%s: %s", mid, exc)
+            continue
+        if att is not None:
+            result[mid] = att
+    return result
+
+
 # ─── Public helper — переиспользуется в ai_callbacks.py ────────────────────
 
 
@@ -224,10 +291,18 @@ async def run_ai_turn(
         return
 
     if dto.action_type:
+        # DRF-354: для show_masters resolve photo attachments (top-N мастеров).
+        # Pre-async fetch + cache, чтобы render_action остался sync.
+        master_attachments = None
+        if dto.action_type == "show_masters":
+            master_attachments = await _resolve_master_attachments(
+                bot, dto.action_data or {},
+            )
         rendered_text, action_attachments = ai_ui.render_action(
             conversation_id=str(dto.conversation_id),
             action_type=dto.action_type,
             action_data=dto.action_data or {},
+            master_attachments=master_attachments,
         )
         # Преамбула от LLM перед tool_call (например «Конечно, давайте
         # подберём!») — клеим к карточке, иначе бот звучит как робот.

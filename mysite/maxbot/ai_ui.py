@@ -98,15 +98,23 @@ def render_action(
     conversation_id: str,
     action_type: str,
     action_data: dict[str, Any],
+    master_attachments: dict[int, Any] | None = None,
 ) -> tuple[str, list]:
     """Возвращает (text, list[Attachment]) для send_message.
 
     Unknown action_type → safe default (текст + нет attachments). Никогда
     не raise — UI всегда должен что-то отдать клиенту.
+
+    `master_attachments` (DRF-354): {master_id → Attachment | None} — opt
+    image-attachments для top-N мастеров в `show_masters` карточке.
+    Резолвится в caller'е (async upload + cache), сюда передаётся готовым
+    словарём чтобы render_* остались sync + side-effect-free.
     """
     conv_id = str(conversation_id)
     if action_type == "show_masters":
-        return render_show_masters(conv_id, action_data)
+        return render_show_masters(
+            conv_id, action_data, master_attachments=master_attachments,
+        )
     if action_type == "show_slots":
         return render_show_slots(conv_id, action_data)
     if action_type == "confirm_booking":
@@ -124,7 +132,23 @@ def render_action(
 # ─── show_masters ──────────────────────────────────────────────────────────
 
 
-def render_show_masters(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
+def render_show_masters(
+    conv_id: str,
+    data: dict[str, Any],
+    *,
+    master_attachments: dict[int, Any] | None = None,
+) -> tuple[str, list]:
+    """Render show_masters карточку.
+
+    `master_attachments` (DRF-354) — {master_id → Attachment | None}. Если
+    передан и для master.id есть non-None Attachment — оно идёт в результирующий
+    список attachments перед клавиатурой. None entries или missing keys
+    silently skip — backwards-compatible с вызовами без аргумента.
+
+    MAX SDK принимает несколько image attachments в одном send_message (см.
+    Bot.send_message сигнатура: `attachments: list[Attachment | InputMedia | ...]`),
+    так что top-3 фото + 1 keyboard уходят в один message — Option A.
+    """
     masters = data.get("masters") or []
     explanation = data.get("explanation") or ""
 
@@ -192,7 +216,19 @@ def render_show_masters(conv_id: str, data: dict[str, Any]) -> tuple[str, list]:
             payload=_payload_pick_master(conv_id, mid),
         ))
 
-    return ("\n".join(lines), [builder.as_markup()])
+    # Photo attachments (DRF-354) — preserve порядок мастеров. Сначала
+    # фотографии (отрисуются grid'ом сверху), потом keyboard.
+    photo_atts: list = []
+    if master_attachments:
+        for item in masters:
+            mid = item.get("master", {}).get("id")
+            if mid is None:
+                continue
+            att = master_attachments.get(mid)
+            if att is not None:
+                photo_atts.append(att)
+
+    return ("\n".join(lines), [*photo_atts, builder.as_markup()])
 
 
 # ─── show_slots ────────────────────────────────────────────────────────────

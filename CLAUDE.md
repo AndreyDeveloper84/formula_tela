@@ -1,5 +1,17 @@
 # CLAUDE.md — Проект «Формула тела»
 
+> ## 🛑 Migration Freeze (since 2026-05-09)
+>
+> **`mysite/maxbot/` is FROZEN as the migration source-of-truth for `ai-bot-platform`.**
+>
+> - See [`mysite/maxbot/.FROZEN`](mysite/maxbot/.FROZEN) for the formal policy + emergency exemption process.
+> - See [`mysite/maxbot/README.md`](mysite/maxbot/README.md) for context.
+> - **New work goes to** [`github.com/AndreyDeveloper84/ai-bot-platform`](https://github.com/AndreyDeveloper84/ai-bot-platform). Linear: [`ai-bot-platform Phase 0`](https://linear.app/drfproject/project/ai-bot-platform-phase-0-87eeee7605dd).
+> - Critical security fixes here MUST be cherry-picked to `ai-bot-platform/legacy_maxbot/` in the same PR window. PR title format: `[FROZEN-EXEMPT] <description>`.
+> - `.github/CODEOWNERS` enforces Lead approval on `mysite/maxbot/`, `mysite/docs/arch/`, `mysite/mysite/settings/`, all migrations, and CI/CD.
+>
+> The freeze lifts when Sprint 10 (week 21–22) of Phase 0 completes and 100% MAX traffic runs on `ai-bot-platform`.
+
 ## Обзор проекта
 Django 5.2 веб-приложение для салона массажа и эстетики «Формула тела».
 Русскоязычный сайт. Каталог услуг, SEO-посадочные страницы, онлайн-запись,

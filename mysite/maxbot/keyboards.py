@@ -120,17 +120,24 @@ PAYLOAD_REM_CANCEL_PREFIX = "cb:rem:cancel:"
 MAX_KEYBOARD_ROWS = 29
 
 
-def main_menu_keyboard():
+def main_menu_keyboard(*, bot_user=None):
     """Главное меню — 6-7 кнопок в 4-5 рядов.
 
-    Кнопка «🍎 Дневник питания» появляется только если `NUTRITION_ENABLED=1`
-    в env (Phase 3.1 Part 1 + Ayla DRF-300..303 endpoints готовы). Default
-    OFF — Ayla backend пока не задеплоил internal endpoints, кнопка скрыта
-    чтобы не показывать заведомо-сломанный flow. Inline keyboard через
-    `attachments=` в каждом ответе — «floating menu» паттерн.
-    Persistent reply-keyboard в MAX SDK не поддерживается — только inline.
+    Кнопка «🍎 Дневник питания» появляется через
+    ``maxbot.segmentation.in_phase3_segment(bot_user)`` (DRF-287 + DRF-292).
+    Decision tree:
+
+      - ``NUTRITION_ENABLED=True``                      → button shown
+      - ``bot_user.max_user_id ∈ PHASE3_INTERNAL_ACCOUNTS`` → shown
+      - ``PHASE3_AB_ENABLED=True`` + segment A           → shown
+      - всё остальное (включая ``bot_user=None``)        → hidden
+
+    ``bot_user=None`` default keeps backward compatibility for callers
+    that don't have a resolved user yet — fail-closed (button hidden).
+    Inline keyboard через ``attachments=`` в каждом ответе — «floating
+    menu» паттерн. Persistent reply-keyboard в MAX SDK не поддерживается.
     """
-    from django.conf import settings
+    from maxbot.segmentation import in_phase3_segment
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -140,9 +147,16 @@ def main_menu_keyboard():
     builder.row(
         CallbackButton(text="📋 Мои записи", payload=PAYLOAD_MENU_MY_BOOKINGS),
     )
-    if getattr(settings, "NUTRITION_ENABLED", False):
+    if in_phase3_segment(bot_user):
         builder.row(
             CallbackButton(text="🍎 Дневник питания", payload=PAYLOAD_MENU_NUTRITION),
+        )
+        # B24: «💧 Вода» — quick-access peer кнопка под тем же gate.
+        # Reuse existing PAYLOAD_NUTRITION_ADD_WATER (handlers/water.py уже
+        # подписан). Без отдельного payload — клик ведёт в тот же flow что
+        # и footer-кнопка после food_scanner.
+        builder.row(
+            CallbackButton(text="💧 Вода", payload=PAYLOAD_NUTRITION_ADD_WATER),
         )
     builder.row(
         CallbackButton(text="📞 Контакты", payload=PAYLOAD_MENU_CONTACTS),
@@ -694,5 +708,28 @@ def tier_b_menopause_keyboard():
     )
     builder.row(
         CallbackButton(text="⏭ Пропустить", payload=PAYLOAD_TIER_B_SKIP),
+    )
+    return builder.as_markup()
+
+
+# ─── DRF-358: food/drink clarification card ────────────────────────────────
+
+PAYLOAD_FOOD_TO_DIARY = "cb:ux:food_to_diary"
+PAYLOAD_FOOD_TYPO = "cb:ux:food_typo"
+
+
+def food_drink_clarify_keyboard():
+    """DRF-358: 2-button card для friendly food/drink fallback.
+
+    Used когда parse_beverage miss но text похож на еду/напиток
+    (looks_like_food_drink → True). Показывается ВМЕСТО передачи в AI
+    Concierge (экономит $0.0001 + ~1.5s latency).
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        CallbackButton(text="📝 В дневник", payload=PAYLOAD_FOOD_TO_DIARY),
+    )
+    builder.row(
+        CallbackButton(text="Это была опечатка", payload=PAYLOAD_FOOD_TYPO),
     )
     return builder.as_markup()

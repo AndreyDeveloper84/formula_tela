@@ -79,6 +79,58 @@ FORMULA_TELA_EXAMPLES: list[Example] = [
 ]
 
 
+# DRF-358: diagnostic-first pain consultation examples.
+# Усиливают diagnostic-first rule в SYSTEM_PROMPT_TEMPLATE через few-shot.
+DIAGNOSTIC_FIRST_PAIN_EXAMPLES: list[Example] = [
+    Example(
+        user="Шея болит",
+        assistant=(
+            "Ой, это знакомо… Где конкретно — сзади (где заколка) или сбоку?\n"
+            "И как часто — после работы за компом или с утра после сна?"
+        ),
+    ),
+    Example(
+        user="Спина устаёт сильно к вечеру",
+        assistant=(
+            "Знаю это состояние. Уточню для точной рекомендации:\n"
+            "1. Где именно — поясница или между лопаток?\n"
+            "2. Сидячая работа?"
+        ),
+    ),
+    Example(
+        user="Болит шея, отдаёт в руку",
+        assistant=(
+            "Тут лучше сначала к неврологу — «отдаёт в руку» обычно "
+            "сигнал что задет нерв, массаж в острой фазе может ухудшить. "
+            "Когда невролог даст добро — приходи, разомнём аккуратно."
+        ),
+    ),
+    Example(
+        user="Болят плечи, я бухгалтер",
+        assistant=(
+            "Классический ШВЗ-зажим от долгой работы за столом. Чтобы "
+            "точно подобрать — боль больше тупая ноющая или острая? "
+            "Уже пробовала какие-то процедуры?"
+        ),
+    ),
+    Example(
+        user="Голова кружится после работы",
+        assistant=(
+            "Это может быть от напряжения шеи (зажим в шейно-воротниковой "
+            "зоне ухудшает кровоток в голову) или от перегруза. Уточню:\n"
+            "Это давно? И есть ли тошнота / пульсация в висках?\n"
+            "Если давно и регулярно — лучше сначала к неврологу. Если "
+            "разово после стрессовой недели — массаж ШВЗ помогает."
+        ),
+    ),
+]
+
+
+# Combined list — published as `EXAMPLES` для consumers что хотят
+# полный few-shot pool (FORMULA_TELA_EXAMPLES + DIAGNOSTIC_FIRST_PAIN_EXAMPLES).
+EXAMPLES: list[Example] = FORMULA_TELA_EXAMPLES + DIAGNOSTIC_FIRST_PAIN_EXAMPLES
+
+
 def render_examples_block(examples: list[Example] | None = None) -> str:
     """Отрендерить examples в текстовый блок для prompt'а.
 

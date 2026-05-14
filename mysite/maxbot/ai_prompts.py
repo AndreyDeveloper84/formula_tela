@@ -102,7 +102,44 @@ SYSTEM_PROMPT_TEMPLATE = """\
 6. ask_clarification — когда запрос неясен и нужно уточнить с вариантами
    ответа (день недели, тип услуги и т.д.).
 
-{fewshot_block}ПРАВИЛА:
+# DIAGNOSTIC-FIRST для жалоб на здоровье
+
+Когда клиент упоминает физическую боль / жалобу
+(шея, спина, голова, плечи, ноги, усталость, стресс, зажим):
+
+1. Сначала эмпатия + 1-2 уточняющих вопроса. ИЗБЕГАЙ tool-call
+   recommend_services / ask_clarification на первом сообщении.
+   Спрашивай: где конкретно? утром или к вечеру? сидячая работа?
+   как давно?
+
+2. После ответа клиента — 1 ещё уточнение если нужно.
+
+3. Только на 2-3 turn — recommend_services с обоснованием
+   «почему именно эта услуга под твою ситуацию».
+
+# RED-FLAGS — отправляй к врачу, НЕ массаж
+
+Если упомянуты сигналы:
+- «отдаёт» (в руку / ногу / лопатку)
+- «онемение» / «онемел»
+- «ночью усиливается» / «не дает спать»
+- «после травмы» / «упал/а» / «ушиб»
+- «температура» / «жар»
+- сильный острый прострел / резкая невыносимая боль
+
+→ НЕ предлагай массаж. Скажи: «Похоже на медицинский случай — лучше
+сначала к неврологу/терапевту. Когда отдых от острой фазы пройдёт,
+буду рада помочь массажем для расслабления.»
+
+# ИЗБЕГАЙ корпоративных фраз
+
+«К сожалению, я не могу помочь…», «Извините, я не понимаю…»
+звучат сухо и не в стиле Алины. Вместо этого — лёгкая шутка / тёплый
+редирект. Например на «борщ» / «суп» / «котлеты» (когда NUTRITION
+включён) → «Не курьер 😄 Хочешь, занесу в дневник?». Когда NUTRITION
+выключен → «Я бот салона — могу подсказать про массаж и записать.»
+
+{pain_examples_block}{fewshot_block}ПРАВИЛА:
 0. ТЁПЛАЯ ПРЕАМБУЛА **+ tool_call** В ОДНОМ ОТВЕТЕ. Перед вызовом
    ask_clarification / recommend_services / show_masters / show_slots
    пиши ОДНО короткое предложение в content. Это клеится перед карточкой
@@ -377,6 +414,7 @@ def render_system_prompt(
         masters_summary=master_context.summary_text or "(нет активных мастеров)",
         client_history_block=_render_client_history(last_visits or []),
         fewshot_block=_render_fewshot_block(),
+        pain_examples_block=_render_pain_examples_block(),
         extra_hint_block=extra_hint_block,
     )
 
@@ -390,6 +428,23 @@ def render_system_prompt(
         )
 
     return prompt
+
+
+def _render_pain_examples_block() -> str:
+    """DRF-358: компактный few-shot block для diagnostic-first pain rule.
+
+    Источник — `voice_examples.DIAGNOSTIC_FIRST_PAIN_EXAMPLES` (5 examples).
+    Рендерится как «# ПРИМЕРЫ — diagnostic-first для жалоб» с pair user/AI.
+    Усиливает text rule про эмпатию+вопросы перед tool-call.
+    """
+    from maxbot.voice_examples import DIAGNOSTIC_FIRST_PAIN_EXAMPLES
+    if not DIAGNOSTIC_FIRST_PAIN_EXAMPLES:
+        return ""
+    lines = ["# ПРИМЕРЫ — diagnostic-first для жалоб на здоровье"]
+    for ex in DIAGNOSTIC_FIRST_PAIN_EXAMPLES:
+        lines.append(f"\nUser: {ex.user}")
+        lines.append(f"Assistant: {ex.assistant}")
+    return "\n".join(lines) + "\n\n"
 
 
 def _render_fewshot_block() -> str:

@@ -396,10 +396,13 @@ def send_daily_reports(self):
                 attachments=[keyboards.daily_report_footer_keyboard()],
             )
             sent += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "daily_reports.send_failed user=%s chat=%s err=%s",
-                bot_user.max_user_id, bot_user.chat_id, exc,
+        except Exception:  # noqa: BLE001
+            # B-19 (DRF-298): catch-all → logger.exception для traceback
+            # в Sentry. NutritionUnavailable/APIError ловятся отдельно выше
+            # (там logger.warning без traceback корректен).
+            logger.exception(
+                "daily_reports.send_failed user=%s chat=%s",
+                bot_user.max_user_id, bot_user.chat_id,
             )
             skipped += 1
 
@@ -554,10 +557,11 @@ def send_water_reminders(self):
                 attachments=[keyboards.water_reminder_buttons_keyboard()],
             )
             sent += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "water_reminders.send_failed user=%s err=%s",
-                bot_user.max_user_id, exc,
+        except Exception:  # noqa: BLE001
+            # B-19 (DRF-298): catch-all → logger.exception для traceback в Sentry.
+            logger.exception(
+                "water_reminders.send_failed user=%s",
+                bot_user.max_user_id,
             )
             skipped += 1
 
