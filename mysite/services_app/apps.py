@@ -8,5 +8,8 @@ class ServicesAppConfig(AppConfig):
 
     def ready(self):
         import services_app.signals
+        # Sprint 8 / DRF-726 — bind catalog delta-push webhook receivers.
+        # Module-level @receiver decorators take effect on import.
+        import services_app.api.v1.catalog.webhooks.signals  # noqa: F401
 
 
