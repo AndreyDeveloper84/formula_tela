@@ -40,6 +40,12 @@ INSTALLED_APPS = [
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.sitemaps",
+    # Sprint 8 / DRF-724 (M1): DRF for /api/v1/catalog/* read-only endpoints
+    # consumed by the ai-bot-platform. Listed already in requirements.txt
+    # (djangorestframework==3.16.1) — adding here so its admin / browsable
+    # API are discoverable. Default permission classes intentionally not
+    # overridden globally; per-view auth is wired in M2 (DRF-725).
+    "rest_framework",
     # твои приложения:
     "booking","services_app.apps.ServicesAppConfig","website",
     "agents",
