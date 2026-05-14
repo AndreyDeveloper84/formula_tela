@@ -237,3 +237,42 @@ class SignalIntegrationTests(TransactionTestCase):
         body = json.loads(mock_post.call_args.kwargs["data"])
         self.assertEqual(body["event"], "deleted")
         self.assertEqual(body["model"], "Service")
+
+
+@override_settings(
+    AI_BOT_PLATFORM_WEBHOOK_URL="",  # dormant
+    AI_BOT_PLATFORM_WEBHOOK_SECRET="",
+)
+class SignalDormantTests(TransactionTestCase):
+    """When the webhook is dormant, signals must not call ``.delay()``.
+
+    Regression guard: prior to the signal-time URL check, every save of
+    a catalog model in any test in the project would enqueue a Celery
+    task. With Celery's default broker unreachable in local/test runs,
+    kombu's connection retry would hang the test suite. The fix is the
+    short-circuit in ``signals._enqueue`` — assert here it actually
+    prevents the task from being scheduled.
+    """
+
+    def test_post_save_does_not_call_delay_when_dormant(self) -> None:
+        category = ServiceCategory.objects.create(name="Массаж", order=0)
+        with patch(
+            "services_app.api.v1.catalog.webhooks.signals."
+            "dispatch_catalog_change.delay",
+        ) as mock_delay:
+            Service.objects.create(
+                name="No webhook", is_active=True, category=category,
+            )
+        mock_delay.assert_not_called()
+
+    def test_post_delete_does_not_call_delay_when_dormant(self) -> None:
+        category = ServiceCategory.objects.create(name="Массаж", order=0)
+        service = Service.objects.create(
+            name="To remove", is_active=True, category=category,
+        )
+        with patch(
+            "services_app.api.v1.catalog.webhooks.signals."
+            "dispatch_catalog_change.delay",
+        ) as mock_delay:
+            service.delete()
+        mock_delay.assert_not_called()

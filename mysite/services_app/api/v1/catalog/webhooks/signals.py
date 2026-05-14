@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
@@ -29,7 +30,19 @@ _TRACKED = (Service, Master, FAQ, HelpArticle)
 
 
 def _enqueue(*, instance, event: str) -> None:
-    """Submit the dispatch task once the current transaction commits."""
+    """Submit the dispatch task once the current transaction commits.
+
+    Short-circuits to a no-op when the webhook is dormant — checking
+    ``AI_BOT_PLATFORM_WEBHOOK_URL`` at signal time avoids calling
+    ``.delay()`` at all, which matters because Celery's broker
+    transport will block-retry the enqueue when the broker isn't
+    reachable (local dev / test runs / pre-prod boxes without Redis).
+    The task itself has the same check as a defense-in-depth — see
+    ``tasks.dispatch_catalog_change``.
+    """
+    url = getattr(settings, "AI_BOT_PLATFORM_WEBHOOK_URL", "") or ""
+    if not url:
+        return
     model = type(instance).__name__
     pk = instance.pk
     updated_at = getattr(instance, "updated_at", None)
