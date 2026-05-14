@@ -35,6 +35,12 @@ ADMIN_NOTIFICATION_EMAIL = os.environ.get('ADMIN_NOTIFICATION_EMAIL', '')
 # MAX-бот (для admin-action push-back BotInquiry → bot.send_message в MAX)
 MAX_BOT_TOKEN = os.environ.get('MAX_BOT_TOKEN', '')
 
+# Shared secret used by the ai-bot-platform sync layer to authenticate against
+# /api/v1/catalog/* (Sprint 8 / DRF-725). Empty default → catalog endpoints
+# return 401 for every request (deny-by-default). Production must set this in
+# .env — settings/production.py fails fast on boot if it's missing.
+AI_BOT_PLATFORM_TOKEN = os.environ.get('AI_BOT_PLATFORM_TOKEN', '')
+
 INSTALLED_APPS = [
     "django.contrib.admin","django.contrib.auth","django.contrib.contenttypes",
     "django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles",
@@ -64,6 +70,12 @@ MIDDLEWARE = [
     "django.middleware.locale.LocaleMiddleware",
     # CSP — включаем, если используешь django-csp:
     "csp.middleware.CSPMiddleware",
+    # Sprint 8 / DRF-725 (M2): X-Service-Token gate for /api/v1/catalog/*
+    # endpoints consumed by the ai-bot-platform sync layer. Runs after
+    # CommonMiddleware (path normalised) and before Ratelimit so unauth
+    # traffic doesn't consume rate-limit budget. Scoped strictly to the
+    # catalog prefix — all other routes pass through unchanged.
+    "services_app.api.v1.catalog.middleware.ServiceTokenAuthMiddleware",
     # Превращает django_ratelimit Ratelimited в 429 JSON для booking API
     "website.middleware.RatelimitMiddleware",
     # Ловит FileNotFoundError от отсутствующих медиа-файлов в admin (свежий

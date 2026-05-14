@@ -22,13 +22,21 @@ from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
 from services_app.models import FAQ, HelpArticle, Master, Service, ServiceCategory
 
+# Sprint 8 / DRF-725: the catalog API now lives behind a static service
+# token. The tests below authenticate via the same X-Service-Token header
+# the bot's sync layer will send. Keep this constant in lockstep with
+# ``services_app/tests/test_service_token_auth.py`` so both files exercise
+# the same auth contract.
+_TEST_TOKEN = "catalog-test-token-m1"
 
+
+@override_settings(AI_BOT_PLATFORM_TOKEN=_TEST_TOKEN)
 class ServiceListEndpointTests(TestCase):
     """The list endpoint and its filters / pagination plumbing."""
 
@@ -55,6 +63,7 @@ class ServiceListEndpointTests(TestCase):
 
     def setUp(self) -> None:
         self.client = APIClient()
+        self.client.credentials(HTTP_X_SERVICE_TOKEN=_TEST_TOKEN)
 
     def test_list_returns_only_active(self) -> None:
         response = self.client.get("/api/v1/catalog/services/")
@@ -125,6 +134,7 @@ class ServiceListEndpointTests(TestCase):
         self.assertIsNotNone(body["next"])
 
 
+@override_settings(AI_BOT_PLATFORM_TOKEN=_TEST_TOKEN)
 class MasterListEndpointTests(TestCase):
     """Master.services M2M is the anti-hallucination feed."""
 
@@ -153,6 +163,7 @@ class MasterListEndpointTests(TestCase):
 
     def setUp(self) -> None:
         self.client = APIClient()
+        self.client.credentials(HTTP_X_SERVICE_TOKEN=_TEST_TOKEN)
 
     def test_master_endpoint_returns_services_as_id_list(self) -> None:
         """``services`` is a list of service PKs — flat anti-hallucination feed."""
@@ -173,6 +184,7 @@ class MasterListEndpointTests(TestCase):
         self.assertNotIn("Уволенный мастер", names)
 
 
+@override_settings(AI_BOT_PLATFORM_TOKEN=_TEST_TOKEN)
 class FaqAndHelpArticleEndpointsTests(TestCase):
     """Smoke-level coverage for the two FAQ-shaped endpoints."""
 
@@ -201,6 +213,7 @@ class FaqAndHelpArticleEndpointsTests(TestCase):
 
     def setUp(self) -> None:
         self.client = APIClient()
+        self.client.credentials(HTTP_X_SERVICE_TOKEN=_TEST_TOKEN)
 
     def test_faqs_only_active(self) -> None:
         response = self.client.get("/api/v1/catalog/faqs/")
