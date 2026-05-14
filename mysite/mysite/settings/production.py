@@ -17,6 +17,10 @@ _REQUIRED_ENV_VARS = (
     "YCLIENTS_PARTNER_TOKEN",
     "YCLIENTS_USER_TOKEN",
     "YCLIENTS_COMPANY_ID",
+    # Sprint 8 / DRF-725 — ai-bot-platform sync layer shared secret. Empty
+    # value means the catalog API is open; we refuse to boot rather than
+    # silently expose tenant catalog data.
+    "AI_BOT_PLATFORM_TOKEN",
 )
 _missing = [v for v in _REQUIRED_ENV_VARS if not os.getenv(v)]
 if _missing:
