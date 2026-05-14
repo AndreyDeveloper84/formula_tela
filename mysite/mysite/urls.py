@@ -89,6 +89,11 @@ urlpatterns = [
     path('', include('website.urls')),
     path('healthz/', healthz, name='healthz'),
     path('api/agents/health/', agents_health, name='agents_health'),
+    # Sprint 8 / DRF-724 (M1): read-only catalog endpoints for the
+    # ai-bot-platform sync layer. Unauthenticated until M2 (DRF-725)
+    # ships the X-Service-Token middleware. FROZEN-EXEMPT — see
+    # services_app/api/__init__.py docstring.
+    path('api/v1/catalog/', include('services_app.api.v1.catalog.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/yclients/webhook/', yclients_webhook, name='yclients_webhook'),
     path('payments/success/', payment_success_page, name='payment_success_page'),
