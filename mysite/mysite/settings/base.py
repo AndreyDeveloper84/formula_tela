@@ -41,6 +41,7 @@ MAX_BOT_TOKEN = os.environ.get('MAX_BOT_TOKEN', '')
 # .env — settings/production.py fails fast on boot if it's missing.
 AI_BOT_PLATFORM_TOKEN = os.environ.get('AI_BOT_PLATFORM_TOKEN', '')
 
+
 # Outbound delta-push webhook (Sprint 8 / DRF-726). When the URL is empty the
 # Celery task is a no-op — M3 lands ahead of the consumer side, so we keep it
 # dormant by default and turn it on later by setting both env vars together.
